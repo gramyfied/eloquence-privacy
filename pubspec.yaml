@@ -1,0 +1,115 @@
+name: eloquence_frontend
+description: "Application de coaching vocal avec analyse audio en temps réel."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.5.4 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI
+  cupertino_icons: ^1.0.8
+  flutter_svg: ^2.0.10+1
+  google_fonts: ^6.1.0
+  flutter_animate: ^4.5.0
+  linear_gradient: ^0.1.13 # Ajout de la dépendance linear_gradient, version rétrogradée
+  
+  # Architecture & State Management
+  flutter_bloc: ^8.1.4
+  equatable: ^2.0.5
+  get_it: ^7.6.7
+  injectable: ^2.3.2
+  
+  # Audio
+  flutter_sound: ^9.2.13
+  just_audio: ^0.9.36
+  record: ^5.0.4
+  
+  # Azure Speech
+  # Note: Le package azure_cognitive_services_speech n'est pas disponible sur pub.dev
+  # Nous utiliserons une implémentation personnalisée pour l'instant
+  
+  # Supabase
+  supabase_flutter: ^2.3.4
+  
+  # Storage & Permissions
+  path_provider: ^2.1.2
+  permission_handler: ^11.3.0
+  shared_preferences: ^2.2.2
+  
+  # Utils
+  logger: ^2.0.2+1
+  intl: ^0.19.0
+  uuid: ^4.3.3
+  rxdart: ^0.27.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  test: ^1.22.1
+  flutter_lints: ^5.0.0
+  
+  # Testing
+  mockito: ^5.4.4
+  bloc_test: ^9.1.5
+  
+  # Code Generation
+  build_runner: ^2.4.8
+  injectable_generator: ^2.4.1
+  json_serializable: ^6.7.1
+  
+  # MCP extension pour Flutter Inspector - Désactivé car nécessite Dart SDK >=3.7.0
+  # devtools_mcp_extension: ^0.1.0
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# Override pour résoudre le conflit de version avec vm_service
+dependency_overrides:
+  vm_service: ^15.0.0
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  # To add assets to your application, add an assets section, like this:
+  # assets:
+  #   - images/a_dot_burr.jpeg
+  #   - images/a_dot_ham.jpeg
+
+  # An image asset can refer to one or more resolution-specific "variants", see
+  # https://flutter.dev/to/resolution-aware-images
+
+  # For details regarding adding assets from package dependencies, see
+  # https://flutter.dev/to/asset-from-package
+
+  # To add custom fonts to your application, add a fonts section here,
+  # in this "flutter" section. Each entry in this list should have a
+  # "family" key with the font family name, and a "fonts" key with a
+  # list giving the asset and other descriptors for the font. For
+  # example:
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+  #   - family: Trajan Pro
+  #     fonts:
+  #       - asset: fonts/TrajanPro.ttf
+  #       - asset: fonts/TrajanPro_Bold.ttf
+  #         weight: 700
+  #
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/to/font-from-package
+
+  assets:
+    - assets/images/default_avatar.png
