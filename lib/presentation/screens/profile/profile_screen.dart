@@ -1,453 +1,543 @@
 import 'package:flutter/material.dart';
-import 'package:eloquence_frontend/app/modern_theme.dart';
-import 'package:eloquence_frontend/presentation/widgets/category_card.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
+import '../../../app/theme.dart';
+import '../../../domain/entities/user.dart';
 
-/// Écran de profil utilisateur
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final User user;
+  final VoidCallback onBackPressed;
+  final VoidCallback onSignOut;
+  final Function(String, String?) onProfileUpdate;
+
+  const ProfileScreen({
+    Key? key,
+    required this.user,
+    required this.onBackPressed,
+    required this.onSignOut,
+    required this.onProfileUpdate,
+  }) : super(key: key);
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // Nom de l'utilisateur
-  final String _userName = "Ousmane";
-  
-  // Surnom de l'utilisateur
-  final String _userNickname = "Babychou";
-  
-  // État des paramètres
+  late TextEditingController _nameController;
+  bool _isEditingName = false;
+  bool _isDarkMode = true; // Par défaut en mode sombre
   bool _notificationsEnabled = true;
-  bool _soundEnabled = true;
-  
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.user.name ?? 'Utilisateur');
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _toggleNameEditing() {
+    setState(() {
+      if (_isEditingName) {
+        // Enregistrer les modifications
+        widget.onProfileUpdate(_nameController.text, null);
+      }
+      _isEditingName = !_isEditingName;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ModernTheme.backgroundDarkStart,
+      backgroundColor: AppTheme.darkBackground,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: ModernTheme.cardDarkStart,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.arrow_back, color: Colors.white),
-          ),
-          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back),
+          onPressed: widget.onBackPressed,
         ),
-        title: Text(
+        title: const Text(
           'Profil',
-          style: GoogleFonts.montserrat(
-            fontSize: 28,
+          style: TextStyle(
+            fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: Colors.white,
           ),
         ),
-        actions: [
-          // Bouton de paramètres
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: ModernTheme.cardDarkStart,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.settings, color: Colors.white),
-            ),
-            onPressed: () {
-              // TODO: Naviguer vers les paramètres avancés
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
+        centerTitle: true,
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+        ),
       ),
       body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Photo de profil
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Avatar
-                  CircleAvatar(
-                    radius: 60,
-                    backgroundColor: ModernTheme.primaryColor.withOpacity(0.2),
-                    backgroundImage: const AssetImage('assets/images/default_avatar.png'),
-                    onBackgroundImageError: (_, __) {},
-                    child: const Icon(
-                      Icons.person,
-                      size: 60,
-                      color: Colors.white,
-                    ),
-                  ),
-                  
-                  // Bouton d'édition
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: ModernTheme.primaryColor,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: ModernTheme.primaryColor.withOpacity(0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.edit,
-                        color: Colors.white,
-                        size: 16,
-                      ),
-                    ),
-                  ),
-                ],
-              )
-              .animate()
-              .fadeIn(duration: 600.ms)
-              .scale(begin: const Offset(0.8, 0.8), end: const Offset(1, 1), duration: 600.ms, curve: Curves.easeOutQuad),
-              
-              const SizedBox(height: 20),
-              
-              // Nom d'utilisateur
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    _userName,
-                    style: GoogleFonts.montserrat(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.edit,
-                    color: ModernTheme.primaryColor,
-                    size: 20,
-                  ),
-                ],
-              )
-              .animate(delay: 200.ms)
-              .fadeIn(duration: 600.ms)
-              .slideY(begin: 0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
-              
-              const SizedBox(height: 8),
-              
-              // Surnom
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    _userNickname,
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: ModernTheme.textSecondaryDark,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.edit,
-                    color: ModernTheme.textSecondaryDark,
-                    size: 16,
-                  ),
-                ],
-              )
-              .animate(delay: 300.ms)
-              .fadeIn(duration: 600.ms)
-              .slideY(begin: 0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
-              
-              const SizedBox(height: 40),
-              
-              // Titre "Paramètres"
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Paramètres',
-                  style: GoogleFonts.montserrat(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              )
-              .animate(delay: 400.ms)
-              .fadeIn(duration: 600.ms)
-              .slideY(begin: 0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
-              
-              const SizedBox(height: 16),
-              
-              // Option Notifications
-              _buildSettingOption(
-                'Notifications',
-                Icons.notifications,
-                ModernTheme.primaryColor,
-                _notificationsEnabled,
-                (value) {
-                  setState(() {
-                    _notificationsEnabled = value;
-                  });
-                },
-              )
-              .animate(delay: 500.ms)
-              .fadeIn(duration: 600.ms)
-              .slideY(begin: 0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
-              
-              const SizedBox(height: 16),
-              
-              // Option Son
-              _buildSettingOption(
-                'Son',
-                Icons.volume_up,
-                ModernTheme.tertiaryColor,
-                _soundEnabled,
-                (value) {
-                  setState(() {
-                    _soundEnabled = value;
-                  });
-                },
-              )
-              .animate(delay: 600.ms)
-              .fadeIn(duration: 600.ms)
-              .slideY(begin: 0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
-              
-              const SizedBox(height: 40),
-              
-              // Titre "Aide & Support"
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Aide & Support',
-                  style: GoogleFonts.montserrat(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              )
-              .animate(delay: 700.ms)
-              .fadeIn(duration: 600.ms)
-              .slideY(begin: 0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
-              
-              const SizedBox(height: 16),
-              
-              // Option Confidentialité
-              _buildNavigationOption(
-                'Confidentialité',
-                Icons.shield,
-                ModernTheme.accentColor,
-                () {
-                  // TODO: Naviguer vers la page de confidentialité
-                },
-              )
-              .animate(delay: 800.ms)
-              .fadeIn(duration: 600.ms)
-              .slideY(begin: 0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
-              
-              const SizedBox(height: 100), // Espace pour la barre de navigation
-            ],
-          ),
-        ),
-      ),
-      
-      // Barre de navigation (similaire à celle de l'écran d'accueil)
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: ModernTheme.surfaceDarkStart,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildProfileHeader(),
+            const SizedBox(height: 24),
+            _buildStatisticsSection(),
+            const SizedBox(height: 24),
+            _buildSettingsSection(),
+            const SizedBox(height: 24),
+            _buildAccountSection(),
           ],
         ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                // Accueil
-                _buildNavItem(Icons.home_outlined, false, () {
-                  Navigator.pop(context);
-                }),
-                
-                // Trophées
-                _buildNavItem(Icons.emoji_events_outlined, false, () {
-                  // TODO: Naviguer vers l'écran des trophées
-                }),
-                
-                // Microphone (bouton central)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: MicrophoneButton(
-                    onTap: () {
-                      // Naviguer vers l'écran des exercices
-                      Navigator.pushNamed(context, '/exercises');
-                    },
-                    size: 64,
-                  ),
-                ),
-                
-                // Statistiques
-                _buildNavItem(Icons.bar_chart_outlined, false, () {
-                  Navigator.pushNamed(context, '/statistics');
-                }),
-                
-                // Profil (sélectionné)
-                _buildNavItem(Icons.person, true, () {
-                  // Déjà sur cet écran
-                }),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }
-  
-  // Méthode pour construire un élément de la barre de navigation
-  Widget _buildNavItem(IconData icon, bool isSelected, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Icon(
-          icon,
-          color: isSelected ? ModernTheme.primaryColor : ModernTheme.textSecondaryDark,
-          size: 24,
-        ),
-      ),
-    );
-  }
-  
-  // Méthode pour construire une option de paramètre avec switch
-  Widget _buildSettingOption(
-    String title,
-    IconData icon,
-    Color color,
-    bool value,
-    ValueChanged<bool> onChanged,
-  ) {
+
+  Widget _buildProfileHeader() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: ModernTheme.cardDarkStart,
-        borderRadius: BorderRadius.circular(16),
+        color: AppTheme.darkSurface,
+        borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
       ),
-      child: Row(
+      child: Column(
         children: [
-          // Icône
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 24,
+          // Photo de profil
+          Stack(
+            alignment: Alignment.bottomRight,
+            children: [
+              CircleAvatar(
+                radius: 50,
+                backgroundColor: AppTheme.primaryColor,
+                backgroundImage: widget.user.avatarUrl != null
+                    ? NetworkImage(widget.user.avatarUrl!)
+                    : const AssetImage('assets/images/default_avatar.png') as ImageProvider,
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor,
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.camera_alt,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  onPressed: () {
+                    // Fonctionnalité pour changer la photo de profil
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Changement de photo de profil non implémenté'),
+                      ),
+                    );
+                  },
+                  constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+                  padding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Nom de l'utilisateur avec option d'édition
+          _isEditingName
+              ? Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _nameController,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                        decoration: const InputDecoration(
+                          border: UnderlineInputBorder(),
+                          focusedBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(color: AppTheme.primaryColor),
+                          ),
+                          contentPadding: EdgeInsets.symmetric(vertical: 8),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.check,
+                        color: AppTheme.primaryColor,
+                      ),
+                      onPressed: _toggleNameEditing,
+                    ),
+                  ],
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      widget.user.name ?? 'Utilisateur',
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.edit,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      onPressed: _toggleNameEditing,
+                    ),
+                  ],
+                ),
+          // Email de l'utilisateur
+          Text(
+            widget.user.email ?? 'email@exemple.com',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.white.withOpacity(0.7),
             ),
           ),
-          
-          const SizedBox(width: 16),
-          
-          // Titre
+          const SizedBox(height: 16),
+          // Membre depuis
           Text(
-            title,
-            style: const TextStyle(
-              fontSize: 16,
+            'Membre depuis récemment',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.white.withOpacity(0.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatisticsSection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.darkSurface,
+        borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Mes statistiques',
+            style: TextStyle(
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
           ),
-          
-          const Spacer(),
-          
-          // Switch
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeColor: ModernTheme.primaryColor,
-            activeTrackColor: ModernTheme.primaryColor.withOpacity(0.5),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _buildStatItem('Sessions', '63'),
+              _buildStatItem('Exercices', '127'),
+              _buildStatItem('Score moyen', '72%'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildStatItem('Temps total', '38h'),
+              _buildStatItem('Meilleur score', '97%'),
+              _buildStatItem('Défis réussis', '8'),
+            ],
           ),
         ],
       ),
     );
   }
-  
-  // Méthode pour construire une option de navigation
-  Widget _buildNavigationOption(
-    String title,
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
+
+  Widget _buildStatItem(String label, String value) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.primaryColor,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white.withOpacity(0.7),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsSection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.darkSurface,
+        borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Paramètres',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildSettingItem(
+            'Mode sombre',
+            const Icon(
+              Icons.dark_mode,
+              color: Colors.white,
+              size: 20,
+            ),
+            Switch(
+              value: _isDarkMode,
+              onChanged: (value) {
+                setState(() {
+                  _isDarkMode = value;
+                });
+                // Afficher une notification que le thème ne peut pas être changé
+                if (!value) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Le thème clair n\'est pas encore disponible'),
+                    ),
+                  );
+                  setState(() {
+                    _isDarkMode = true;
+                  });
+                }
+              },
+              activeColor: AppTheme.primaryColor,
+            ),
+          ),
+          const Divider(color: Colors.white10),
+          _buildSettingItem(
+            'Notifications',
+            const Icon(
+              Icons.notifications,
+              color: Colors.white,
+              size: 20,
+            ),
+            Switch(
+              value: _notificationsEnabled,
+              onChanged: (value) {
+                setState(() {
+                  _notificationsEnabled = value;
+                });
+              },
+              activeColor: AppTheme.primaryColor,
+            ),
+          ),
+          const Divider(color: Colors.white10),
+          _buildSettingItem(
+            'Langue',
+            const Icon(
+              Icons.language,
+              color: Colors.white,
+              size: 20,
+            ),
+            Row(
+              children: [
+                Text(
+                  'Français',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.white38,
+                  size: 14,
+                ),
+              ],
+            ),
+          ),
+          const Divider(color: Colors.white10),
+          _buildSettingItem(
+            'Qualité audio',
+            const Icon(
+              Icons.high_quality,
+              color: Colors.white,
+              size: 20,
+            ),
+            Row(
+              children: [
+                Text(
+                  'Haute',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.white38,
+                  size: 14,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingItem(String title, Icon icon, Widget trailing) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          icon,
+          const SizedBox(width: 16),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              color: Colors.white,
+            ),
+          ),
+          const Spacer(),
+          trailing,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAccountSection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.darkSurface,
+        borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Compte',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildAccountItem(
+            'Changer de mot de passe',
+            const Icon(
+              Icons.lock_outline,
+              color: Colors.white,
+              size: 20,
+            ),
+            () {
+              // Fonctionnalité pour changer le mot de passe
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Changement de mot de passe non implémenté'),
+                ),
+              );
+            },
+          ),
+          const Divider(color: Colors.white10),
+          _buildAccountItem(
+            'Supprimer mes données',
+            const Icon(
+              Icons.delete_outline,
+              color: Colors.white,
+              size: 20,
+            ),
+            () {
+              // Fonctionnalité pour supprimer les données
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Suppression des données non implémentée'),
+                ),
+              );
+            },
+          ),
+          const Divider(color: Colors.white10),
+          _buildAccountItem(
+            'Aide et support',
+            const Icon(
+              Icons.help_outline,
+              color: Colors.white,
+              size: 20,
+            ),
+            () {
+              // Fonctionnalité pour l'aide
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Aide et support non implémentés'),
+                ),
+              );
+            },
+          ),
+          const Divider(color: Colors.white10),
+          _buildAccountItem(
+            'Se déconnecter',
+            const Icon(
+              Icons.logout,
+              color: AppTheme.accentRed,
+              size: 20,
+            ),
+            widget.onSignOut,
+            isDestructive: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAccountItem(String title, Icon icon, VoidCallback onTap, {bool isDestructive = false}) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: ModernTheme.cardDarkStart,
-          borderRadius: BorderRadius.circular(16),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
           children: [
-            // Icône
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 24,
-              ),
-            ),
-            
+            icon,
             const SizedBox(width: 16),
-            
-            // Titre
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: isDestructive ? AppTheme.accentRed : Colors.white,
               ),
             ),
-            
             const Spacer(),
-            
-            // Flèche
             Icon(
-              Icons.arrow_forward_ios_rounded,
-              color: ModernTheme.textSecondaryDark,
-              size: 16,
+              Icons.arrow_forward_ios,
+              color: isDestructive ? AppTheme.accentRed.withOpacity(0.5) : Colors.white38,
+              size: 14,
             ),
           ],
         ),
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    // Format en français : jour mois année
+    const months = [
+      'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 
+      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'
+    ];
+    
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 }

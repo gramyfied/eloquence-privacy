@@ -1,383 +1,368 @@
 import 'package:flutter/material.dart';
-import 'package:eloquence_frontend/app/routes.dart';
-import 'package:eloquence_frontend/app/modern_theme.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:eloquence_frontend/presentation/widgets/microphone_button.dart';
-import 'package:eloquence_frontend/presentation/widgets/stat_card.dart';
+import '../../../app/theme.dart';
+import '../../../domain/entities/user.dart';
+import '../../widgets/microphone_button.dart';
+import '../../widgets/stat_card.dart';
 
-/// Écran d'accueil principal
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class HomeScreen extends StatelessWidget {
+  final User user;
+  final VoidCallback onNewSessionPressed;
+  final VoidCallback onStatsPressed;
+  final VoidCallback onHistoryPressed;
+  final VoidCallback onProfilePressed;
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  // Index de l'onglet sélectionné dans la barre de navigation
-  int _selectedIndex = 0;
-
-  // Nom de l'utilisateur (à récupérer depuis le service d'authentification)
-  final String _userName = "Ousmane";
-
-  // Statistiques de l'utilisateur (à récupérer depuis un service de statistiques)
-  final int _averageScore = 62;
-  final int _sessionsCount = 62;
-  final int _activeChallenge = 2;
-
-  // Méthode pour naviguer vers l'écran correspondant à l'index sélectionné
-  void _onItemTapped(int index) {
-    // Si l'index est 2 (microphone), on lance une nouvelle session
-    if (index == 2) {
-      Navigator.pushNamed(context, AppRoutes.exercises);
-      return;
-    }
-
-    setState(() {
-      _selectedIndex = index;
-    });
-
-    // Navigation vers les différents écrans
-    switch (index) {
-      case 0: // Accueil - déjà sur cet écran
-        break;
-      case 1: // Trophées
-      // TODO: Implémenter l'écran des trophées
-        break;
-      case 3: // Statistiques
-        Navigator.pushNamed(context, AppRoutes.statistics);
-        break;
-      case 4: // Profil
-        Navigator.pushNamed(context, AppRoutes.profile);
-        break;
-    }
-  }
+  const HomeScreen({
+    Key? key,
+    required this.user,
+    required this.onNewSessionPressed,
+    required this.onStatsPressed,
+    required this.onHistoryPressed,
+    required this.onProfilePressed,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ModernTheme.backgroundDarkStart,
+      backgroundColor: AppTheme.darkBackground,
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 20),
-
-                // En-tête avec salutation
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Bonjour 👋',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: ModernTheme.textSecondaryDark,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _userName,
-                          style: GoogleFonts.montserrat(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    // Avatar de l'utilisateur
-                    GestureDetector(
-                      onTap: () =>
-                          Navigator.pushNamed(context, AppRoutes.profile),
-                      child: CircleAvatar(
-                        radius: 24,
-                        backgroundColor:
-                        ModernTheme.primaryColor.withOpacity(0.2),
-                        child: Icon(
-                          Icons.person,
-                          color: ModernTheme.primaryColor,
-                          size: 24,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 32),
-
-                // Carte "Nouvelle session"
-                GestureDetector(
-                  onTap: () =>
-                      Navigator.pushNamed(context, AppRoutes.exercises),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          ModernTheme.primaryColor,
-                          ModernTheme.primaryColor.withOpacity(0.8),
-                        ],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: ModernTheme.primaryColor.withOpacity(0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Icône de microphone
-                        Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const Icon(
-                            Icons.mic,
-                            color: Colors.white,
-                            size: 28,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Texte "Nouvelle session"
-                        Text(
-                          'Nouvelle session',
-                          style: GoogleFonts.montserrat(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-
-                        // Texte "Commencez votre entraînement"
-                        Text(
-                          'Commencez votre entraînement',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.white.withOpacity(0.8),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-                    .animate()
-                    .fadeIn(duration: 600.ms)
-                    .slideY(begin: 0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
-
-                const SizedBox(height: 32),
-
-                // Titre "Statistiques"
-                Text(
-                  'Statistiques',
-                  style: GoogleFonts.montserrat(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Cartes de statistiques
-                Row(
-                  children: [
-                    // Score moyen
-                    Expanded(
-                      child: StatisticCard(
-                        title: 'Score\nmoyen',
-                        value: '$_averageScore%',
-                        icon: Icons.trending_up,
-                        iconColor: ModernTheme.primaryColor,
-                      )
-                          .animate(delay: 200.ms)
-                          .fadeIn(duration: 600.ms)
-                          .slideY(begin: 0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
-                    ),
-
-                    const SizedBox(width: 16),
-
-                    // Nombre de sessions
-                    Expanded(
-                      child: StatisticCard(
-                        title: 'Sessions',
-                        value: '$_sessionsCount',
-                        icon: Icons.mic,
-                        iconColor: ModernTheme.tertiaryColor,
-                      )
-                          .animate(delay: 300.ms)
-                          .fadeIn(duration: 600.ms)
-                          .slideY(begin: 0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
-                    ),
-
-                    const SizedBox(width: 16),
-
-                    // Défis actifs
-                    Expanded(
-                      child: StatisticCard(
-                        title: 'Défis\nactifs',
-                        value: '$_activeChallenge',
-                        icon: Icons.emoji_events,
-                        iconColor: ModernTheme.accentColor,
-                      )
-                          .animate(delay: 400.ms)
-                          .fadeIn(duration: 600.ms)
-                          .slideY(begin: 0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 32),
-
-                // Titre "Défis en cours" avec bouton "Voir tout"
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Défis en cours',
-                      style: GoogleFonts.montserrat(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        // TODO: Naviguer vers l'écran des défis
-                      },
-                      child: Row(
-                        children: [
-                          Text(
-                            'Voir tout',
-                            style: TextStyle(
-                              color: ModernTheme.primaryColor,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            Icons.arrow_forward,
-                            size: 16,
-                            color: ModernTheme.primaryColor,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                // Placeholder pour les défis (à implémenter)
-                Container(
-                  width: double.infinity,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    color: ModernTheme.cardDarkStart,
-                  ),
-                  child: Center(
-                    child: Text(
-                      'Aucun défi en cours',
-                      style: TextStyle(
-                        color: ModernTheme.textSecondaryDark,
-                      ),
-                    ),
-                  ),
-                )
-                    .animate(delay: 500.ms)
-                    .fadeIn(duration: 600.ms)
-                    .slideY(begin: 0.2, end: 0, duration: 600.ms, curve: Curves.easeOutQuad),
-
-                const SizedBox(height: 100), // Espace pour la barre de navigation
-              ],
-            ),
-          ),
-        ),
-      ),
-
-      // Barre de navigation personnalisée
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: ModernTheme.surfaceDarkStart,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                // Accueil
-                _buildNavItem(0, Icons.home_outlined, Icons.home),
-
-                // Trophées
-                _buildNavItem(1, Icons.emoji_events_outlined, Icons.emoji_events),
-
-                // Microphone (bouton central)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: CustomMicrophoneButton(
-                    onTap: () => _onItemTapped(2),
-                    size: 64,
-                  ),
-                ),
-
-                // Statistiques
-                _buildNavItem(3, Icons.bar_chart_outlined, Icons.bar_chart),
-
-                // Profil
-                _buildNavItem(4, Icons.person_outline, Icons.person),
-              ],
-            ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(),
+              const SizedBox(height: 24),
+              _buildNewSessionCard(),
+              const SizedBox(height: 24),
+              _buildStats(),
+              const SizedBox(height: 24),
+              _buildOngoingChallenges(),
+              const Spacer(),
+              _buildBottomNavBar(),
+            ],
           ),
         ),
       ),
     );
   }
 
-  // Méthode pour construire un élément de la barre de navigation
-  Widget _buildNavItem(int index, IconData outlinedIcon, IconData filledIcon) {
-    final bool isSelected = _selectedIndex == index;
+  Widget _buildHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Bonjour 👋',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.white.withOpacity(0.7),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              user.name ?? 'Utilisateur',
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+        CircleAvatar(
+          radius: 24,
+          backgroundColor: AppTheme.primaryColor,
+          backgroundImage: user.avatarUrl != null
+              ? NetworkImage(user.avatarUrl!)
+              : const AssetImage('assets/images/default_avatar.png') as ImageProvider,
+        ),
+      ],
+    );
+  }
 
-    return InkWell(
-      onTap: () => _onItemTapped(index),
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Icon(
-          isSelected ? filledIcon : outlinedIcon,
-          color: isSelected
-              ? ModernTheme.primaryColor
-              : ModernTheme.textSecondaryDark,
-          size: 24,
+  Widget _buildNewSessionCard() {
+    return GestureDetector(
+      onTap: onNewSessionPressed,
+      child: Container(
+        width: double.infinity,
+        height: 150,
+        decoration: BoxDecoration(
+          gradient: AppTheme.primaryGradient,
+          borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
+        ),
+        child: Stack(
+          children: [
+            // Circles for decoration
+            Positioned(
+              top: -20,
+              right: -20,
+              child: Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.1),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: -30,
+              left: -30,
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.1),
+                ),
+              ),
+            ),
+            
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Text(
+                        'Nouvelle session',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Commencez votre entraînement',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.2),
+                    ),
+                    child: const Icon(
+                      Icons.mic,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildStats() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Statistiques',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            GestureDetector(
+              onTap: onStatsPressed,
+              child: const Text(
+                'Voir tout',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: StatCard(
+                title: 'Score moyen',
+                value: '48%',
+                icon: Icons.insert_chart_outlined,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6A44F2), Color(0xFF8A74FF)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: StatCard(
+                title: 'Sessions',
+                value: '50',
+                icon: Icons.calendar_today,
+                gradient: LinearGradient(
+                  colors: [Colors.blue[700]!, Colors.blue[400]!],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: StatCard(
+                title: 'Défis',
+                value: '2',
+                icon: Icons.emoji_events_outlined,
+                gradient: LinearGradient(
+                  colors: [Colors.amber[700]!, Colors.amber[400]!],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOngoingChallenges() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Défis en cours',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppTheme.darkSurface,
+            borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.accentYellow,
+                ),
+                child: const Icon(
+                  Icons.architecture,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Maîtrise de l\'articulation',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Encore 3 exercices à compléter',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withOpacity(0.7),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(
+                      value: 0.6,
+                      backgroundColor: Colors.white.withOpacity(0.1),
+                      color: AppTheme.accentYellow,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Text(
+                '60%',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBottomNavBar() {
+    return Container(
+      height: 64,
+      decoration: BoxDecoration(
+        color: AppTheme.darkSurface,
+        borderRadius: BorderRadius.circular(32),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildNavItem(Icons.home, true),
+          InkWell(
+            onTap: onStatsPressed,
+            child: _buildNavItem(Icons.bar_chart, false),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4.0),
+            child: MicrophoneButton(
+              size: 48,
+              onPressed: onNewSessionPressed,
+            ),
+          ),
+          InkWell(
+            onTap: onHistoryPressed,
+            child: _buildNavItem(Icons.history, false),
+          ),
+          InkWell(
+            onTap: onProfilePressed,
+            child: _buildNavItem(Icons.settings, false),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem(IconData icon, bool isActive) {
+    return Icon(
+      icon,
+      color: isActive ? AppTheme.primaryColor : Colors.grey,
+      size: 28,
     );
   }
 }
