@@ -3,14 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../../app/theme.dart';
 import '../../widgets/stat_card.dart';
+import '../../widgets/glassmorphic_container.dart';
 
 class StatisticsScreen extends StatefulWidget {
   final VoidCallback onBackPressed;
 
   const StatisticsScreen({
-    Key? key,
+    super.key,
     required this.onBackPressed,
-  }) : super(key: key);
+  });
 
   @override
   State<StatisticsScreen> createState() => _StatisticsScreenState();
@@ -96,12 +97,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
   Widget _buildTabBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Container(
+      child: GlassmorphicContainer(
+        width: double.infinity,
         height: 50,
-        decoration: BoxDecoration(
-          color: AppTheme.darkSurface,
-          borderRadius: BorderRadius.circular(25),
-        ),
+        borderRadius: 25,
+        blur: 10,
+        opacity: 0.1,
+        borderColor: Colors.white.withOpacity(0.2),
         child: TabBar(
           controller: _tabController,
           indicator: BoxDecoration(
@@ -125,7 +127,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
   }
 
   Widget _buildSummaryStats() {
-    return Column(
+    return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -138,13 +140,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                 gradient: AppTheme.primaryGradient,
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Expanded(
               child: StatCard(
                 title: 'Meilleur score',
                 value: '93%',
                 icon: Icons.emoji_events,
-                gradient: const LinearGradient(
+                gradient: LinearGradient(
                   colors: [Color(0xFFFFB347), Color(0xFFFFCC33)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -153,7 +155,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: 12),
         Row(
           children: [
             Expanded(
@@ -161,20 +163,20 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                 title: 'Sessions',
                 value: '63',
                 icon: Icons.calendar_today,
-                gradient: const LinearGradient(
+                gradient: LinearGradient(
                   colors: [Color(0xFF4ECDC4), Color(0xFF36B3A8)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Expanded(
               child: StatCard(
                 title: 'Temps total',
                 value: '2330 min',
                 icon: Icons.timer,
-                gradient: const LinearGradient(
+                gradient: LinearGradient(
                   colors: [Color(0xFF6C63FF), Color(0xFF5A52E0)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -188,12 +190,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
   }
 
   Widget _buildScoreChart() {
-    return Container(
+    return GlassmorphicContainer(
+      width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkSurface,
-        borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
-      ),
+      borderRadius: AppTheme.borderRadius3,
+      blur: 10,
+      opacity: 0.1,
+      borderColor: Colors.white.withOpacity(0.2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -304,12 +307,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
   }
 
   Widget _buildProgressionSection() {
-    return Container(
+    return GlassmorphicContainer(
+      width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkSurface,
-        borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
-      ),
+      borderRadius: AppTheme.borderRadius3,
+      blur: 10,
+      opacity: 0.1,
+      borderColor: Colors.white.withOpacity(0.2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../app/theme.dart';
 import '../../../domain/entities/user.dart';
+import '../../widgets/glassmorphic_container.dart';
 
 class ProfileScreen extends StatefulWidget {
   final User user;
@@ -10,12 +11,12 @@ class ProfileScreen extends StatefulWidget {
   final Function(String, String?) onProfileUpdate;
 
   const ProfileScreen({
-    Key? key,
+    super.key,
     required this.user,
     required this.onBackPressed,
     required this.onSignOut,
     required this.onProfileUpdate,
-  }) : super(key: key);
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -92,12 +93,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildProfileHeader() {
-    return Container(
+    return GlassmorphicContainer(
+      width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkSurface,
-        borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
-      ),
+      borderRadius: AppTheme.borderRadius3,
+      blur: 10,
+      opacity: 0.1,
+      borderColor: Colors.white.withOpacity(0.2),
       child: Column(
         children: [
           // Photo de profil
@@ -112,7 +114,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     : const AssetImage('assets/images/default_avatar.png') as ImageProvider,
               ),
               Container(
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: AppTheme.primaryColor,
                   shape: BoxShape.circle,
                 ),
@@ -211,12 +213,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildStatisticsSection() {
-    return Container(
+    return GlassmorphicContainer(
+      width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkSurface,
-        borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
-      ),
+      borderRadius: AppTheme.borderRadius3,
+      blur: 10,
+      opacity: 0.1,
+      borderColor: Colors.white.withOpacity(0.2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -276,12 +279,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSettingsSection() {
-    return Container(
+    return GlassmorphicContainer(
+      width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkSurface,
-        borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
-      ),
+      borderRadius: AppTheme.borderRadius3,
+      blur: 10,
+      opacity: 0.1,
+      borderColor: Colors.white.withOpacity(0.2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -419,12 +423,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildAccountSection() {
-    return Container(
+    return GlassmorphicContainer(
+      width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkSurface,
-        borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
-      ),
+      borderRadius: AppTheme.borderRadius3,
+      blur: 10,
+      opacity: 0.1,
+      borderColor: Colors.white.withOpacity(0.2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

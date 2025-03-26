@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../app/theme.dart';
-import '../../../domain/entities/exercise.dart';
+import '../../widgets/glassmorphic_container.dart';
 
 class SessionHistoryScreen extends StatefulWidget {
   final VoidCallback onBackPressed;
 
   const SessionHistoryScreen({
-    Key? key,
+    super.key,
     required this.onBackPressed,
-  }) : super(key: key);
+  });
 
   @override
   State<SessionHistoryScreen> createState() => _SessionHistoryScreenState();
@@ -141,11 +141,13 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppTheme.darkSurface,
-          borderRadius: BorderRadius.circular(AppTheme.borderRadius2),
-        ),
+      child: GlassmorphicContainer(
+        width: double.infinity,
+        height: 50,
+        borderRadius: AppTheme.borderRadius2,
+        blur: 10,
+        opacity: 0.1,
+        borderColor: Colors.white.withOpacity(0.2),
         child: TextField(
           controller: _searchController,
           style: const TextStyle(color: Colors.white),
@@ -219,103 +221,102 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
       scoreColor = AppTheme.accentRed;
     }
 
-    return Container(
+    return GlassmorphicContainer(
+      width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.darkSurface,
-        borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  _formatDate(item.date),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withOpacity(0.6),
-                  ),
+      padding: const EdgeInsets.all(16),
+      borderRadius: AppTheme.borderRadius3,
+      blur: 10,
+      opacity: 0.1,
+      borderColor: Colors.white.withOpacity(0.2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                _formatDate(item.date),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(0.6),
                 ),
-                const Spacer(),
-                Text(
-                  _formatTime(item.date),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withOpacity(0.6),
-                  ),
+              ),
+              const Spacer(),
+              Text(
+                _formatTime(item.date),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(0.6),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: item.categoryColor,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: item.categoryColor,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.category,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.category,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Durée: ${_formatDuration(item.duration)}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white.withOpacity(0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: scoreColor.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      '${item.score}%',
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Durée: ${_formatDuration(item.duration)}',
                       style: TextStyle(
                         fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: scoreColor,
+                        color: Colors.white.withOpacity(0.7),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: scoreColor.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    '${item.score}%',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: scoreColor,
                     ),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(
-                value: item.score / 100,
-                minHeight: 4,
-                backgroundColor: Colors.white.withOpacity(0.1),
-                valueColor: AlwaysStoppedAnimation<Color>(scoreColor),
               ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: item.score / 100,
+              minHeight: 4,
+              backgroundColor: Colors.white.withOpacity(0.1),
+              valueColor: AlwaysStoppedAnimation<Color>(scoreColor),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
