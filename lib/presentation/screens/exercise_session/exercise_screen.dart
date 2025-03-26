@@ -9,6 +9,8 @@ import '../../../domain/repositories/speech_recognition_repository.dart';
 import '../../../infrastructure/repositories/flutter_sound_audio_repository.dart';
 import '../../widgets/microphone_button.dart';
 import '../exercises/exercise_categories_screen.dart';
+import 'breathing_exercise_screen.dart';
+import 'articulation_exercise_screen.dart';
 
 class ExerciseScreen extends StatefulWidget {
   final Exercise exercise;
@@ -49,67 +51,96 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.darkBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: widget.onBackPressed,
-        ),
-        title: Text(
-          'Exercice - ${widget.exercise.category.name.toLowerCase()}',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        centerTitle: true,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppTheme.accentRed,
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.close, size: 20),
-                onPressed: widget.onBackPressed,
-                padding: EdgeInsets.zero,
+    // Utiliser l'écran spécifique en fonction de l'ID de l'exercice
+    switch (widget.exercise.id) {
+      case 'respiration-diaphragmatique':
+        return BreathingExerciseScreen(
+          exercise: widget.exercise,
+          onExerciseCompleted: (results) {
+            // Simuler un temps de traitement avant de marquer l'exercice comme complété
+            Future.delayed(const Duration(milliseconds: 1500), () {
+              widget.onExerciseCompleted();
+            });
+          },
+          onExitPressed: widget.onBackPressed,
+        );
+      
+      case 'articulation-base':
+        return ArticulationExerciseScreen(
+          exercise: widget.exercise,
+          onExerciseCompleted: (results) {
+            // Simuler un temps de traitement avant de marquer l'exercice comme complété
+            Future.delayed(const Duration(milliseconds: 1500), () {
+              widget.onExerciseCompleted();
+            });
+          },
+          onExitPressed: widget.onBackPressed,
+        );
+      
+      // Pour tous les autres exercices, utiliser l'écran générique
+      default:
+        return Scaffold(
+          backgroundColor: AppTheme.darkBackground,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: widget.onBackPressed,
+            ),
+            title: Text(
+              'Exercice - ${widget.exercise.category.name.toLowerCase()}',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
               ),
             ),
-          ),
-        ],
-        systemOverlayStyle: const SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.light,
-        ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildExerciseHeader(),
-                  const SizedBox(height: 32),
-                  _buildObjectiveSection(),
-                  const SizedBox(height: 32),
-                  _buildTextToReadSection(),
-                ],
+            centerTitle: true,
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 16.0),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppTheme.accentRed,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: widget.onBackPressed,
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
               ),
+            ],
+            systemOverlayStyle: const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.light,
             ),
           ),
-          _buildBottomSection(),
-        ],
-      ),
-    );
+          body: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildExerciseHeader(),
+                      const SizedBox(height: 32),
+                      _buildObjectiveSection(),
+                      const SizedBox(height: 32),
+                      _buildTextToReadSection(),
+                    ],
+                  ),
+                ),
+              ),
+              _buildBottomSection(),
+            ],
+          ),
+        );
+    }
   }
 
   Widget _buildExerciseHeader() {
