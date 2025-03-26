@@ -10,14 +10,14 @@ class MicrophoneButton extends StatelessWidget {
   final Color baseColor;
 
   const MicrophoneButton({
-    Key? key,
+    super.key,
     this.onPressed,
     this.onLongPress,
     this.onLongPressEnd,
     this.isRecording = false,
     this.size = 56.0,
     this.baseColor = AppTheme.primaryColor,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +63,7 @@ class PulsatingMicrophoneButton extends StatefulWidget {
   final Stream<double>? audioLevelStream;
 
   const PulsatingMicrophoneButton({
-    Key? key,
+    super.key,
     this.onPressed,
     this.onLongPress,
     this.onLongPressEnd,
@@ -71,7 +71,7 @@ class PulsatingMicrophoneButton extends StatefulWidget {
     this.size = 56.0,
     this.baseColor = AppTheme.primaryColor,
     this.audioLevelStream,
-  }) : super(key: key);
+  });
 
   @override
   State<PulsatingMicrophoneButton> createState() => _PulsatingMicrophoneButtonState();

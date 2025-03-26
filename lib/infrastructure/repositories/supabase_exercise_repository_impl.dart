@@ -34,18 +34,31 @@ class SupabaseExerciseRepositoryImpl implements ExerciseRepository {
 
   ExerciseCategoryType _mapCollectionTypeToCategory(String type) {
     switch (type.toLowerCase()) {
+      case 'fondamentaux':
+        return ExerciseCategoryType.fondamentaux;
+      case 'impact_presence':
+      case 'impact et présence':
+        return ExerciseCategoryType.impactPresence;
+      case 'clarte_expressivite':
+      case 'clarté et expressivité':
+        return ExerciseCategoryType.clarteExpressivite;
+      case 'application_professionnelle':
+      case 'application professionnelle':
+        return ExerciseCategoryType.applicationProfessionnelle;
+      case 'maitrise_avancee':
+      case 'maîtrise avancée':
+        return ExerciseCategoryType.maitriseAvancee;
+      // Anciennes catégories mappées vers les nouvelles
       case 'respiration':
-        return ExerciseCategoryType.respiration;
+        return ExerciseCategoryType.fondamentaux;
       case 'articulation':
-        return ExerciseCategoryType.articulation;
+        return ExerciseCategoryType.clarteExpressivite;
       case 'voix':
-        return ExerciseCategoryType.voix;
+        return ExerciseCategoryType.impactPresence;
       case 'scenarios':
-        return ExerciseCategoryType.scenarios;
-      case 'difficulte':
-        return ExerciseCategoryType.difficulte;
+        return ExerciseCategoryType.applicationProfessionnelle;
       default:
-        return ExerciseCategoryType.articulation;
+        return ExerciseCategoryType.fondamentaux;
     }
   }
 
@@ -108,10 +121,6 @@ class SupabaseExerciseRepositoryImpl implements ExerciseRepository {
           .select('*, collections(*)')
           .eq('id', exerciseId)
           .single();
-
-      if (exerciseData == null) {
-        throw Exception('Exercice non trouvé');
-      }
 
       final categoryData = exerciseData['collections'];
       

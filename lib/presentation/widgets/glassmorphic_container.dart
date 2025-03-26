@@ -20,7 +20,7 @@ class GlassmorphicContainer extends StatelessWidget {
   final AlignmentGeometry? gradientEnd;
   
   const GlassmorphicContainer({
-    Key? key,
+    super.key,
     required this.child,
     required this.width,
     this.height,
@@ -37,7 +37,7 @@ class GlassmorphicContainer extends StatelessWidget {
     this.gradient,
     this.gradientBegin = Alignment.topLeft,
     this.gradientEnd = Alignment.bottomRight,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

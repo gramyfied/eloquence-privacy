@@ -131,7 +131,7 @@ class FlutterSoundAudioRepository implements AudioRepository {
   }
   
   // Variable pour stocker la dernière valeur de décibels
-  double _lastDecibels = -160.0;
+  final double _lastDecibels = -160.0;
   
   @override
   Future<double> getAudioAmplitude() async {

@@ -6,7 +6,6 @@ import '../../domain/entities/exercise_session.dart';
 import '../../domain/entities/user.dart';
 import '../../domain/repositories/exercise_repository.dart';
 import '../../domain/repositories/session_repository.dart';
-import '../../services/supabase/supabase_service.dart';
 
 class SupabaseSessionRepositoryImpl implements SessionRepository {
   final supabase.SupabaseClient _supabaseClient;
@@ -37,10 +36,6 @@ class SupabaseSessionRepositoryImpl implements SessionRepository {
           .select('*, exercises(*)')
           .eq('id', sessionId)
           .single();
-
-      if (sessionData == null) {
-        throw Exception('Session non trouvée');
-      }
 
       final userId = sessionData['user_id'];
       final userData = await _supabaseClient
@@ -397,20 +392,32 @@ class SupabaseSessionRepositoryImpl implements SessionRepository {
 
   ExerciseCategoryType _mapCategoryTypeFromString(String category) {
     switch (category.toLowerCase()) {
+      case 'fondamentaux':
+        return ExerciseCategoryType.fondamentaux;
+      case 'impact et présence':
+      case 'impact_presence':
+        return ExerciseCategoryType.impactPresence;
+      case 'clarté et expressivité':
+      case 'clarte_expressivite':
+        return ExerciseCategoryType.clarteExpressivite;
+      case 'application professionnelle':
+      case 'application_professionnelle':
+        return ExerciseCategoryType.applicationProfessionnelle;
+      case 'maîtrise avancée':
+      case 'maitrise_avancee':
+        return ExerciseCategoryType.maitriseAvancee;
+      // Anciennes catégories mappées vers les nouvelles
       case 'respiration':
-        return ExerciseCategoryType.respiration;
+        return ExerciseCategoryType.fondamentaux;
       case 'articulation':
-        return ExerciseCategoryType.articulation;
+        return ExerciseCategoryType.clarteExpressivite;
       case 'voix':
-        return ExerciseCategoryType.voix;
+        return ExerciseCategoryType.impactPresence;
       case 'scenarios':
       case 'scénarios':
-        return ExerciseCategoryType.scenarios;
-      case 'difficulte':
-      case 'difficulté':
-        return ExerciseCategoryType.difficulte;
+        return ExerciseCategoryType.applicationProfessionnelle;
       default:
-        return ExerciseCategoryType.articulation;
+        return ExerciseCategoryType.fondamentaux;
     }
   }
 

@@ -9,7 +9,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.7.0 <4.0.0'
 
 # Dépendances du projet
 dependencies:
@@ -17,56 +17,57 @@ dependencies:
     sdk: flutter
 
   # Interface utilisateur
-  cupertino_icons: ^1.0.6
-  flutter_svg: ^2.0.9
-  google_fonts: ^6.1.0
-  fl_chart: ^0.65.0
-  lottie: ^2.7.0
-  shimmer: ^3.0.0
+  cupertino_icons: "1.0.8"
+  flutter_svg: ^2.0.17
+  google_fonts: ^6.2.1
+  fl_chart: ^0.70.2
+  lottie: ^3.3.1
+  shimmer: "3.0.0"
   
   # Gestion d'état
-  flutter_bloc: ^8.1.3
-  provider: ^6.1.1
+  flutter_bloc: ^9.1.0
+  provider: ^6.1.2
   
   # Injection de dépendances
-  get_it: ^7.6.4
+  get_it: ^8.0.3
   
   # Audio
-  flutter_sound: ^9.2.13
-  permission_handler: ^11.0.1
-  path_provider: ^2.1.1
-  path: ^1.8.3
+  flutter_sound: "9.27.0"
+  permission_handler: "11.0.0"
+  path_provider: "^2.1.5"
+  path: "1.9.1"
   
   # Services en ligne
-  supabase_flutter: ^1.10.25
-  http: ^1.1.0
-  dio: ^5.3.3
+  supabase_flutter: ^2.8.4
+  http: ^1.3.0
+  dio: ^5.8.0+1
   
   # Navigation
-  go_router: ^12.1.1
+  go_router: ^14.8.1
   
   # Stockage local
-  shared_preferences: ^2.2.2
-  sqflite: ^2.3.0
+  shared_preferences: "2.2.0"
+  sqflite: "2.4.2"
   
   # Utils
-  intl: ^0.18.1
-  logger: ^2.0.2
-  equatable: ^2.0.5
-  uuid: ^4.1.0
+  intl: ^0.20.2
+  logger: ^2.5.0
+  equatable: ^2.0.7
+  uuid: "4.5.1"
+  image_picker: ^1.0.7
   
   # Configuration
-  yaml: ^3.1.2
-  json_annotation: ^4.8.1
+  yaml: "3.1.3"
+  json_annotation: ^4.9.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^2.0.0
-  build_runner: ^2.4.6
-  json_serializable: ^6.7.1
-  flutter_launcher_icons: ^0.13.1
-  mockito: ^5.4.2
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.15
+  json_serializable: ^6.9.4
+  flutter_launcher_icons: ^0.14.3
+  mockito: ^5.4.5
 
 # Configurations du launcher icon
 flutter_launcher_icons:

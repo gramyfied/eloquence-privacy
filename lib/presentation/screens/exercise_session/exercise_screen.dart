@@ -18,13 +18,13 @@ class ExerciseScreen extends StatefulWidget {
   final Stream<double>? audioLevelStream;
 
   const ExerciseScreen({
-    Key? key,
+    super.key,
     required this.exercise,
     required this.onBackPressed,
     required this.onExerciseCompleted,
     this.onRecordingStateChanged,
     this.audioLevelStream,
-  }) : super(key: key);
+  });
 
   @override
   State<ExerciseScreen> createState() => _ExerciseScreenState();
@@ -72,7 +72,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
             child: Container(
               width: 40,
               height: 40,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 shape: BoxShape.circle,
                 color: AppTheme.accentRed,
               ),
@@ -349,7 +349,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 // Helper method to create a sample exercise for preview
 Exercise getSampleExercise() {
   final category = getSampleCategories().firstWhere(
-    (c) => c.type == ExerciseCategoryType.articulation,
+    (c) => c.type == ExerciseCategoryType.fondamentaux,
   );
 
   return Exercise(

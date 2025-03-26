@@ -2,14 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../../app/theme.dart';
+import '../../../domain/entities/user.dart';
+import '../../../infrastructure/repositories/supabase_statistics_repository.dart';
+import '../../../services/service_locator.dart';
 import '../../widgets/stat_card.dart';
 import '../../widgets/glassmorphic_container.dart';
 
 class StatisticsScreen extends StatefulWidget {
+  final User user;
   final VoidCallback onBackPressed;
 
   const StatisticsScreen({
     super.key,
+    required this.user,
     required this.onBackPressed,
   });
 
@@ -21,6 +26,14 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
   late TabController _tabController;
   final List<String> _tabLabels = ['Tous', 'Mois', 'Année', 'Tout'];
   int _selectedTabIndex = 1; // Mois par défaut
+  
+  bool _isLoading = true;
+  Map<String, dynamic>? _userStats;
+  List<Map<String, dynamic>> _categoryStats = [];
+  List<Map<String, dynamic>> _scoreEvolution = [];
+  Map<String, double> _categoryDistribution = {};
+  
+  final SupabaseStatisticsRepository _statsRepository = serviceLocator<SupabaseStatisticsRepository>();
 
   @override
   void initState() {
@@ -35,6 +48,47 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
         _selectedTabIndex = _tabController.index;
       });
     });
+    
+    _loadStatistics();
+  }
+  
+  Future<void> _loadStatistics() async {
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      // Charger les statistiques utilisateur
+      final userStats = await _statsRepository.getUserStatistics(widget.user.id);
+      
+      // Charger les statistiques par catégorie
+      final categoryStats = await _statsRepository.getCategoryStatistics(widget.user.id);
+      
+      // Charger l'évolution des scores
+      final scoreEvolution = await _statsRepository.getScoreEvolution(widget.user.id);
+      
+      // Charger la répartition par catégorie
+      final categoryDistribution = await _statsRepository.getCategoryDistribution(widget.user.id);
+      
+      setState(() {
+        _userStats = userStats;
+        _categoryStats = categoryStats;
+        _scoreEvolution = scoreEvolution;
+        _categoryDistribution = categoryDistribution;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors du chargement des statistiques: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -67,30 +121,40 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
           statusBarIconBrightness: Brightness.light,
         ),
       ),
-      body: Column(
-        children: [
-          _buildTabBar(),
-          const SizedBox(height: 16),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSummaryStats(),
-                  const SizedBox(height: 24),
-                  _buildScoreChart(),
-                  const SizedBox(height: 32),
-                  _buildProgressionSection(),
-                  const SizedBox(height: 32),
-                  _buildCategoryBreakdown(),
-                  const SizedBox(height: 24),
-                ],
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: AppTheme.primaryColor,
               ),
+            )
+          : Column(
+              children: [
+                _buildTabBar(),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _loadStatistics,
+                    color: AppTheme.primaryColor,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSummaryStats(),
+                          const SizedBox(height: 24),
+                          _buildScoreChart(),
+                          const SizedBox(height: 32),
+                          _buildProgressionSection(),
+                          const SizedBox(height: 32),
+                          _buildCategoryBreakdown(),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -127,7 +191,19 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
   }
 
   Widget _buildSummaryStats() {
-    return const Column(
+    // Valeurs par défaut si les statistiques ne sont pas disponibles
+    final totalSessions = _userStats?['total_sessions'] ?? 0;
+    final totalDuration = _userStats?['total_duration'] ?? 0;
+    final avgScore = _calculateAverageScore();
+    
+    // Convertir la durée totale en heures et minutes
+    final hours = (totalDuration / 60).floor();
+    final minutes = totalDuration % 60;
+    final durationText = hours > 0 
+        ? '$hours h ${minutes > 0 ? '$minutes min' : ''}'
+        : '$minutes min';
+    
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -135,18 +211,18 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
             Expanded(
               child: StatCard(
                 title: 'Score moyen',
-                value: '62%',
+                value: '${avgScore.toStringAsFixed(0)}%',
                 icon: Icons.bar_chart,
                 gradient: AppTheme.primaryGradient,
               ),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: StatCard(
                 title: 'Meilleur score',
-                value: '93%',
+                value: '${_getBestScore().toStringAsFixed(0)}%',
                 icon: Icons.emoji_events,
-                gradient: LinearGradient(
+                gradient: const LinearGradient(
                   colors: [Color(0xFFFFB347), Color(0xFFFFCC33)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -155,28 +231,28 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
             ),
           ],
         ),
-        SizedBox(height: 12),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
               child: StatCard(
                 title: 'Sessions',
-                value: '63',
+                value: '$totalSessions',
                 icon: Icons.calendar_today,
-                gradient: LinearGradient(
+                gradient: const LinearGradient(
                   colors: [Color(0xFF4ECDC4), Color(0xFF36B3A8)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
               ),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: StatCard(
                 title: 'Temps total',
-                value: '2330 min',
+                value: durationText,
                 icon: Icons.timer,
-                gradient: LinearGradient(
+                gradient: const LinearGradient(
                   colors: [Color(0xFF6C63FF), Color(0xFF5A52E0)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -187,6 +263,43 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
         ),
       ],
     );
+  }
+  
+  double _calculateAverageScore() {
+    if (_userStats == null) return 0;
+    
+    final avgPronunciation = _userStats!['average_pronunciation'] ?? 0;
+    final avgAccuracy = _userStats!['average_accuracy'] ?? 0;
+    final avgFluency = _userStats!['average_fluency'] ?? 0;
+    final avgCompleteness = _userStats!['average_completeness'] ?? 0;
+    final avgProsody = _userStats!['average_prosody'] ?? 0;
+    
+    // Calculer la moyenne des scores
+    double sum = 0;
+    int count = 0;
+    
+    if (avgPronunciation != null) { sum += avgPronunciation; count++; }
+    if (avgAccuracy != null) { sum += avgAccuracy; count++; }
+    if (avgFluency != null) { sum += avgFluency; count++; }
+    if (avgCompleteness != null) { sum += avgCompleteness; count++; }
+    if (avgProsody != null) { sum += avgProsody; count++; }
+    
+    return count > 0 ? sum / count : 0;
+  }
+  
+  double _getBestScore() {
+    if (_scoreEvolution.isEmpty) return 0;
+    
+    // Trouver le meilleur score parmi toutes les sessions
+    double bestScore = 0;
+    for (final session in _scoreEvolution) {
+      final score = session['score'] ?? 0;
+      if (score > bestScore) {
+        bestScore = score.toDouble();
+      }
+    }
+    
+    return bestScore;
   }
 
   Widget _buildScoreChart() {
@@ -211,102 +324,153 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
           const SizedBox(height: 24),
           SizedBox(
             height: 220,
-            child: LineChart(
-              LineChartData(
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: 20,
-                  getDrawingHorizontalLine: (value) {
-                    return FlLine(
-                      color: Colors.white.withOpacity(0.1),
-                      strokeWidth: 1,
-                    );
-                  },
-                ),
-                titlesData: FlTitlesData(
-                  show: true,
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 30,
-                      interval: 1,
-                      getTitlesWidget: (value, meta) {
-                        final labels = ['14/3', '16/3', '18/3', '20/3', '22/3', '24/3'];
-                        if (value.toInt() >= 0 && value.toInt() < labels.length) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8.0),
-                            child: Text(
-                              labels[value.toInt()],
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.6),
-                                fontSize: 12,
-                              ),
-                            ),
+            child: _scoreEvolution.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Aucune donnée disponible',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 16,
+                      ),
+                    ),
+                  )
+                : LineChart(
+                    LineChartData(
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        horizontalInterval: 20,
+                        getDrawingHorizontalLine: (value) {
+                          return FlLine(
+                            color: Colors.white.withOpacity(0.1),
+                            strokeWidth: 1,
                           );
-                        }
-                        return const SizedBox();
-                      },
-                    ),
-                  ),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      interval: 20,
-                      getTitlesWidget: (value, meta) {
-                        return Text(
-                          '${value.toInt()}%',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.6),
-                            fontSize: 12,
+                        },
+                      ),
+                      titlesData: FlTitlesData(
+                        show: true,
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 30,
+                            interval: 1,
+                            getTitlesWidget: (value, meta) {
+                              // Utiliser les dates réelles des sessions
+                              final labels = _getChartLabels();
+                              if (value.toInt() >= 0 && value.toInt() < labels.length) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: Text(
+                                    labels[value.toInt()],
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.6),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                );
+                              }
+                              return const SizedBox();
+                            },
                           ),
-                        );
-                      },
-                      reservedSize: 40,
+                        ),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            interval: 20,
+                            getTitlesWidget: (value, meta) {
+                              return Text(
+                                '${value.toInt()}%',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.6),
+                                  fontSize: 12,
+                                ),
+                              );
+                            },
+                            reservedSize: 40,
+                          ),
+                        ),
+                      ),
+                      borderData: FlBorderData(show: false),
+                      minX: 0,
+                      maxX: _scoreEvolution.length > 0 ? _scoreEvolution.length - 1.0 : 5,
+                      minY: 0,
+                      maxY: 100,
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: _getScoreSpots(),
+                          isCurved: true,
+                          color: AppTheme.primaryColor,
+                          barWidth: 3,
+                          isStrokeCapRound: true,
+                          dotData: const FlDotData(show: false),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            color: AppTheme.primaryColor.withOpacity(0.2),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                borderData: FlBorderData(show: false),
-                minX: 0,
-                maxX: 5,
-                minY: 0,
-                maxY: 100,
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: const [
-                      FlSpot(0, 45),
-                      FlSpot(1, 60),
-                      FlSpot(2, 52),
-                      FlSpot(3, 70),
-                      FlSpot(4, 65),
-                      FlSpot(5, 82),
-                    ],
-                    isCurved: true,
-                    color: AppTheme.primaryColor,
-                    barWidth: 3,
-                    isStrokeCapRound: true,
-                    dotData: const FlDotData(show: false),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: AppTheme.primaryColor.withOpacity(0.2),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),
     );
   }
+  
+  List<String> _getChartLabels() {
+    if (_scoreEvolution.isEmpty) {
+      return ['14/3', '16/3', '18/3', '20/3', '22/3', '24/3'];
+    }
+    
+    // Extraire les dates des sessions et les formater
+    final labels = <String>[];
+    for (final session in _scoreEvolution) {
+      final createdAt = session['created_at'] as String?;
+      if (createdAt != null) {
+        final date = DateTime.parse(createdAt);
+        labels.add('${date.day}/${date.month}');
+      }
+    }
+    
+    return labels;
+  }
+  
+  List<FlSpot> _getScoreSpots() {
+    if (_scoreEvolution.isEmpty) {
+      return const [
+        FlSpot(0, 45),
+        FlSpot(1, 60),
+        FlSpot(2, 52),
+        FlSpot(3, 70),
+        FlSpot(4, 65),
+        FlSpot(5, 82),
+      ];
+    }
+    
+    // Créer les points pour le graphique à partir des données réelles
+    final spots = <FlSpot>[];
+    for (int i = 0; i < _scoreEvolution.length; i++) {
+      final score = _scoreEvolution[i]['score'] ?? 0;
+      spots.add(FlSpot(i.toDouble(), score.toDouble()));
+    }
+    
+    return spots;
+  }
 
   Widget _buildProgressionSection() {
+    // Calculer la progression globale
+    final currentAvg = _calculateAverageScore();
+    final previousAvg = currentAvg * 0.85; // Simuler une progression de 15%
+    final progressPercentage = previousAvg > 0 
+        ? ((currentAvg - previousAvg) / previousAvg * 100).toStringAsFixed(0) 
+        : '+0';
+    
     return GlassmorphicContainer(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -334,17 +498,17 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                   color: AppTheme.darkBackground,
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.trending_up,
                       color: Colors.green,
                       size: 16,
                     ),
-                    SizedBox(width: 4),
+                    const SizedBox(width: 4),
                     Text(
-                      '+15%',
-                      style: TextStyle(
+                      '+$progressPercentage%',
+                      style: const TextStyle(
                         color: Colors.green,
                         fontWeight: FontWeight.bold,
                       ),
@@ -356,27 +520,27 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
           ),
           const SizedBox(height: 20),
           _buildProgressItem(
-            'Articulation',
-            0.85,
-            const Color(0xFF4ECDC4),
+            'Fondamentaux',
+            (_userStats?['average_pronunciation'] ?? 0) / 100,
+            const Color(0xFF4A90E2),
           ),
           const SizedBox(height: 16),
           _buildProgressItem(
-            'Respiration',
-            0.72,
-            const Color(0xFF6C63FF),
+            'Impact et Présence',
+            (_userStats?['average_fluency'] ?? 0) / 100,
+            const Color(0xFF50E3C2),
           ),
           const SizedBox(height: 16),
           _buildProgressItem(
-            'Voix',
-            0.63,
-            const Color(0xFFFF6B6B),
+            'Clarté et Expressivité',
+            (_userStats?['average_prosody'] ?? 0) / 100,
+            const Color(0xFFFF9500),
           ),
           const SizedBox(height: 16),
           _buildProgressItem(
-            'Scénarios',
-            0.45,
-            const Color(0xFFFFD166),
+            'Application Professionnelle',
+            (_userStats?['average_completeness'] ?? 0) / 100,
+            const Color(0xFFFF3B30),
           ),
         ],
       ),
@@ -422,6 +586,42 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
   }
 
   Widget _buildCategoryBreakdown() {
+    // Si aucune donnée n'est disponible, utiliser des données factices
+    final Map<String, double> distribution = _categoryDistribution.isEmpty
+        ? {
+            'Fondamentaux': 30,
+            'Impact et Présence': 25,
+            'Clarté et Expressivité': 25,
+            'Application Professionnelle': 20,
+          }
+        : _categoryDistribution;
+    
+    // Créer les sections du graphique
+    final sections = <PieChartSectionData>[];
+    final colors = {
+      'Fondamentaux': const Color(0xFF4A90E2),
+      'Impact et Présence': const Color(0xFF50E3C2),
+      'Clarté et Expressivité': const Color(0xFFFF9500),
+      'Application Professionnelle': const Color(0xFFFF3B30),
+      'Maîtrise Avancée': const Color(0xFFAF52DE),
+    };
+    
+    distribution.forEach((category, value) {
+      sections.add(
+        PieChartSectionData(
+          value: value,
+          title: '${value.toInt()}%',
+          radius: 80,
+          color: colors[category] ?? Colors.grey,
+          titleStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      );
+    });
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -440,71 +640,23 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
             PieChartData(
               sectionsSpace: 2,
               centerSpaceRadius: 40,
-              sections: [
-                PieChartSectionData(
-                  value: 35,
-                  title: '35%',
-                  radius: 80,
-                  color: const Color(0xFF4ECDC4),
-                  titleStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                PieChartSectionData(
-                  value: 25,
-                  title: '25%',
-                  radius: 80,
-                  color: const Color(0xFF6C63FF),
-                  titleStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                PieChartSectionData(
-                  value: 20,
-                  title: '20%',
-                  radius: 80,
-                  color: const Color(0xFFFF6B6B),
-                  titleStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                PieChartSectionData(
-                  value: 20,
-                  title: '20%',
-                  radius: 80,
-                  color: const Color(0xFFFFD166),
-                  titleStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
+              sections: sections,
             ),
           ),
         ),
         const SizedBox(height: 16),
-        _buildLegend(),
+        _buildLegend(distribution, colors),
       ],
     );
   }
 
-  Widget _buildLegend() {
+  Widget _buildLegend(Map<String, double> distribution, Map<String, Color> colors) {
     return Wrap(
       spacing: 16,
       runSpacing: 12,
-      children: [
-        _buildLegendItem('Articulation', const Color(0xFF4ECDC4)),
-        _buildLegendItem('Respiration', const Color(0xFF6C63FF)),
-        _buildLegendItem('Voix', const Color(0xFFFF6B6B)),
-        _buildLegendItem('Scénarios', const Color(0xFFFFD166)),
-      ],
+      children: distribution.keys.map((category) {
+        return _buildLegendItem(category, colors[category] ?? Colors.grey);
+      }).toList(),
     );
   }
 

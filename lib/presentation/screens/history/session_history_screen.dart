@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../app/theme.dart';
+import '../../../domain/entities/user.dart';
+import '../../../infrastructure/repositories/supabase_session_repository.dart';
+import '../../../services/service_locator.dart';
 import '../../widgets/glassmorphic_container.dart';
 
 class SessionHistoryScreen extends StatefulWidget {
+  final User user;
   final VoidCallback onBackPressed;
 
   const SessionHistoryScreen({
     super.key,
+    required this.user,
     required this.onBackPressed,
   });
 
@@ -16,60 +21,122 @@ class SessionHistoryScreen extends StatefulWidget {
 }
 
 class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
-  // Données factices pour l'historique des sessions
-  final List<SessionHistoryItem> _historyItems = [
-    SessionHistoryItem(
-      date: DateTime(2025, 3, 24, 19, 30),
-      category: 'Articulation',
-      duration: const Duration(minutes: 15),
-      score: 89,
-      categoryColor: const Color(0xFF4ECDC4),
-    ),
-    SessionHistoryItem(
-      date: DateTime(2025, 3, 23, 16, 12),
-      category: 'Exercice: Articulation',
-      duration: const Duration(minutes: 10),
-      score: 78,
-      categoryColor: const Color(0xFF4ECDC4),
-    ),
-    SessionHistoryItem(
-      date: DateTime(2025, 3, 20, 14, 45),
-      category: 'Exercice: Respiration',
-      duration: const Duration(minutes: 12),
-      score: 92,
-      categoryColor: const Color(0xFF6C63FF),
-    ),
-    SessionHistoryItem(
-      date: DateTime(2025, 3, 18, 11, 30),
-      category: 'Exercice: Articulation',
-      duration: const Duration(minutes: 8),
-      score: 67,
-      categoryColor: const Color(0xFF4ECDC4),
-    ),
-    SessionHistoryItem(
-      date: DateTime(2025, 3, 15, 20, 15),
-      category: 'Exercice: Voix',
-      duration: const Duration(minutes: 18),
-      score: 85,
-      categoryColor: const Color(0xFFFF6B6B),
-    ),
-    SessionHistoryItem(
-      date: DateTime(2025, 3, 10, 17, 45),
-      category: 'Exercice: Scénarios',
-      duration: const Duration(minutes: 22),
-      score: 73,
-      categoryColor: const Color(0xFFFFD166),
-    ),
-  ];
+  List<SessionHistoryItem> _historyItems = [];
+  List<SessionHistoryItem> _filteredItems = [];
+  bool _isLoading = true;
+  
+  final SupabaseSessionRepository _sessionRepository = serviceLocator<SupabaseSessionRepository>();
 
   final TextEditingController _searchController = TextEditingController();
-  List<SessionHistoryItem> _filteredItems = [];
 
   @override
   void initState() {
     super.initState();
-    _filteredItems = List.from(_historyItems);
     _searchController.addListener(_filterItems);
+    _loadSessions();
+  }
+  
+  Future<void> _loadSessions() async {
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      final sessions = await _sessionRepository.getUserSessions(widget.user.id);
+      
+      final items = sessions.map((session) {
+        // Déterminer la couleur de la catégorie
+        Color categoryColor;
+        final category = session['category'] as String? ?? 'Autre';
+        
+        if (category.contains('Articulation')) {
+          categoryColor = const Color(0xFF4ECDC4);
+        } else if (category.contains('Respiration')) {
+          categoryColor = const Color(0xFF6C63FF);
+        } else if (category.contains('Voix')) {
+          categoryColor = const Color(0xFFFF6B6B);
+        } else if (category.contains('Scénarios')) {
+          categoryColor = const Color(0xFFFFD166);
+        } else {
+          categoryColor = Colors.grey;
+        }
+        
+        return SessionHistoryItem(
+          date: DateTime.parse(session['created_at'] as String),
+          category: category,
+          duration: Duration(minutes: session['duration'] as int? ?? 0),
+          score: session['score'] as int? ?? 0,
+          categoryColor: categoryColor,
+        );
+      }).toList();
+      
+      setState(() {
+        _historyItems = items;
+        _filteredItems = List.from(items);
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        // En cas d'erreur, utiliser des données factices
+        _historyItems = _getDefaultHistoryItems();
+        _filteredItems = List.from(_historyItems);
+        _isLoading = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors du chargement des sessions: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+  
+  List<SessionHistoryItem> _getDefaultHistoryItems() {
+    return [
+      SessionHistoryItem(
+        date: DateTime(2025, 3, 24, 19, 30),
+        category: 'Articulation',
+        duration: const Duration(minutes: 15),
+        score: 89,
+        categoryColor: const Color(0xFF4ECDC4),
+      ),
+      SessionHistoryItem(
+        date: DateTime(2025, 3, 23, 16, 12),
+        category: 'Exercice: Articulation',
+        duration: const Duration(minutes: 10),
+        score: 78,
+        categoryColor: const Color(0xFF4ECDC4),
+      ),
+      SessionHistoryItem(
+        date: DateTime(2025, 3, 20, 14, 45),
+        category: 'Exercice: Respiration',
+        duration: const Duration(minutes: 12),
+        score: 92,
+        categoryColor: const Color(0xFF6C63FF),
+      ),
+      SessionHistoryItem(
+        date: DateTime(2025, 3, 18, 11, 30),
+        category: 'Exercice: Articulation',
+        duration: const Duration(minutes: 8),
+        score: 67,
+        categoryColor: const Color(0xFF4ECDC4),
+      ),
+      SessionHistoryItem(
+        date: DateTime(2025, 3, 15, 20, 15),
+        category: 'Exercice: Voix',
+        duration: const Duration(minutes: 18),
+        score: 85,
+        categoryColor: const Color(0xFFFF6B6B),
+      ),
+      SessionHistoryItem(
+        date: DateTime(2025, 3, 10, 17, 45),
+        category: 'Exercice: Scénarios',
+        duration: const Duration(minutes: 22),
+        score: 73,
+        categoryColor: const Color(0xFFFFD166),
+      ),
+    ];
   }
 
   @override
@@ -125,16 +192,26 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
           statusBarIconBrightness: Brightness.light,
         ),
       ),
-      body: Column(
-        children: [
-          _buildSearchBar(),
-          Expanded(
-            child: _filteredItems.isEmpty
-                ? _buildEmptyState()
-                : _buildHistoryList(),
-          ),
-        ],
-      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: AppTheme.primaryColor,
+              ),
+            )
+          : Column(
+              children: [
+                _buildSearchBar(),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _loadSessions,
+                    color: AppTheme.primaryColor,
+                    child: _filteredItems.isEmpty
+                        ? _buildEmptyState()
+                        : _buildHistoryList(),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 

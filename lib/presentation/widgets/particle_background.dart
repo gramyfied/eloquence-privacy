@@ -8,12 +8,12 @@ class ParticleBackground extends StatefulWidget {
   final Color gradientEndColor;
 
   const ParticleBackground({
-    Key? key,
+    super.key,
     required this.child,
     this.numberOfParticles = 20, // Réduction du nombre de particules
     this.gradientStartColor = const Color(0xFF35195C), // Violet plus subtil
     this.gradientEndColor = const Color(0xFF1C0A40),   // Violet foncé plus subtil
-  }) : super(key: key);
+  });
 
   @override
   _ParticleBackgroundState createState() => _ParticleBackgroundState();

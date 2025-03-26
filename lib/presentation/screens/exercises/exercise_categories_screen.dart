@@ -10,11 +10,11 @@ class ExerciseCategoriesScreen extends StatelessWidget {
   final VoidCallback onBackPressed;
   
   const ExerciseCategoriesScreen({
-    Key? key,
+    super.key,
     required this.categories,
     required this.onCategorySelected,
     required this.onBackPressed,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -72,25 +72,25 @@ class ExerciseCategoriesScreen extends StatelessWidget {
       
       // Define colors and icons based on category type
       switch (category.type) {
-        case ExerciseCategoryType.respiration:
-          cardColor = const Color(0xFF6A44F2); // Violet
-          categoryIcon = Icons.air;
+        case ExerciseCategoryType.fondamentaux:
+          cardColor = const Color(0xFF4A90E2); // Bleu
+          categoryIcon = Icons.foundation;
           break;
-        case ExerciseCategoryType.articulation:
-          cardColor = const Color(0xFF4ECDC4); // Turquoise
+        case ExerciseCategoryType.impactPresence:
+          cardColor = const Color(0xFF50E3C2); // Turquoise
           categoryIcon = Icons.record_voice_over;
           break;
-        case ExerciseCategoryType.voix:
-          cardColor = const Color(0xFFFF6B6B); // Rouge
+        case ExerciseCategoryType.clarteExpressivite:
+          cardColor = const Color(0xFFFF9500); // Orange
           categoryIcon = Icons.mic;
           break;
-        case ExerciseCategoryType.scenarios:
-          cardColor = const Color(0xFFFFD166); // Jaune
-          categoryIcon = Icons.theater_comedy;
+        case ExerciseCategoryType.applicationProfessionnelle:
+          cardColor = const Color(0xFFFF3B30); // Rouge
+          categoryIcon = Icons.business;
           break;
-        case ExerciseCategoryType.difficulte:
-          cardColor = const Color(0xFF118AB2); // Bleu
-          categoryIcon = Icons.fitness_center;
+        case ExerciseCategoryType.maitriseAvancee:
+          cardColor = const Color(0xFFAF52DE); // Violet
+          categoryIcon = Icons.diamond;
           break;
       }
       
@@ -116,33 +116,33 @@ List<ExerciseCategory> getSampleCategories() {
   return [
     ExerciseCategory(
       id: '1',
-      name: 'Respiration',
-      description: 'Maîtrisez votre souffle et votre respiration',
-      type: ExerciseCategoryType.respiration,
+      name: 'Fondamentaux',
+      description: 'Maîtrisez les techniques de base essentielles à toute communication vocale efficace',
+      type: ExerciseCategoryType.fondamentaux,
     ),
     ExerciseCategory(
       id: '2',
-      name: 'Articulation',
-      description: 'Prononcez clairement chaque syllabe',
-      type: ExerciseCategoryType.articulation,
+      name: 'Impact et Présence',
+      description: 'Développez une voix qui projette autorité, confiance et leadership',
+      type: ExerciseCategoryType.impactPresence,
     ),
     ExerciseCategory(
       id: '3',
-      name: 'Voix',
-      description: 'Travaillez votre projection et votre intonation',
-      type: ExerciseCategoryType.voix,
+      name: 'Clarté et Expressivité',
+      description: 'Assurez que chaque mot est parfaitement compris et exprimé avec nuance',
+      type: ExerciseCategoryType.clarteExpressivite,
     ),
     ExerciseCategory(
       id: '4',
-      name: 'Scénarios',
-      description: 'Entraînez-vous avec des situations réelles',
-      type: ExerciseCategoryType.scenarios,
+      name: 'Application Professionnelle',
+      description: 'Appliquez vos compétences vocales dans des situations professionnelles réelles',
+      type: ExerciseCategoryType.applicationProfessionnelle,
     ),
     ExerciseCategory(
       id: '5',
-      name: 'Difficulté',
-      description: 'Relevez des défis adaptés à votre niveau',
-      type: ExerciseCategoryType.difficulte,
+      name: 'Maîtrise Avancée',
+      description: 'Perfectionnez votre voix avec des techniques de niveau expert',
+      type: ExerciseCategoryType.maitriseAvancee,
     ),
   ];
 }

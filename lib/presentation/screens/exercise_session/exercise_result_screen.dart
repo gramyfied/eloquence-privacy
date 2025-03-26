@@ -11,12 +11,12 @@ class ExerciseResultScreen extends StatelessWidget {
   final VoidCallback onTryAgainPressed;
 
   const ExerciseResultScreen({
-    Key? key,
+    super.key,
     required this.exercise,
     required this.results,
     required this.onHomePressed,
     required this.onTryAgainPressed,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

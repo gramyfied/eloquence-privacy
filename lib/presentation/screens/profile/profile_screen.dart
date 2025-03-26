@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'dart:typed_data';
 import '../../../app/theme.dart';
 import '../../../domain/entities/user.dart';
+import '../../../infrastructure/repositories/supabase_profile_repository.dart';
+import '../../../services/service_locator.dart';
 import '../../widgets/glassmorphic_container.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -27,11 +32,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isEditingName = false;
   bool _isDarkMode = true; // Par défaut en mode sombre
   bool _notificationsEnabled = true;
+  bool _soundEnabled = true;
+  bool _isLoading = true;
+  Map<String, dynamic>? _profileData;
+  final SupabaseProfileRepository _profileRepository = serviceLocator<SupabaseProfileRepository>();
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.user.name ?? 'Utilisateur');
+    _loadProfileData();
+  }
+
+  Future<void> _loadProfileData() async {
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      final profileData = await _profileRepository.getCurrentUserProfile();
+      
+      setState(() {
+        _profileData = profileData;
+        if (profileData != null) {
+          _nameController.text = profileData['full_name'] ?? widget.user.name ?? 'Utilisateur';
+          _notificationsEnabled = profileData['notifications'] ?? true;
+          _soundEnabled = profileData['sound_enabled'] ?? true;
+        }
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors du chargement du profil: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -40,14 +80,87 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
-  void _toggleNameEditing() {
+  void _toggleNameEditing() async {
     setState(() {
       if (_isEditingName) {
         // Enregistrer les modifications
+        _updateProfile(fullName: _nameController.text);
         widget.onProfileUpdate(_nameController.text, null);
       }
       _isEditingName = !_isEditingName;
     });
+  }
+
+  Future<void> _updateProfile({
+    String? fullName,
+    String? avatarUrl,
+    bool? notifications,
+    bool? soundEnabled,
+  }) async {
+    try {
+      await _profileRepository.updateUserProfile(
+        userId: widget.user.id,
+        fullName: fullName,
+        avatarUrl: avatarUrl,
+        notifications: notifications,
+        soundEnabled: soundEnabled,
+      );
+      
+      // Recharger les données du profil
+      _loadProfileData();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors de la mise à jour du profil: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickAndUploadImage() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      
+      if (image == null) return;
+      
+      // Afficher un indicateur de chargement
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Téléchargement de l\'image en cours...'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+      
+      // Lire le fichier
+      final File file = File(image.path);
+      final Uint8List bytes = await file.readAsBytes();
+      
+      // Télécharger l'image
+      final String imageUrl = await _profileRepository.uploadProfileImage(
+        widget.user.id,
+        bytes,
+        image.name,
+      );
+      
+      // Mettre à jour le profil avec la nouvelle URL
+      widget.onProfileUpdate(_nameController.text, imageUrl);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Photo de profil mise à jour avec succès'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors du téléchargement de l\'image: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -74,21 +187,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
           statusBarIconBrightness: Brightness.light,
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildProfileHeader(),
-            const SizedBox(height: 24),
-            _buildStatisticsSection(),
-            const SizedBox(height: 24),
-            _buildSettingsSection(),
-            const SizedBox(height: 24),
-            _buildAccountSection(),
-          ],
-        ),
-      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: AppTheme.primaryColor,
+              ),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildProfileHeader(),
+                  const SizedBox(height: 24),
+                  _buildStatisticsSection(),
+                  const SizedBox(height: 24),
+                  _buildSettingsSection(),
+                  const SizedBox(height: 24),
+                  _buildAccountSection(),
+                ],
+              ),
+            ),
     );
   }
 
@@ -124,14 +243,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     color: Colors.white,
                     size: 18,
                   ),
-                  onPressed: () {
-                    // Fonctionnalité pour changer la photo de profil
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Changement de photo de profil non implémenté'),
-                      ),
-                    );
-                  },
+                  onPressed: _pickAndUploadImage,
                   constraints: const BoxConstraints.tightFor(width: 36, height: 36),
                   padding: EdgeInsets.zero,
                 ),
@@ -340,6 +452,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 setState(() {
                   _notificationsEnabled = value;
                 });
+                _updateProfile(notifications: value);
               },
               activeColor: AppTheme.primaryColor,
             ),
@@ -372,28 +485,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const Divider(color: Colors.white10),
           _buildSettingItem(
-            'Qualité audio',
+            'Son',
             const Icon(
-              Icons.high_quality,
+              Icons.volume_up,
               color: Colors.white,
               size: 20,
             ),
-            Row(
-              children: [
-                Text(
-                  'Haute',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.arrow_forward_ios,
-                  color: Colors.white38,
-                  size: 14,
-                ),
-              ],
+            Switch(
+              value: _soundEnabled,
+              onChanged: (value) {
+                setState(() {
+                  _soundEnabled = value;
+                });
+                _updateProfile(soundEnabled: value);
+              },
+              activeColor: AppTheme.primaryColor,
             ),
           ),
         ],

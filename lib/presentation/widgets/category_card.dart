@@ -13,7 +13,7 @@ class CategoryCard extends StatelessWidget {
   final BorderRadius? borderRadius;
 
   const CategoryCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.description,
     this.icon,
@@ -23,8 +23,7 @@ class CategoryCard extends StatelessWidget {
     this.padding = const EdgeInsets.all(16.0),
     this.onTap,
     this.borderRadius,
-  }) : assert(icon != null || iconAsset != null, 'Either icon or iconAsset must be provided'),
-       super(key: key);
+  }) : assert(icon != null || iconAsset != null, 'Either icon or iconAsset must be provided');
 
   @override
   Widget build(BuildContext context) {
@@ -110,13 +109,13 @@ class CategoryGrid extends StatelessWidget {
   final EdgeInsets padding;
 
   const CategoryGrid({
-    Key? key,
+    super.key,
     required this.categories,
     this.crossAxisCount = 2,
     this.spacing = 16.0,
     this.aspectRatio = 1.0,
     this.padding = const EdgeInsets.all(16.0),
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +123,7 @@ class CategoryGrid extends StatelessWidget {
       padding: padding,
       child: GridView.builder(
         shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
+        physics: const AlwaysScrollableScrollPhysics(),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
           crossAxisSpacing: spacing,

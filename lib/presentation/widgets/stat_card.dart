@@ -11,7 +11,7 @@ class StatCard extends StatelessWidget {
   final double height;
 
   const StatCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.value,
     required this.icon,
@@ -19,7 +19,7 @@ class StatCard extends StatelessWidget {
     this.onTap,
     this.textColor = Colors.white,
     this.height = 120,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -95,14 +95,14 @@ class StatCardHorizontal extends StatelessWidget {
   final Color textColor;
 
   const StatCardHorizontal({
-    Key? key,
+    super.key,
     required this.title,
     required this.value,
     required this.icon,
     required this.color,
     this.onTap,
     this.textColor = Colors.white,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

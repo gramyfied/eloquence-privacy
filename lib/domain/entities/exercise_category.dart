@@ -1,9 +1,9 @@
 enum ExerciseCategoryType {
-  respiration,
-  articulation,
-  voix,
-  scenarios,
-  difficulte
+  fondamentaux,
+  impactPresence,
+  clarteExpressivite,
+  applicationProfessionnelle,
+  maitriseAvancee
 }
 
 class ExerciseCategory {

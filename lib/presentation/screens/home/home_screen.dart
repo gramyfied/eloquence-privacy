@@ -12,13 +12,13 @@ class HomeScreen extends StatelessWidget {
   final VoidCallback onProfilePressed;
 
   const HomeScreen({
-    Key? key,
+    super.key,
     required this.user,
     required this.onNewSessionPressed,
     required this.onStatsPressed,
     required this.onHistoryPressed,
     required this.onProfilePressed,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -71,12 +71,22 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
-        CircleAvatar(
-          radius: 24,
-          backgroundColor: AppTheme.primaryColor,
-          backgroundImage: user.avatarUrl != null
-              ? NetworkImage(user.avatarUrl!)
-              : const AssetImage('assets/images/default_avatar.png') as ImageProvider,
+        GestureDetector(
+          onTap: onProfilePressed,
+          child: CircleAvatar(
+            radius: 24,
+            backgroundColor: AppTheme.primaryColor,
+            backgroundImage: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                ? NetworkImage(user.avatarUrl!) as ImageProvider
+                : null,
+            child: user.avatarUrl == null || user.avatarUrl!.isEmpty
+                ? const Icon(
+                    Icons.person,
+                    color: Colors.white,
+                    size: 24,
+                  )
+                : null,
+          ),
         ),
       ],
     );
@@ -126,10 +136,10 @@ class HomeScreen extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
+                  const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
+                    children: [
                       Text(
                         'Nouvelle session',
                         style: TextStyle(
@@ -200,12 +210,12 @@ class HomeScreen extends StatelessWidget {
         const SizedBox(height: 16),
         Row(
           children: [
-            Expanded(
+            const Expanded(
               child: StatCard(
                 title: 'Score moyen',
                 value: '48%',
                 icon: Icons.insert_chart_outlined,
-                gradient: const LinearGradient(
+                gradient: LinearGradient(
                   colors: [Color(0xFF6A44F2), Color(0xFF8A74FF)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -335,7 +345,9 @@ class HomeScreen extends StatelessWidget {
         children: [
           _buildNavItem(Icons.home, true),
           InkWell(
-            onTap: onStatsPressed,
+            onTap: () {
+              onStatsPressed();
+            },
             child: _buildNavItem(Icons.bar_chart, false),
           ),
           Padding(
@@ -346,7 +358,9 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           InkWell(
-            onTap: onHistoryPressed,
+            onTap: () {
+              onHistoryPressed();
+            },
             child: _buildNavItem(Icons.history, false),
           ),
           InkWell(
