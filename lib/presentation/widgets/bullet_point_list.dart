@@ -18,13 +18,13 @@ class BulletPointList extends StatelessWidget {
   final TextStyle? textStyle;
   
   const BulletPointList({
-    Key? key,
+    super.key,
     required this.items,
     this.bulletColor = Colors.white,
     this.bulletSize = 6.0,
     this.spacing = 12.0,
     this.textStyle,
-  }) : super(key: key);
+  });
   
   @override
   Widget build(BuildContext context) {

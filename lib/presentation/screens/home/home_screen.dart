@@ -10,6 +10,7 @@ class HomeScreen extends StatelessWidget {
   final VoidCallback onStatsPressed;
   final VoidCallback onHistoryPressed;
   final VoidCallback onProfilePressed;
+  final VoidCallback? onDebugPressed;
 
   const HomeScreen({
     super.key,
@@ -18,6 +19,7 @@ class HomeScreen extends StatelessWidget {
     required this.onStatsPressed,
     required this.onHistoryPressed,
     required this.onProfilePressed,
+    this.onDebugPressed,
   });
 
   @override
@@ -71,22 +73,44 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
-        GestureDetector(
-          onTap: onProfilePressed,
-          child: CircleAvatar(
-            radius: 24,
-            backgroundColor: AppTheme.primaryColor,
-            backgroundImage: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
-                ? NetworkImage(user.avatarUrl!) as ImageProvider
-                : null,
-            child: user.avatarUrl == null || user.avatarUrl!.isEmpty
-                ? const Icon(
-                    Icons.person,
-                    color: Colors.white,
-                    size: 24,
-                  )
-                : null,
-          ),
+        Row(
+          children: [
+            if (onDebugPressed != null)
+              GestureDetector(
+                onTap: onDebugPressed,
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.bug_report,
+                    color: Colors.white70,
+                    size: 20,
+                  ),
+                ),
+              ),
+            GestureDetector(
+              onTap: onProfilePressed,
+              child: CircleAvatar(
+                radius: 24,
+                backgroundColor: AppTheme.primaryColor,
+                backgroundImage: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                    ? NetworkImage(user.avatarUrl!) as ImageProvider
+                    : null,
+                child: user.avatarUrl == null || user.avatarUrl!.isEmpty
+                    ? const Icon(
+                        Icons.person,
+                        color: Colors.white,
+                        size: 24,
+                      )
+                    : null,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -208,47 +232,54 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            const Expanded(
-              child: StatCard(
-                title: 'Score moyen',
-                value: '48%',
-                icon: Icons.insert_chart_outlined,
-                gradient: LinearGradient(
-                  colors: [Color(0xFF6A44F2), Color(0xFF8A74FF)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+        // Utilisation d'un SingleChildScrollView pour éviter les débordements
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 100, // Largeur réduite
+                child: const StatCard(
+                  title: 'Score moyen',
+                  value: '48%',
+                  icon: Icons.insert_chart_outlined,
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF6A44F2), Color(0xFF8A74FF)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: StatCard(
-                title: 'Sessions',
-                value: '50',
-                icon: Icons.calendar_today,
-                gradient: LinearGradient(
-                  colors: [Colors.blue[700]!, Colors.blue[400]!],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+              const SizedBox(width: 10), // Espacement réduit
+              SizedBox(
+                width: 100, // Largeur réduite
+                child: StatCard(
+                  title: 'Sessions',
+                  value: '50',
+                  icon: Icons.calendar_today,
+                  gradient: LinearGradient(
+                    colors: [Colors.blue[700]!, Colors.blue[400]!],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: StatCard(
-                title: 'Défis',
-                value: '2',
-                icon: Icons.emoji_events_outlined,
-                gradient: LinearGradient(
-                  colors: [Colors.amber[700]!, Colors.amber[400]!],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+              const SizedBox(width: 10), // Espacement réduit
+              SizedBox(
+                width: 100, // Largeur réduite
+                child: StatCard(
+                  title: 'Défis',
+                  value: '2',
+                  icon: Icons.emoji_events_outlined,
+                  gradient: LinearGradient(
+                    colors: [Colors.amber[700]!, Colors.amber[400]!],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );

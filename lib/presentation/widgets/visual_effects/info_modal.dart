@@ -26,7 +26,7 @@ class InfoIconButton extends StatelessWidget {
   final double iconSize;
   
   const InfoIconButton({
-    Key? key,
+    super.key,
     required this.title,
     required this.description,
     required this.benefits,
@@ -34,7 +34,7 @@ class InfoIconButton extends StatelessWidget {
     this.animation,
     this.backgroundColor = Colors.blue,
     this.iconSize = 24.0,
-  }) : super(key: key);
+  });
   
   @override
   Widget build(BuildContext context) {
@@ -96,14 +96,14 @@ class InfoModal extends StatelessWidget {
   final Color backgroundColor;
   
   const InfoModal({
-    Key? key,
+    super.key,
     required this.title,
     required this.description,
     required this.benefits,
     required this.instructions,
     this.animation,
     required this.backgroundColor,
-  }) : super(key: key);
+  });
   
   @override
   Widget build(BuildContext context) {
@@ -293,13 +293,13 @@ class BulletPointList extends StatelessWidget {
   final TextStyle? textStyle;
   
   const BulletPointList({
-    Key? key,
+    super.key,
     required this.items,
     this.bulletColor = Colors.white,
     this.bulletSize = 6.0,
     this.spacing = 12.0,
     this.textStyle,
-  }) : super(key: key);
+  });
   
   @override
   Widget build(BuildContext context) {

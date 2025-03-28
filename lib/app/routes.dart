@@ -9,4 +9,5 @@ class AppRoutes {
   static const String statistics = '/statistics';
   static const String profile = '/profile';
   static const String history = '/history';
+  static const String debug = '/debug';
 }

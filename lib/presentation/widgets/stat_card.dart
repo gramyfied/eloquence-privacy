@@ -19,18 +19,18 @@ class StatCard extends StatelessWidget {
   final double? height;
   
   const StatCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.value,
     required this.icon,
     required this.gradient,
     this.height,
-  }) : super(key: key);
+  });
   
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10), // Padding réduit
       height: height,
       decoration: BoxDecoration(
         gradient: gradient,
@@ -49,29 +49,36 @@ class StatCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white.withOpacity(0.8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11, // Taille de police réduite
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withOpacity(0.8),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
               ),
+              const SizedBox(width: 2), // Espacement réduit
               Icon(
                 icon,
                 color: Colors.white,
-                size: 16,
+                size: 14, // Taille d'icône réduite
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6), // Espacement réduit
           Text(
             value,
             style: const TextStyle(
-              fontSize: 20,
+              fontSize: 18, // Taille de police réduite
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
           ),
         ],
       ),

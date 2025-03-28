@@ -1,6 +1,5 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import '../../app/theme.dart';
 
 /// Widget de bouton de microphone simple
 class MicrophoneButton extends StatelessWidget {
@@ -14,11 +13,11 @@ class MicrophoneButton extends StatelessWidget {
   final VoidCallback onPressed;
   
   const MicrophoneButton({
-    Key? key,
+    super.key,
     required this.size,
     this.color = Colors.blue,
     required this.onPressed,
-  }) : super(key: key);
+  });
   
   @override
   Widget build(BuildContext context) {
@@ -75,14 +74,14 @@ class PulsatingMicrophoneButton extends StatefulWidget {
   final VoidCallback onPressed;
   
   const PulsatingMicrophoneButton({
-    Key? key,
+    super.key,
     required this.size,
     required this.isRecording,
     this.baseColor = Colors.blue,
     this.recordingColor = Colors.red,
     this.audioLevelStream,
     required this.onPressed,
-  }) : super(key: key);
+  });
   
   @override
   _PulsatingMicrophoneButtonState createState() => _PulsatingMicrophoneButtonState();

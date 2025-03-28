@@ -1,14 +1,15 @@
 import 'dart:async';
-import 'dart:typed_data';
+// Ajouté pour File
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter_sound/flutter_sound.dart';
+// import 'package:flutter_sound/flutter_sound.dart'; // Retiré
+// import 'package:flutter_sound_platform_interface/flutter_sound_platform_interface.dart'; // Import retiré
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
+// import 'package:permission_handler/permission_handler.dart'; // Retiré (géré dans le repo)
 import '../../../app/theme.dart';
 import '../../../core/utils/console_logger.dart';
 import '../../../domain/entities/exercise.dart';
+import '../../../domain/repositories/audio_repository.dart'; // Ajouté
 import '../../../services/service_locator.dart';
 import '../../../services/audio/example_audio_provider.dart';
 import '../../../services/evaluation/articulation_evaluation_service.dart';
@@ -16,7 +17,6 @@ import '../../widgets/visual_effects/info_modal.dart';
 import '../../widgets/visual_effects/audio_waveform_visualizer.dart';
 import '../../widgets/visual_effects/celebration_effect.dart';
 import '../../widgets/microphone_button.dart';
-import '../../widgets/bullet_point_list.dart' as bullet;
 
 /// Écran d'exercice d'articulation
 class ArticulationExerciseScreen extends StatefulWidget {
@@ -30,11 +30,11 @@ class ArticulationExerciseScreen extends StatefulWidget {
   final VoidCallback onExitPressed;
   
   const ArticulationExerciseScreen({
-    Key? key,
+    super.key,
     required this.exercise,
     required this.onExerciseCompleted,
     required this.onExitPressed,
-  }) : super(key: key);
+  });
   
   @override
   _ArticulationExerciseScreenState createState() => _ArticulationExerciseScreenState();
@@ -48,13 +48,15 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
   bool _showCelebration = false;
   int _currentWordIndex = 0;
   String? _currentRecordingPath;
-  
+  DateTime? _recordingStartTime; // Heure de début de l'enregistrement
+
   // Services
   late ExampleAudioProvider _exampleAudioProvider;
   late ArticulationEvaluationService _evaluationService;
-  late FlutterSoundRecorder _recorder;
+  late AudioRepository _audioRepository; // Remplacement de _recorder
   
-  final StreamController<double> _audioLevelStreamController = StreamController<double>.broadcast();
+  // TODO: Le stream de niveau audio n'est pas fourni par FlutterAudioCaptureRepository pour l'instant
+  final StreamController<double> _audioLevelStreamController = StreamController<double>.broadcast(); 
   final List<String> _wordsToArticulate = [
     'Professionnalisme',
     'Développement',
@@ -70,17 +72,25 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
     // Initialiser les services
     _initializeServices();
     
-    // Simuler des niveaux audio pour la démonstration
-    Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (_isRecording || _isPlayingExample) {
-        // Simuler un niveau audio avec une légère variation aléatoire
-        final baseLevel = _isRecording ? 0.5 : 0.7;
-        final variation = 0.3 * (DateTime.now().millisecondsSinceEpoch % 10) / 10;
-        final audioLevel = (baseLevel + variation).clamp(0.05, 0.9);
-        
-        _audioLevelStreamController.add(audioLevel);
-      }
-    });
+    // Configurer le stream pour les niveaux audio
+    // TODO: Retirer ou adapter cette simulation car le nouveau repo ne fournit pas de stream
+    // Timer.periodic(const Duration(milliseconds: 100), (timer) {
+    //   if (_isRecording) {
+    //     // Pour l'enregistrement, utiliser un niveau audio simulé mais réaliste
+    //     // Note: flutter_sound ne fournit pas d'API directe pour obtenir le niveau audio en temps réel
+    //     // dans toutes les plateformes, donc nous utilisons une simulation
+    //     final baseLevel = 0.5;
+    //     final variation = 0.3 * (DateTime.now().millisecondsSinceEpoch % 10) / 10;
+    //     final audioLevel = (baseLevel + variation).clamp(0.05, 0.9);
+    //     _audioLevelStreamController.add(audioLevel);
+    //   } else if (_isPlayingExample) {
+    //     // Pour la lecture d'exemple, utiliser un niveau simulé
+        final baseLevel = 0.7;
+        final variation = 0.2 * (DateTime.now().millisecondsSinceEpoch % 10) / 10;
+        // final audioLevel = (baseLevel + variation).clamp(0.05, 0.9);
+        // _audioLevelStreamController.add(audioLevel);
+      // }
+    // });
   }
   
   /// Initialise les services nécessaires pour l'exercice
@@ -91,54 +101,13 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
       // Récupérer les services depuis le locator
       _exampleAudioProvider = serviceLocator<ExampleAudioProvider>();
       _evaluationService = serviceLocator<ArticulationEvaluationService>();
+      _audioRepository = serviceLocator<AudioRepository>(); // Récupérer le repo audio
       
       ConsoleLogger.info('Services récupérés depuis le locator');
       
-      // Initialiser l'enregistreur
-      _recorder = FlutterSoundRecorder();
-      ConsoleLogger.info('Enregistreur initialisé');
-      
-      // Vérifier si nous sommes sur le web
-      if (kIsWeb) {
-        ConsoleLogger.info('Environnement web détecté, gestion spécifique des permissions');
-        try {
-          // Sur le web, les permissions sont gérées différemment
-          await _recorder.openRecorder();
-          ConsoleLogger.success('Enregistreur ouvert avec succès (web)');
-        } catch (e) {
-          ConsoleLogger.warning('Erreur lors de l\'ouverture de l\'enregistreur sur le web: $e');
-          ConsoleLogger.info('Passage en mode simulation pour l\'environnement web');
-          // Continuer malgré l'erreur, l'application fonctionnera en mode simulation
-        }
-      } else {
-        // Sur mobile/desktop, demander les permissions normalement
-        try {
-          // Demander les permissions nécessaires
-          ConsoleLogger.info('Demande de permission pour le microphone');
-          final status = await Permission.microphone.request();
-          if (status != PermissionStatus.granted) {
-            ConsoleLogger.error('Permission microphone refusée: $status');
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('L\'accès au microphone est nécessaire pour cet exercice'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-            throw Exception('Permission microphone refusée');
-          }
-          
-          ConsoleLogger.success('Permission microphone accordée');
-          
-          // Ouvrir l'enregistreur
-          await _recorder.openRecorder();
-          ConsoleLogger.success('Enregistreur ouvert avec succès');
-        } catch (e) {
-          ConsoleLogger.error('Erreur lors de l\'initialisation des permissions: $e');
-          // Continuer malgré l'erreur, l'application fonctionnera en mode simulation
-        }
-      }
+      // L'initialisation (incluant permissions) est gérée par le repository lui-même
+      // lors du premier appel à startRecording si nécessaire.
+      // Pas besoin d'appeler openRecorder ou de gérer les permissions ici.
       
       if (mounted) {
         setState(() {
@@ -166,10 +135,11 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
   void dispose() {
     // Libérer les ressources
     _audioLevelStreamController.close();
-    _recorder.closeRecorder();
+    // _audioRepository.dispose(); // Retiré car non défini dans l'interface AudioRepository
+    // TODO: Ajouter dispose() à AudioRepository et à son implémentation si un nettoyage est nécessaire
     super.dispose();
   }
-  
+
   /// Joue l'exemple audio pour le mot actuel
   Future<void> _playExampleAudio() async {
     try {
@@ -209,62 +179,53 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
   /// Démarre l'enregistrement audio
   Future<void> _startRecording() async {
     try {
-      ConsoleLogger.recording('Démarrage de l\'enregistrement audio');
+      ConsoleLogger.recording('Démarrage de l\'enregistrement audio via AudioRepository');
       
-      // S'assurer que l'enregistreur est ouvert
-      await _recorder.openRecorder();
-      ConsoleLogger.recording('Enregistreur ouvert');
+      // Pas besoin d'ouvrir l'enregistreur ici, géré par le repo
+
+      String recordingPath;
       
-      String? recordingPath;
+      // Désactivation du mode de démonstration pour utiliser les services Azure réels
+      ConsoleLogger.recording('Utilisation des services Azure réels pour l\'enregistrement');
       
-      // Vérifier si nous sommes sur le web
-      if (kIsWeb) {
-        // Sur le web, nous ne pouvons pas accéder au système de fichiers de la même manière
-        // Utiliser un chemin temporaire simulé
+      try {
+        // Générer un chemin d'enregistrement
+        final tempDir = await getTemporaryDirectory();
         final timestamp = DateTime.now().millisecondsSinceEpoch;
         final currentWord = _wordsToArticulate[_currentWordIndex].toLowerCase();
-        recordingPath = 'web_temp/${currentWord}_$timestamp.wav';
-        ConsoleLogger.recording('Environnement web détecté, utilisation d\'un chemin simulé: $recordingPath');
-      } else {
-        // Sur mobile/desktop, utiliser le système de fichiers normal
-        try {
-          final tempDir = await getTemporaryDirectory();
-          final timestamp = DateTime.now().millisecondsSinceEpoch;
-          final currentWord = _wordsToArticulate[_currentWordIndex].toLowerCase();
-          recordingPath = '${tempDir.path}/${currentWord}_$timestamp.wav';
-          ConsoleLogger.recording('Chemin d\'enregistrement: $recordingPath');
-        } catch (e) {
-          // En cas d'erreur d'accès au système de fichiers, utiliser un chemin simulé
-          final timestamp = DateTime.now().millisecondsSinceEpoch;
-          final currentWord = _wordsToArticulate[_currentWordIndex].toLowerCase();
-          recordingPath = 'temp/${currentWord}_$timestamp.wav';
-          ConsoleLogger.warning('Erreur d\'accès au système de fichiers, utilisation d\'un chemin simulé: $recordingPath');
-        }
-      }
-      
-      _currentRecordingPath = recordingPath;
-      
-      // Démarrer l'enregistrement
-      try {
-        await _recorder.startRecorder(
-          toFile: _currentRecordingPath,
-          codec: Codec.pcm16WAV,
-          audioSource: AudioSource.microphone,
-        );
-        ConsoleLogger.success('Enregistrement démarré avec succès');
+        recordingPath = '${tempDir.path}/${currentWord}_$timestamp.wav';
+        ConsoleLogger.recording('Chemin d\'enregistrement: $recordingPath');
       } catch (e) {
-        // En cas d'erreur de démarrage de l'enregistrement, passer en mode simulation
+        // En cas d'erreur d'accès au système de fichiers, utiliser un chemin simulé
+        // mais avec un préfixe différent pour indiquer qu'il s'agit d'un fichier réel
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final currentWord = _wordsToArticulate[_currentWordIndex].toLowerCase();
+        recordingPath = 'real_temp/${currentWord}_$timestamp.wav';
+        ConsoleLogger.warning('Erreur d\'accès au système de fichiers, utilisation d\'un chemin simulé: $recordingPath');
+      }
+      _currentRecordingPath = recordingPath;
+
+      // Démarrer l'enregistrement via le repository
+      try {
+        await _audioRepository.startRecording(filePath: _currentRecordingPath!);
+        // Le repo loggue déjà le succès/échec interne de startRecorder
+      } catch (e) {
+        // Le repo devrait déjà avoir loggué l'erreur, mais on loggue ici aussi
+        ConsoleLogger.error('Erreur renvoyée par _audioRepository.startRecording: $e');
+        // En cas d'erreur de démarrage de l'enregistrement, passer en mode simulation ?
+        // Ou afficher l'erreur et ne pas démarrer ? Pour l'instant, on continue la simulation.
         ConsoleLogger.warning('Erreur de démarrage de l\'enregistrement, passage en mode simulation: $e');
         // Simuler un enregistrement réussi pour la démonstration
       }
       
+      _recordingStartTime = DateTime.now(); // Enregistrer l'heure de début
       setState(() {
         _isRecording = true;
         if (!_isExerciseStarted) {
           _isExerciseStarted = true;
         }
       });
-      
+
       // Limiter l'enregistrement à 5 secondes maximum
       ConsoleLogger.info('Limite d\'enregistrement fixée à 5 secondes');
       Future.delayed(const Duration(seconds: 5), () {
@@ -310,12 +271,15 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
     try {
       ConsoleLogger.recording('Arrêt de l\'enregistrement audio');
       
-      // Arrêter l'enregistrement
+      // Arrêter l'enregistrement via le repository
+      String stoppedPath = '';
       try {
-        await _recorder.stopRecorder();
-        ConsoleLogger.success('Enregistrement arrêté avec succès');
+        stoppedPath = await _audioRepository.stopRecording();
+         // Le repo loggue déjà le succès/échec interne et le chemin
       } catch (e) {
-        // En cas d'erreur lors de l'arrêt de l'enregistrement (peut arriver sur le web)
+         // Le repo devrait déjà avoir loggué l'erreur
+        ConsoleLogger.error('Erreur renvoyée par _audioRepository.stopRecording: $e');
+        // En cas d'erreur lors de l'arrêt de l'enregistrement
         ConsoleLogger.warning('Erreur lors de l\'arrêt de l\'enregistrement, passage en mode simulation: $e');
         // Continuer le flux normal malgré l'erreur
       }
@@ -331,8 +295,10 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
           _currentWordIndex++;
         });
       } else {
-        ConsoleLogger.info('Dernier mot complété, finalisation de l\'exercice');
-        _completeExercise();
+        ConsoleLogger.info('Dernier mot enregistré, traitement et finalisation...');
+        // Ne pas appeler _completeExercise directement ici
+        // Appeler une méthode séparée pour traiter le dernier enregistrement et finaliser
+        _processAndCompleteExercise(); 
       }
     } catch (e) {
       ConsoleLogger.error('Erreur lors de l\'arrêt de l\'enregistrement: $e');
@@ -348,15 +314,19 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
           _currentWordIndex++;
         });
       } else {
-        ConsoleLogger.info('Dernier mot complété malgré l\'erreur, finalisation de l\'exercice');
-        _completeExercise();
+        ConsoleLogger.info('Dernier mot enregistré malgré l\'erreur, traitement et finalisation...');
+        // Appeler la méthode de traitement même en cas d'erreur d'arrêt
+         _processAndCompleteExercise();
       }
     }
   }
-  
-  Future<void> _completeExercise() async {
-    ConsoleLogger.info('Finalisation de l\'exercice d\'articulation');
-    
+
+  /// Traite le dernier enregistrement, évalue et affiche l'écran de fin.
+  Future<void> _processAndCompleteExercise() async {
+     if (_isExerciseCompleted) return; // Éviter les appels multiples
+
+    ConsoleLogger.info('Traitement du dernier enregistrement et finalisation de l\'exercice');
+
     setState(() {
       _isExerciseCompleted = true;
       _showCelebration = true;
@@ -364,10 +334,53 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
     
     Map<String, dynamic> results;
     
-    // Vérifier si nous sommes sur le web
-    if (kIsWeb) {
-      ConsoleLogger.info('Environnement web détecté, utilisation du mode de démonstration pour l\'évaluation');
-      // Sur le web, utiliser directement le mode de démonstration
+    // Désactivation du mode de démonstration pour utiliser les services Azure réels
+    ConsoleLogger.info('Utilisation des services Azure réels pour l\'évaluation');
+    
+    try {
+      // Vérifier si nous avons un enregistrement à évaluer
+      if (_currentRecordingPath != null && (_currentRecordingPath!.startsWith('real_temp/') || !_currentRecordingPath!.startsWith('web_temp/') && !_currentRecordingPath!.startsWith('temp/'))) {
+        ConsoleLogger.evaluation('Évaluation de l\'enregistrement final: $_currentRecordingPath');
+        
+        try {
+          // Évaluer l'enregistrement avec le service d'évaluation
+          final evaluationResult = await _evaluationService.evaluateRecording(
+            audioFilePath: _currentRecordingPath!,
+            expectedWord: _wordsToArticulate[_currentWordIndex],
+            exerciseLevel: _difficultyToString(widget.exercise.difficulty),
+          );
+          
+          ConsoleLogger.success('Évaluation terminée avec succès');
+          
+          // Préparer les résultats avec les métriques de l'évaluation
+          results = {
+            'score': evaluationResult.score,
+            'clarté_syllabique': evaluationResult.syllableClarity,
+            'précision_consonnes': evaluationResult.consonantPrecision,
+            'netteté_finales': evaluationResult.endingClarity,
+            'commentaires': evaluationResult.feedback,
+            'mots_complétés': _wordsToArticulate.length,
+          };
+          
+          ConsoleLogger.info('Résultats de l\'évaluation:');
+          ConsoleLogger.info('- Score: ${evaluationResult.score}');
+          ConsoleLogger.info('- Clarté syllabique: ${evaluationResult.syllableClarity}');
+          ConsoleLogger.info('- Précision des consonnes: ${evaluationResult.consonantPrecision}');
+          ConsoleLogger.info('- Netteté des finales: ${evaluationResult.endingClarity}');
+        } catch (e) {
+          // En cas d'erreur d'évaluation, passer en mode simulation
+          ConsoleLogger.warning('Erreur lors de l\'évaluation, passage en mode simulation: $e');
+          rethrow; // Relancer l'erreur pour être capturée par le bloc catch externe
+        }
+      } else {
+        // Fallback si pas d'enregistrement valide (simulé pour la démonstration)
+        ConsoleLogger.warning('Aucun enregistrement valide trouvé, utilisation du mode de démonstration');
+        throw Exception('Aucun enregistrement valide'); // Forcer le passage au mode simulation
+      }
+    } catch (e) {
+      ConsoleLogger.error('Erreur lors de l\'évaluation de l\'enregistrement: $e');
+      
+      // En cas d'erreur, utiliser des résultats simulés
       final score = 75 + (DateTime.now().millisecondsSinceEpoch % 15);
       
       results = {
@@ -379,65 +392,7 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
         'mots_complétés': _wordsToArticulate.length,
       };
       
-      ConsoleLogger.info('Résultats simulés générés pour l\'environnement web');
-    } else {
-      try {
-        // Vérifier si nous avons un enregistrement à évaluer
-        if (_currentRecordingPath != null && !_currentRecordingPath!.startsWith('web_temp/') && !_currentRecordingPath!.startsWith('temp/')) {
-          ConsoleLogger.evaluation('Évaluation de l\'enregistrement final: $_currentRecordingPath');
-          
-          try {
-            // Évaluer l'enregistrement avec le service d'évaluation
-            final evaluationResult = await _evaluationService.evaluateRecording(
-              audioFilePath: _currentRecordingPath!,
-              expectedWord: _wordsToArticulate[_currentWordIndex],
-              exerciseLevel: _difficultyToString(widget.exercise.difficulty),
-            );
-            
-            ConsoleLogger.success('Évaluation terminée avec succès');
-            
-            // Préparer les résultats avec les métriques de l'évaluation
-            results = {
-              'score': evaluationResult.score,
-              'clarté_syllabique': evaluationResult.syllableClarity,
-              'précision_consonnes': evaluationResult.consonantPrecision,
-              'netteté_finales': evaluationResult.endingClarity,
-              'commentaires': evaluationResult.feedback,
-              'mots_complétés': _wordsToArticulate.length,
-            };
-            
-            ConsoleLogger.info('Résultats de l\'évaluation:');
-            ConsoleLogger.info('- Score: ${evaluationResult.score}');
-            ConsoleLogger.info('- Clarté syllabique: ${evaluationResult.syllableClarity}');
-            ConsoleLogger.info('- Précision des consonnes: ${evaluationResult.consonantPrecision}');
-            ConsoleLogger.info('- Netteté des finales: ${evaluationResult.endingClarity}');
-          } catch (e) {
-            // En cas d'erreur d'évaluation, passer en mode simulation
-            ConsoleLogger.warning('Erreur lors de l\'évaluation, passage en mode simulation: $e');
-            throw e; // Relancer l'erreur pour être capturée par le bloc catch externe
-          }
-        } else {
-          // Fallback si pas d'enregistrement valide (simulé pour la démonstration)
-          ConsoleLogger.warning('Aucun enregistrement valide trouvé, utilisation du mode de démonstration');
-          throw Exception('Aucun enregistrement valide'); // Forcer le passage au mode simulation
-        }
-      } catch (e) {
-        ConsoleLogger.error('Erreur lors de l\'évaluation de l\'enregistrement: $e');
-        
-        // En cas d'erreur, utiliser des résultats simulés
-        final score = 75 + (DateTime.now().millisecondsSinceEpoch % 15);
-        
-        results = {
-          'score': score,
-          'clarté_syllabique': score - 5 + (DateTime.now().millisecondsSinceEpoch % 10),
-          'précision_consonnes': score + 5 - (DateTime.now().millisecondsSinceEpoch % 10),
-          'netteté_finales': score - 10 + (DateTime.now().millisecondsSinceEpoch % 20),
-          'commentaires': 'Excellente articulation ! Votre prononciation des syllabes est claire et précise. Les consonnes sont bien définies et les finales de mots sont nettes. Continuez à travailler sur les enchaînements syllabiques pour une fluidité encore meilleure.',
-          'mots_complétés': _wordsToArticulate.length,
-        };
-        
-        ConsoleLogger.warning('Utilisation des résultats simulés suite à une erreur');
-      }
+      ConsoleLogger.warning('Utilisation des résultats simulés suite à une erreur');
     }
     
     // Afficher l'effet de célébration
@@ -525,9 +480,19 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
       },
     );
   }
-  
+
   void _toggleRecording() {
     if (_isRecording) {
+      // Vérifier si le délai minimum est écoulé avant d'arrêter
+      if (_recordingStartTime != null &&
+          DateTime.now().difference(_recordingStartTime!) < const Duration(seconds: 1)) {
+        ConsoleLogger.recording('Tentative d\'arrêt trop rapide ignorée (moins de 1s)');
+        // Optionnel: Afficher un message à l'utilisateur
+        // ScaffoldMessenger.of(context).showSnackBar(
+        //   const SnackBar(content: Text("Maintenez pour enregistrer"), duration: Duration(milliseconds: 800)),
+        // );
+        return; // Ignorer l'arrêt
+      }
       ConsoleLogger.recording('Demande d\'arrêt de l\'enregistrement');
       _stopRecording();
     } else {
@@ -810,6 +775,8 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
         return 'Moyen';
       case ExerciseDifficulty.difficile:
         return 'Difficile';
+      default:
+        return 'Inconnu';
     }
   }
   

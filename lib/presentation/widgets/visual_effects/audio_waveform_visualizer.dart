@@ -26,7 +26,7 @@ class AudioWaveformVisualizer extends StatefulWidget {
   final double maxHeight;
   
   const AudioWaveformVisualizer({
-    Key? key,
+    super.key,
     this.audioLevelStream,
     required this.color,
     this.active = false,
@@ -34,7 +34,7 @@ class AudioWaveformVisualizer extends StatefulWidget {
     this.barWidth = 4.0,
     this.spacing = 2.0,
     this.maxHeight = 100.0,
-  }) : super(key: key);
+  });
   
   @override
   _AudioWaveformVisualizerState createState() => _AudioWaveformVisualizerState();
@@ -103,7 +103,7 @@ class _AudioWaveformVisualizerState extends State<AudioWaveformVisualizer> with 
   
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: double.infinity,
       height: widget.maxHeight,
       child: CustomPaint(

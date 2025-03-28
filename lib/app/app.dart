@@ -6,7 +6,7 @@ import 'theme.dart';
 import '../domain/repositories/auth_repository.dart';
 import '../domain/repositories/audio_repository.dart';
 import '../domain/repositories/speech_recognition_repository.dart';
-import '../infrastructure/repositories/flutter_sound_audio_repository.dart';
+// import '../infrastructure/repositories/flutter_sound_audio_repository.dart'; // Retiré
 import '../infrastructure/repositories/azure_speech_recognition_repository.dart';
 import '../infrastructure/repositories/supabase_profile_repository.dart';
 import '../infrastructure/repositories/supabase_statistics_repository.dart';
@@ -70,8 +70,8 @@ class _AppState extends State<App> {
 
     // Récupérer les repositories depuis le service locator
     final authRepository = serviceLocator<AuthRepository>();
-    final audioRepository = FlutterSoundAudioRepository();
-    final speechRepository = AzureSpeechRecognitionRepository();
+    final audioRepository = serviceLocator<AudioRepository>(); // Modifié pour utiliser le locator
+    final speechRepository = AzureSpeechRecognitionRepository(); // Supposons que celui-ci est toujours valide
     final profileRepository = serviceLocator<SupabaseProfileRepository>();
     final statisticsRepository = serviceLocator<SupabaseStatisticsRepository>();
     final sessionRepository = serviceLocator<SupabaseSessionRepository>();

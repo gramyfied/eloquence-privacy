@@ -6,7 +6,7 @@ import '../../../domain/entities/exercise.dart';
 import '../../../domain/entities/exercise_category.dart';
 import '../../../domain/repositories/audio_repository.dart';
 import '../../../domain/repositories/speech_recognition_repository.dart';
-import '../../../infrastructure/repositories/flutter_sound_audio_repository.dart';
+// import '../../../infrastructure/repositories/flutter_sound_audio_repository.dart'; // Retiré
 import '../../widgets/microphone_button.dart';
 import '../exercises/exercise_categories_screen.dart';
 import 'breathing_exercise_screen.dart';
@@ -346,8 +346,8 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       // Démarrer l'enregistrement
       if (_audioRepository != null) {
         try {
-          // Générer un chemin de fichier pour l'enregistrement
-          _recordingFilePath = await (_audioRepository as FlutterSoundAudioRepository).getRecordingFilePath();
+          // Générer un chemin de fichier pour l'enregistrement via l'interface
+          _recordingFilePath = await _audioRepository!.getRecordingFilePath(); 
           
           // Démarrer l'enregistrement
           await _audioRepository!.startRecording(filePath: _recordingFilePath!);

@@ -29,14 +29,14 @@ class SimpleBreathingAnimation extends StatefulWidget {
   final double maxSize;
   
   const SimpleBreathingAnimation({
-    Key? key,
+    super.key,
     this.breathInDuration = 4.0,
     this.breathOutDuration = 6.0,
     this.holdDuration = 0.0,
     this.color = Colors.blue,
     this.minSize = 50.0,
     this.maxSize = 200.0,
-  }) : super(key: key);
+  });
   
   @override
   _SimpleBreathingAnimationState createState() => _SimpleBreathingAnimationState();
@@ -255,7 +255,7 @@ class BreathingAnimation extends StatefulWidget {
   final Function(BreathingPhase)? onPhaseChanged;
   
   const BreathingAnimation({
-    Key? key,
+    super.key,
     this.breathInDuration = 4.0,
     this.breathOutDuration = 6.0,
     this.holdDuration = 2.0,
@@ -263,7 +263,7 @@ class BreathingAnimation extends StatefulWidget {
     this.secondaryColor = Colors.green,
     this.audioLevelStream,
     this.onPhaseChanged,
-  }) : super(key: key);
+  });
   
   @override
   _BreathingAnimationState createState() => _BreathingAnimationState();

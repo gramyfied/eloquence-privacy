@@ -106,7 +106,8 @@ class ExerciseCategoriesScreen extends StatelessWidget {
     return CategoryGrid(
       categories: categoryCards,
       crossAxisCount: 2,
-      aspectRatio: 0.85,
+      aspectRatio: 0.65, // Réduire davantage l'aspectRatio pour éviter les débordements
+      spacing: 20.0, // Augmenter l'espacement entre les cartes
     );
   }
 }

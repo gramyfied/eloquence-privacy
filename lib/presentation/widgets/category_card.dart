@@ -74,24 +74,25 @@ class CategoryCard extends StatelessWidget {
             const SizedBox(height: 4),
             
             // Description
-            Text(
-              description,
-              style: TextStyle(
-                fontSize: 14,
-                color: textColor.withOpacity(0.7),
+            Expanded(
+              child: Text(
+                description,
+                style: TextStyle(
+                  fontSize: 12, // Taille de police encore plus réduite
+                  color: textColor.withOpacity(0.7),
+                ),
+                maxLines: 3, // Augmenté à 3 lignes
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
             
             // Arrow indicator for navigation
-            const Spacer(),
             Align(
               alignment: Alignment.centerRight,
               child: Icon(
                 Icons.arrow_forward,
                 color: textColor.withOpacity(0.7),
-                size: 20,
+                size: 18, // Taille réduite
               ),
             ),
           ],

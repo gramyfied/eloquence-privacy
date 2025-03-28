@@ -1,15 +1,19 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../../core/utils/console_logger.dart';
 
-/// Service pour générer un feedback personnalisé via OpenAI
+/// Service pour générer un feedback personnalisé via Azure OpenAI
 class OpenAIFeedbackService {
   final String apiKey;
-  final String model;
+  final String endpoint; // Endpoint Azure OpenAI
+  final String deploymentName; // Nom du déploiement Azure OpenAI
+  final String apiVersion; // Version de l'API Azure OpenAI
   
   OpenAIFeedbackService({
     required this.apiKey,
-    this.model = 'gpt-4',
+    required this.endpoint,
+    required this.deploymentName,
+    this.apiVersion = '2023-07-01-preview', // Utiliser une version d'API appropriée
   });
   
   /// Génère un feedback personnalisé basé sur les résultats d'évaluation
@@ -21,10 +25,11 @@ class OpenAIFeedbackService {
     required Map<String, dynamic> metrics,
   }) async {
     try {
-      // En mode démo, simuler un feedback
-      if (kDebugMode) {
-        print('Simulating OpenAI feedback generation');
-      }
+      ConsoleLogger.info('🤖 [OPENAI] Génération de feedback personnalisé via OpenAI');
+      ConsoleLogger.info('🤖 [OPENAI] - Type d\'exercice: $exerciseType');
+      ConsoleLogger.info('🤖 [OPENAI] - Niveau: $exerciseLevel');
+      ConsoleLogger.info('🤖 [OPENAI] - Texte prononcé: "$spokenText"');
+      ConsoleLogger.info('🤖 [OPENAI] - Texte attendu: "$expectedText"');
       
       // Construire le prompt pour OpenAI
       final prompt = _buildPrompt(
@@ -35,16 +40,31 @@ class OpenAIFeedbackService {
         metrics: metrics,
       );
       
-      // En mode réel, appeler l'API OpenAI
-      if (!kDebugMode && apiKey.isNotEmpty) {
+      ConsoleLogger.info('Prompt OpenAI construit');
+      
+      // Vérifier si les informations Azure OpenAI sont vides
+      if (apiKey.isEmpty || endpoint.isEmpty || deploymentName.isEmpty) {
+        ConsoleLogger.warning('🤖 [AZURE OPENAI] Informations Azure OpenAI manquantes (clé, endpoint ou déploiement), utilisation du mode fallback');
+        return _generateFallbackFeedback(
+          exerciseType: exerciseType,
+          metrics: metrics,
+        );
+      }
+      
+      // Appeler l'API Azure OpenAI
+      try {
+        ConsoleLogger.info('Appel de l\'API Azure OpenAI');
+        // Construire l'URL Azure OpenAI
+        final url = Uri.parse('$endpoint/openai/deployments/$deploymentName/chat/completions?api-version=$apiVersion');
+        
         final response = await http.post(
-          Uri.parse('https://api.openai.com/v1/chat/completions'),
+          url,
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer $apiKey',
+            'api-key': apiKey, // Utiliser 'api-key' pour Azure
           },
           body: jsonEncode({
-            'model': model,
+            // 'model' n'est pas nécessaire pour Azure OpenAI via endpoint de déploiement
             'messages': [
               {
                 'role': 'system',
@@ -61,23 +81,27 @@ class OpenAIFeedbackService {
         );
         
         if (response.statusCode == 200) {
+          ConsoleLogger.success('Réponse reçue de l\'API OpenAI');
           final data = jsonDecode(response.body);
-          return data['choices'][0]['message']['content'];
+          final feedback = data['choices'][0]['message']['content'];
+          ConsoleLogger.info('Feedback généré: "$feedback"');
+          return feedback;
         } else {
-          throw Exception('Failed to generate feedback: ${response.statusCode}, ${response.body}');
+          ConsoleLogger.error('Erreur de l\'API OpenAI: ${response.statusCode}, ${response.body}');
+          throw Exception('Erreur de l\'API OpenAI: ${response.statusCode}');
         }
+      } catch (e) {
+        ConsoleLogger.error('Erreur lors de l\'appel à l\'API OpenAI: $e');
+        rethrow;
       }
+    } catch (e) {
+      ConsoleLogger.error('Erreur lors de la génération du feedback: $e');
       
-      // En mode démo, retourner un feedback simulé
-      return _generateSimulatedFeedback(
+      // En cas d'erreur, utiliser le mode fallback
+      return _generateFallbackFeedback(
         exerciseType: exerciseType,
         metrics: metrics,
       );
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error generating feedback: $e');
-      }
-      return 'Excellent travail ! Continuez à pratiquer régulièrement pour améliorer votre articulation.';
     }
   }
   
@@ -107,11 +131,13 @@ Limite ta réponse à 3-4 phrases maximum.
 ''';
   }
   
-  /// Génère un feedback simulé basé sur le type d'exercice et les métriques
-  String _generateSimulatedFeedback({
+  /// Génère un feedback de secours basé sur le type d'exercice et les métriques
+  String _generateFallbackFeedback({
     required String exerciseType,
     required Map<String, dynamic> metrics,
   }) {
+    ConsoleLogger.warning('Utilisation du mode fallback pour la génération de feedback');
+    
     // Déterminer les points forts et les points faibles
     final List<String> strengths = [];
     final List<String> weaknesses = [];
@@ -165,6 +191,7 @@ Limite ta réponse à 3-4 phrases maximum.
       feedback = 'Excellent travail ! Votre prononciation est claire et précise. Continuez à pratiquer régulièrement pour améliorer encore votre aisance vocale.';
     }
     
+    ConsoleLogger.info('Feedback fallback généré: "$feedback"');
     return feedback;
   }
 }

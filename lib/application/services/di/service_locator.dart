@@ -12,7 +12,8 @@ import '../../../domain/usecases/auth/sign_out_use_case.dart';
 import '../../../domain/usecases/exercises/get_exercise_categories_use_case.dart';
 import '../../../domain/usecases/sessions/start_exercise_session_use_case.dart';
 import '../../../infrastructure/repositories/supabase_auth_repository.dart';
-import '../../../infrastructure/repositories/flutter_sound_audio_repository.dart';
+import '../../../infrastructure/repositories/flutter_sound_repository.dart'; // Remplacé flutter_audio_capture
+// import '../../../infrastructure/repositories/flutter_audio_capture_repository.dart'; // Supprimé
 import '../../../infrastructure/repositories/azure_speech_recognition_repository.dart';
 import '../../../infrastructure/repositories/supabase_exercise_repository_impl.dart';
 import '../../../infrastructure/repositories/supabase_session_repository_impl.dart';
@@ -30,12 +31,12 @@ Future<void> initializeServiceLocator() async {
   serviceLocator.registerLazySingleton<AuthRepository>(
     () => SupabaseAuthRepository(serviceLocator<SupabaseClient>())
   );
-  
-  // Audio repository
-  final audioRepository = FlutterSoundAudioRepository();
-  await audioRepository.initialize();
+
+  // Audio repository (Nouvelle implémentation avec flutter_sound)
+  final audioRepository = FlutterSoundRepository();
+  // Pas d'initialisation explicite ici, gérée dans le repo au besoin (ex: via _requestPermissions)
   serviceLocator.registerLazySingleton<AudioRepository>(() => audioRepository);
-  
+
   // Speech Recognition Repository
   final speechRepository = AzureSpeechRecognitionRepository();
   serviceLocator.registerLazySingleton<SpeechRecognitionRepository>(() => speechRepository);

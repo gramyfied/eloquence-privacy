@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'routes.dart';
-import 'theme.dart';
 import '../domain/repositories/auth_repository.dart';
 import '../domain/repositories/exercise_repository.dart';
 import '../services/service_locator.dart';
@@ -13,6 +12,7 @@ import '../presentation/screens/exercise_session/exercise_result_screen.dart';
 import '../presentation/screens/statistics/statistics_screen.dart';
 import '../presentation/screens/profile/profile_screen.dart';
 import '../presentation/screens/history/session_history_screen.dart';
+import '../presentation/screens/debug/debug_screen.dart';
 import '../presentation/widgets/exercise_selection_modal.dart';
 import '../domain/entities/user.dart';
 import '../domain/entities/exercise.dart';
@@ -47,6 +47,9 @@ GoRouter createRouter(AuthRepository authRepository) {
             },
             onProfilePressed: () {
               context.push(AppRoutes.profile, extra: user);
+            },
+            onDebugPressed: () {
+              context.push(AppRoutes.debug);
             },
           );
         },
@@ -200,6 +203,14 @@ GoRouter createRouter(AuthRepository authRepository) {
               context.pop();
             },
           );
+        },
+      ),
+      
+      // Debug Screen
+      GoRoute(
+        path: AppRoutes.debug,
+        builder: (context, state) {
+          return const DebugScreen();
         },
       ),
     ],

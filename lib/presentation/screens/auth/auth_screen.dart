@@ -252,11 +252,11 @@ class _AuthScreenState extends State<AuthScreen> {
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _handleAuth,
                       style: ButtonStyle(
-                        backgroundColor: MaterialStateProperty.all(AppTheme.primaryColor),
-                        textStyle: MaterialStateProperty.all(
+                        backgroundColor: WidgetStateProperty.all(AppTheme.primaryColor),
+                        textStyle: WidgetStateProperty.all(
                           const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
-                        shape: MaterialStateProperty.all(
+                        shape: WidgetStateProperty.all(
                           RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),

@@ -19,13 +19,13 @@ class CelebrationEffect extends StatefulWidget {
   final VoidCallback onComplete;
   
   const CelebrationEffect({
-    Key? key,
+    super.key,
     this.intensity = 0.7,
     this.primaryColor = Colors.blue,
     this.secondaryColor = Colors.green,
     this.durationSeconds = 3,
     required this.onComplete,
-  }) : super(key: key);
+  });
   
   @override
   _CelebrationEffectState createState() => _CelebrationEffectState();

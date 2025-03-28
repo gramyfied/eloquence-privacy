@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../domain/entities/user.dart';
 
 class SupabaseProfileRepository {
   final SupabaseClient _supabaseClient;

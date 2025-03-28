@@ -355,30 +355,42 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                         topTitles: const AxisTitles(
                           sideTitles: SideTitles(showTitles: false),
                         ),
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 30,
-                            interval: 1,
-                            getTitlesWidget: (value, meta) {
-                              // Utiliser les dates réelles des sessions
-                              final labels = _getChartLabels();
-                              if (value.toInt() >= 0 && value.toInt() < labels.length) {
-                                return Padding(
-                                  padding: const EdgeInsets.only(top: 8.0),
-                                  child: Text(
-                                    labels[value.toInt()],
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.6),
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                );
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 30,
+                          // Ajuster l'intervalle en fonction du nombre de points
+                          interval: _scoreEvolution.length > 15 ? 3 : (_scoreEvolution.length > 10 ? 2 : 1),
+                          getTitlesWidget: (value, meta) {
+                            // Utiliser les dates réelles des sessions
+                            final labels = _getChartLabels();
+                            final index = value.toInt();
+                            
+                            // N'afficher que certaines étiquettes pour éviter le chevauchement
+                            if (index >= 0 && index < labels.length) {
+                              // Logique améliorée pour éviter le chevauchement
+                              if (_scoreEvolution.length > 15 && index % 3 != 0) {
+                                return const SizedBox();
+                              } else if (_scoreEvolution.length > 10 && index % 2 != 0) {
+                                return const SizedBox();
                               }
-                              return const SizedBox();
-                            },
-                          ),
+                              
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Text(
+                                  labels[index],
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.6),
+                                    fontSize: 9, // Réduire davantage la taille de la police
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              );
+                            }
+                            return const SizedBox();
+                          },
                         ),
+                      ),
                         leftTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
@@ -398,7 +410,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                       ),
                       borderData: FlBorderData(show: false),
                       minX: 0,
-                      maxX: _scoreEvolution.length > 0 ? _scoreEvolution.length - 1.0 : 5,
+                      maxX: _scoreEvolution.isNotEmpty ? _scoreEvolution.length - 1.0 : 5,
                       minY: 0,
                       maxY: 100,
                       lineBarsData: [

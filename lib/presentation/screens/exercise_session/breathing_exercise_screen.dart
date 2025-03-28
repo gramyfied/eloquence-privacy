@@ -7,7 +7,6 @@ import '../../widgets/visual_effects/breathing_animation.dart';
 import '../../widgets/visual_effects/info_modal.dart';
 import '../../widgets/visual_effects/celebration_effect.dart';
 import '../../widgets/microphone_button.dart';
-import '../../widgets/bullet_point_list.dart' as bullet;
 
 /// Écran d'exercice de respiration diaphragmatique
 class BreathingExerciseScreen extends StatefulWidget {
@@ -21,11 +20,11 @@ class BreathingExerciseScreen extends StatefulWidget {
   final VoidCallback onExitPressed;
   
   const BreathingExerciseScreen({
-    Key? key,
+    super.key,
     required this.exercise,
     required this.onExerciseCompleted,
     required this.onExitPressed,
-  }) : super(key: key);
+  });
   
   @override
   _BreathingExerciseScreenState createState() => _BreathingExerciseScreenState();
@@ -37,8 +36,8 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen> with 
   bool _isExerciseCompleted = false;
   bool _showCelebration = false;
   int _currentCycle = 0;
-  int _totalCycles = 5;
-  double _breathingScore = 0.0;
+  final int _totalCycles = 5;
+  final double _breathingScore = 0.0;
   
   late AnimationController _animationController;
   final StreamController<double> _audioLevelStreamController = StreamController<double>.broadcast();
