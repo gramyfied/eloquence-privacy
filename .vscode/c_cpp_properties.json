@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "Android",
+            "includePath": [
+                "${workspaceFolder}/**",
+                // Ajouter le chemin vers les en-têtes de whisper.cpp
+                "${workspaceFolder}/native/whisper.cpp/include",
+                // Chemin typique vers les en-têtes NDK gérés par Flutter/Android Studio
+                // Vous devrez peut-être ajuster ce chemin en fonction de votre installation
+                "${env:HOME}/Library/Android/sdk/ndk/**"
+            ],
+            "defines": [],
+            "compilerPath": "", // Peut être laissé vide ou pointé vers un compilateur si nécessaire
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "android-clang-arm64", // Ajuster si vous ciblez d'autres architectures
+            "compilerArgs": []
+        }
+    ],
+    "version": 4
+}

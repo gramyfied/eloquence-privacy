@@ -1,12 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:async'; // Ajouté pour StreamController
+// Gardé pour evaluatePronunciation
+import 'dart:io'; // Gardé pour recognizeFromFile
 import 'dart:math'; // Importé pour 'min' dans _levenshteinDistance
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart'; // Ajouté pour Platform Channels
+import 'package:http/http.dart' as http; // Gardé pour recognizeFromFile et evaluatePronunciation
+// permission_handler sera probablement utilisé dans le code natif ou avant l'appel Dart
 import '../../core/utils/console_logger.dart';
 import '../../core/utils/file_logger.dart';
-
-/// Résultat de l'évaluation de la prononciation
 class PronunciationEvaluationResult {
   final double pronunciationScore;
   final double syllableClarity;
@@ -60,22 +62,123 @@ class SpeechRecognitionResult {
 }
 
 
-/// Service pour la reconnaissance vocale et l'évaluation de la prononciation via Azure Speech
+/// Service pour la reconnaissance vocale et l'évaluation de la prononciation via Azure Speech (utilisant Platform Channels)
 class AzureSpeechService {
   final String subscriptionKey;
   final String region;
   final String language;
 
-  // Cache pour les résultats de reconnaissance
+  // Définir les canaux
+  static const MethodChannel _methodChannel = MethodChannel('com.eloquence.app/azure_speech');
+  static const EventChannel _eventChannel = EventChannel('com.eloquence.app/azure_speech_events');
+
+  // Stream pour les résultats en temps réel
+  late final Stream<SpeechRecognitionResult> recognitionResultStream;
+
+  // Cache pour les résultats de reconnaissance (peut toujours être utile pour recognizeFromFile)
   final Map<String, SpeechRecognitionResult> _recognitionCache = {};
 
   AzureSpeechService({
     required this.subscriptionKey,
     required this.region,
     this.language = 'fr-FR',
-  });
+  }) {
+    // Initialiser le stream d'événements (adapté pour les Strings)
+    recognitionResultStream = _eventChannel.receiveBroadcastStream().map((dynamic event) {
+      // Mapper les événements natifs (maintenant Map<String, String?>) vers SpeechRecognitionResult
+      if (event is Map) {
+        final type = event['type'] as String?;
+        final text = event['text'] as String? ?? '';
+        final status = event['status'] as String?;
+        final error = event['error'] as String?;
+        // La confiance est maintenant une String, on la parse
+        final confidence = double.tryParse(event['confidence'] as String? ?? '0.0') ?? 0.0;
 
-  /// Transcrit un fichier audio en texte
+        if (type == 'error' && error != null) {
+          ConsoleLogger.error('[Channel Event] Erreur reçue: $error');
+          return SpeechRecognitionResult(text: '', confidence: 0.0, error: error);
+        } else if (type == 'final') {
+          ConsoleLogger.success('[Channel Event] Résultat final reçu: "$text"');
+          return SpeechRecognitionResult(text: text, confidence: confidence);
+        } else if (type == 'partial') {
+           ConsoleLogger.info('[Channel Event] Résultat partiel reçu: "$text"');
+           // Ignorer les partiels pour l'instant
+           return null;
+        } else if (type == 'status') {
+           ConsoleLogger.info('[Channel Event] Statut reçu: $status');
+           // Gérer les statuts si nécessaire (ex: 'listening', 'stopped', 'permission_granted')
+           // Pour l'instant, on ne les propage pas comme SpeechRecognitionResult
+           return null;
+        }
+      }
+      ConsoleLogger.warning('[Channel Event] Événement inconnu ou non géré reçu: $event');
+      return null; // Ignorer les événements non gérés ou partiels
+    }).where((result) => result != null).cast<SpeechRecognitionResult>(); // Filtrer les nulls
+
+    // Appeler la méthode d'initialisation native
+    _initializeNative();
+  }
+
+  /// Initialise le côté natif avec les clés et la région
+  Future<void> _initializeNative() async {
+    try {
+      ConsoleLogger.info('[Platform Channel] Appel de initializeNative...');
+      await _methodChannel.invokeMethod('initialize', {
+        'subscriptionKey': subscriptionKey,
+        'region': region,
+        'language': language,
+      });
+      ConsoleLogger.success('[Platform Channel] Initialisation native réussie.');
+    } on PlatformException catch (e) {
+      ConsoleLogger.error('[Platform Channel] Erreur lors de l\'initialisation native: ${e.message}');
+      // Gérer l'erreur d'initialisation
+    }
+  }
+
+  /// Démarre la reconnaissance vocale en temps réel (streaming)
+  Future<void> startStreamingRecognition() async {
+    try {
+      ConsoleLogger.info('[Platform Channel] Appel de startRecognition...');
+      // Les permissions micro devraient être gérées côté natif avant de démarrer
+      await _methodChannel.invokeMethod('startRecognition');
+      ConsoleLogger.success('[Platform Channel] Reconnaissance streaming démarrée.');
+    } on PlatformException catch (e) {
+      ConsoleLogger.error('[Platform Channel] Erreur lors du démarrage de la reconnaissance: ${e.message}');
+      // Gérer l'erreur (ex: permission refusée côté natif)
+      // On pourrait propager l'erreur via le stream d'événements
+    }
+  }
+
+  /// Arrête la reconnaissance vocale en temps réel
+  Future<void> stopStreamingRecognition() async {
+    try {
+      ConsoleLogger.info('[Platform Channel] Appel de stopRecognition...');
+      await _methodChannel.invokeMethod('stopRecognition');
+      ConsoleLogger.success('[Platform Channel] Reconnaissance streaming arrêtée.');
+    } on PlatformException catch (e) {
+      ConsoleLogger.error('[Platform Channel] Erreur lors de l\'arrêt de la reconnaissance: ${e.message}');
+    }
+  }
+
+  /// Synthétise du texte en audio (TTS)
+  Future<void> synthesizeText(String text) async {
+     try {
+       ConsoleLogger.info('[Platform Channel] Appel de synthesizeText...');
+       await _methodChannel.invokeMethod('synthesizeText', {'text': text});
+       ConsoleLogger.success('[Platform Channel] Synthèse vocale démarrée pour: "$text"');
+       // Le résultat (lecture audio) sera géré côté natif
+     } on PlatformException catch (e) {
+       ConsoleLogger.error('[Platform Channel] Erreur lors de la synthèse vocale: ${e.message}');
+     }
+  }
+
+  // La méthode dispose n'est plus nécessaire pour les streams/handlers Dart,
+  // mais on pourrait ajouter une méthode pour libérer les ressources natives si besoin.
+  // Future<void> disposeNative() async { ... }
+
+
+  /// Transcrit un fichier audio en texte (Ancienne méthode REST - à conserver/adapter/supprimer ?)
+  /// NOTE: Cette méthode utilise l'API REST et non le package SDK temps réel.
   Future<SpeechRecognitionResult> recognizeFromFile(String filePath) async {
     ConsoleLogger.azureSpeech('Reconnaissance vocale pour le fichier: $filePath');
     await FileLogger.azureSpeech('Reconnaissance vocale pour le fichier: $filePath');
@@ -126,6 +229,7 @@ class AzureSpeechService {
 
     // --- Traitement pour les chemins de fichiers réels sur plateformes natives ---
     Uint8List? bytes;
+    String contentType; // Déclarer contentType ici pour qu'il soit accessible plus tard
     try {
       ConsoleLogger.info('Lecture du fichier audio réel: $filePath');
       final file = File(filePath);
@@ -139,24 +243,30 @@ class AzureSpeechService {
         throw FileSystemException('Le fichier audio est vide', filePath);
       }
 
-      // Vérifier l'extension (WAV est requis par l'API REST)
-      final fileExtension = filePath.split('.').last.toLowerCase();
-      if (fileExtension != 'wav') {
-         final errorMsg = 'Format de fichier non supporté par l\'API REST Azure: .$fileExtension (WAV requis)';
-         ConsoleLogger.error(errorMsg);
-         await FileLogger.error(errorMsg);
-         // Retourner directement une erreur, car l'API REST échouera
-         final result = SpeechRecognitionResult(
-           text: fallbackText, // Ou une chaîne vide ?
-           confidence: 0.0,
-           error: errorMsg,
-         );
-         _recognitionCache[fileName] = result; // Mettre en cache le résultat d'erreur
-         return result;
-      }
-
+      // Lire les bytes du fichier
       bytes = await file.readAsBytes();
       ConsoleLogger.info('Fichier lu avec succès (${(bytes.length / 1024).toStringAsFixed(2)} KB)');
+
+      // Déterminer le Content-Type en fonction de l'extension
+      final fileExtension = filePath.split('.').last.toLowerCase();
+      // String contentType; // Déclaration déplacée plus haut
+      if (fileExtension == 'wav') {
+        contentType = 'audio/wav';
+      } else if (fileExtension == 'aac') {
+        contentType = 'audio/aac';
+      } else {
+        // Gérer d'autres formats ou retourner une erreur si nécessaire
+        final errorMsg = 'Format de fichier non supporté pour l\'envoi à Azure: .$fileExtension';
+        ConsoleLogger.error(errorMsg);
+        await FileLogger.error(errorMsg);
+        final result = SpeechRecognitionResult(
+          text: fallbackText,
+          confidence: 0.0,
+          error: errorMsg,
+        );
+        _recognitionCache[fileName] = result;
+        return result;
+      }
 
     } catch (e) {
       ConsoleLogger.error('Erreur lors de la lecture du fichier $filePath: $e');
@@ -196,7 +306,7 @@ class AzureSpeechService {
         Uri.parse(url),
         headers: {
           'Ocp-Apim-Subscription-Key': subscriptionKey,
-          'Content-Type': 'audio/wav', // Assurez-vous que le fichier est bien WAV
+          'Content-Type': contentType, // Utiliser le Content-Type dynamique
           'Accept': 'application/json',
         },
         body: bytes, // Utilisation des bytes lus

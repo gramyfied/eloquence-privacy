@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Ajouté
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'router.dart';
+import 'router.dart'; // Contient createRouter
 import 'theme.dart';
 import '../domain/repositories/auth_repository.dart';
 import '../domain/repositories/audio_repository.dart';
@@ -31,47 +32,43 @@ class _AppState extends State<App> {
   }
 
   Future<void> _initializeApp() async {
-    try {
-      // Initialiser Supabase
-      await Supabase.initialize(
-        url: 'https://adyovmtayhxxdizzvspa.supabase.co',
-        anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkeW92bXRheWh4eGRpenp2c3BhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgwOTQwOTksImV4cCI6MjA1MzY3MDA5OX0.YOt18gNkmPmU_ETmvvaNonuh8VyzsvdPXha3E7zTrjA',
-      );
+    // Note: L'initialisation de Supabase et setupServiceLocator sont maintenant
+    // gérées dans main.dart pour éviter les doubles appels et simplifier.
+    // On considère que l'initialisation est faite avant que App ne soit monté.
+    // Si une erreur survient dans main.dart, l'app ne démarrera pas ou affichera
+    // une erreur avant d'atteindre ce point.
+    // On peut donc simplifier cette méthode ici.
 
-      // Configurer le service locator
-      setupServiceLocator();
+    // Simplement marquer comme initialisé, car les vraies initialisations
+    // sont faites dans main.dart avant runApp().
+    setState(() {
+      _initialized = true;
+    });
 
-      setState(() {
-        _initialized = true;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
-    }
+    // L'ancienne logique de try/catch pour Supabase est retirée.
+    // Si une erreur d'init survient dans main(), elle sera loggée là-bas.
   }
 
   @override
   Widget build(BuildContext context) {
-    // Afficher un écran de chargement ou d'erreur si l'initialisation n'est pas terminée
+    // Afficher un écran de chargement simple (normalement très bref car init est dans main)
     if (!_initialized) {
       return MaterialApp(
         title: 'Eloquence',
         theme: AppTheme.theme,
-        home: Scaffold(
+        home: const Scaffold(
           body: Center(
-            child: _error != null
-                ? Text('Erreur d\'initialisation: $_error')
-                : const CircularProgressIndicator(),
+            child: CircularProgressIndicator(),
           ),
         ),
       );
     }
 
     // Récupérer les repositories depuis le service locator
+    // Note: Ces appels supposent que setupServiceLocator a réussi dans main.dart
     final authRepository = serviceLocator<AuthRepository>();
-    final audioRepository = serviceLocator<AudioRepository>(); // Modifié pour utiliser le locator
-    final speechRepository = AzureSpeechRecognitionRepository(); // Supposons que celui-ci est toujours valide
+    final audioRepository = serviceLocator<AudioRepository>();
+    final speechRepository = AzureSpeechRecognitionRepository(); // TODO: Remplacer par locator si nécessaire
     final profileRepository = serviceLocator<SupabaseProfileRepository>();
     final statisticsRepository = serviceLocator<SupabaseStatisticsRepository>();
     final sessionRepository = serviceLocator<SupabaseSessionRepository>();
@@ -100,6 +97,7 @@ class _AppState extends State<App> {
       child: MaterialApp.router(
         title: 'Eloquence',
         theme: AppTheme.theme,
+        // Correction: Utiliser la fonction createRouter importée
         routerConfig: createRouter(authRepository),
       ),
     );

@@ -1,133 +1,142 @@
-// Ajouté car utilisé
+import 'dart:async';
 import 'package:flutter/foundation.dart';
-// import 'package:flutter_sound/flutter_sound.dart'; // Retiré
+import 'package:flutter_tts/flutter_tts.dart'; // Ajouté
 import '../../core/utils/console_logger.dart';
-import '../azure/azure_tts_service.dart';
-import 'audio_player_manager.dart';
+// import '../azure/azure_tts_service.dart'; // Retiré
+// import 'audio_player_manager.dart'; // Retiré
 
-/// Fournisseur d'exemples audio pour les exercices
+/// Fournisseur d'exemples audio pour les exercices utilisant flutter_tts
 class ExampleAudioProvider {
-  final AzureTTSService _ttsService;
-  final AudioPlayerManager _audioPlayer;
-  final Map<String, Uint8List> _cache = {};
-  
-  // Indique si nous sommes en mode simulation
-  bool _simulationMode = false;
-  
+  final FlutterTts _flutterTts;
+  bool _isPlaying = false;
+  // StreamController pour l'état de lecture (si nécessaire ailleurs)
+  final StreamController<bool> _isPlayingController = StreamController<bool>.broadcast();
+
   ExampleAudioProvider({
-    required AzureTTSService ttsService,
-    required AudioPlayerManager audioPlayer,
-  }) : _ttsService = ttsService,
-       _audioPlayer = audioPlayer;
-  
+    required FlutterTts flutterTts,
+  }) : _flutterTts = flutterTts {
+    _setupTtsHandlers();
+    _setDefaultLanguage();
+  }
+
+  /// Configure les handlers pour suivre l'état de flutter_tts
+  void _setupTtsHandlers() {
+    _flutterTts.setStartHandler(() {
+      ConsoleLogger.info('[flutter_tts] Lecture démarrée');
+      _isPlaying = true;
+      _isPlayingController.add(true);
+    });
+
+    _flutterTts.setCompletionHandler(() {
+      ConsoleLogger.info('[flutter_tts] Lecture terminée');
+      _isPlaying = false;
+      _isPlayingController.add(false);
+    });
+
+    _flutterTts.setErrorHandler((msg) {
+      ConsoleLogger.error('[flutter_tts] Erreur: $msg');
+      _isPlaying = false;
+       _isPlayingController.add(false);
+     });
+
+     _flutterTts.setCancelHandler(() { // Correction: Signature sans argument
+       ConsoleLogger.info('[flutter_tts] Lecture annulée');
+      _isPlaying = false;
+      _isPlayingController.add(false);
+    });
+
+    // Optionnel: Gérer pause/continue si nécessaire
+    // _flutterTts.setPauseHandler(() { ... });
+    // _flutterTts.setContinueHandler(() { ... });
+  }
+
+  /// Définit la langue par défaut (français)
+  Future<void> _setDefaultLanguage() async {
+    try {
+      // Essayer de définir la langue française
+      // Note: Vérifier la disponibilité réelle peut être nécessaire
+      await _flutterTts.setLanguage("fr-FR");
+      ConsoleLogger.info('[flutter_tts] Langue définie sur fr-FR');
+    } catch (e) {
+      ConsoleLogger.error('[flutter_tts] Erreur lors de la définition de la langue: $e');
+      // Essayer une langue anglaise comme fallback si fr-FR échoue
+      try {
+        await _flutterTts.setLanguage("en-US");
+        ConsoleLogger.warning('[flutter_tts] Langue fr-FR non trouvée, fallback sur en-US');
+      } catch (e2) {
+         ConsoleLogger.error('[flutter_tts] Erreur lors de la définition de la langue fallback: $e2');
+      }
+    }
+    // Optionnel: Ajuster la vitesse, le pitch, etc.
+    // await _flutterTts.setSpeechRate(0.5); // Ralentir un peu par défaut ?
+  }
+
   /// Joue un exemple audio pour le mot spécifié
   Future<void> playExampleFor(String word) async {
     try {
-      ConsoleLogger.info('Lecture de l\'exemple audio pour: "$word"');
-      
-      // Arrêter toute lecture en cours
-      await _audioPlayer.stop();
-      
-      Uint8List audioData;
-      
-      // Vérifier si l'audio est déjà en cache
-      if (_cache.containsKey(word)) {
-        ConsoleLogger.info('Utilisation de l\'audio en cache pour: "$word"');
-        audioData = _cache[word]!;
+      ConsoleLogger.info('[flutter_tts] Demande de lecture pour: "$word"');
+
+      // Arrêter toute lecture en cours avant de démarrer une nouvelle
+      if (_isPlaying) {
+        await stop();
+        // Petite pause pour s'assurer que l'arrêt est effectif
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+
+      // Lancer la lecture
+      var result = await _flutterTts.speak(word);
+      if (result == 1) {
+        // L'état _isPlaying sera mis à jour par le setStartHandler
+        ConsoleLogger.success('[flutter_tts] Commande speak envoyée avec succès pour: "$word"');
       } else {
-        // Générer l'audio avec Azure TTS
-        ConsoleLogger.info('Génération de l\'audio pour: "$word"');
-        audioData = await _ttsService.generateSpeech(word);
-        
-        // Mettre en cache pour utilisation future
-        if (audioData.isNotEmpty) {
-          ConsoleLogger.info('Mise en cache de l\'audio pour: "$word"');
-          _cache[word] = audioData;
-        } else {
-          // Si l'audio est vide, passer en mode simulation
-          ConsoleLogger.warning('Audio vide reçu, passage en mode simulation');
-          _simulationMode = true;
-        }
-      }
-      
-      // En mode simulation, utiliser un délai
-      if (_simulationMode || audioData.isEmpty) {
-        ConsoleLogger.info('Mode simulation activé pour la lecture audio');
-        await demoPlayExampleFor(word);
-        return;
-      }
-      
-      // Lire l'audio
-      ConsoleLogger.info('Lecture de l\'audio pour: "$word"');
-      await _audioPlayer.playFromBuffer(audioData);
-      ConsoleLogger.success('Exemple audio lancé avec succès');
-      
-      // Attendre la fin de la lecture (simulée pour le web)
-      if (kIsWeb) {
-        ConsoleLogger.info('Attente de la fin de la lecture (3 secondes)');
-        await Future.delayed(const Duration(seconds: 3));
-        ConsoleLogger.info('Fin de la lecture de l\'exemple audio');
+         ConsoleLogger.error('[flutter_tts] Échec de l\'envoi de la commande speak pour: "$word"');
+         _isPlaying = false; // Assurer que l'état est correct
+         _isPlayingController.add(false);
       }
     } catch (e) {
-      ConsoleLogger.error('Erreur lors de la lecture de l\'exemple: $e');
-      
-      // En cas d'erreur, passer en mode simulation
-      _simulationMode = true;
-      await demoPlayExampleFor(word);
+      ConsoleLogger.error('[flutter_tts] Erreur lors de la lecture de l\'exemple: $e');
+       _isPlaying = false; // Assurer que l'état est correct
+       _isPlayingController.add(false);
     }
   }
-  
+
   /// Arrête la lecture en cours
   Future<void> stop() async {
     try {
-      ConsoleLogger.info('Arrêt de la lecture audio');
-      await _audioPlayer.stop();
-      ConsoleLogger.success('Lecture audio arrêtée');
+      ConsoleLogger.info('[flutter_tts] Demande d\'arrêt de la lecture');
+      var result = await _flutterTts.stop();
+       if (result == 1) {
+         // L'état _isPlaying sera mis à jour par setCompletionHandler ou setCancelHandler
+         ConsoleLogger.success('[flutter_tts] Commande stop envoyée avec succès');
+       } else {
+         ConsoleLogger.error('[flutter_tts] Échec de l\'envoi de la commande stop');
+       }
     } catch (e) {
-      ConsoleLogger.error('Erreur lors de l\'arrêt de la lecture: $e');
+      ConsoleLogger.error('[flutter_tts] Erreur lors de l\'arrêt de la lecture: $e');
+       _isPlaying = false; // Assurer que l'état est correct en cas d'erreur
+       _isPlayingController.add(false);
     }
   }
-  
-  /// Vérifie si une lecture est en cours
-  bool get isPlaying => _audioPlayer.isPlaying;
 
-  // /// Flux d'état du lecteur (Retiré car onProgress n'existe plus sur AudioPlayerManager)
-  // Stream<PlaybackDisposition>? get onProgress => _audioPlayer.onProgress; 
-  // TODO: Si nécessaire, exposer les streams de just_audio (position, duration, state) depuis AudioPlayerManager
+  /// Vérifie si une lecture est en cours (basé sur l'état interne)
+  bool get isPlaying => _isPlaying;
 
-  /// Libère les ressources
+  /// Stream indiquant si une lecture est en cours
+  Stream<bool> get isPlayingStream => _isPlayingController.stream;
+
+
+  /// Libère les ressources (ferme le stream controller)
   Future<void> dispose() async {
     try {
-      ConsoleLogger.info('Libération des ressources audio');
-      await _audioPlayer.dispose();
-      _cache.clear();
-      ConsoleLogger.success('Ressources audio libérées');
+      ConsoleLogger.info('[flutter_tts] Libération des ressources ExampleAudioProvider');
+      await _flutterTts.stop(); // Assurer l'arrêt
+      await _isPlayingController.close();
+      ConsoleLogger.success('[flutter_tts] Ressources ExampleAudioProvider libérées');
     } catch (e) {
-      ConsoleLogger.error('Erreur lors de la libération des ressources audio: $e');
+      ConsoleLogger.error('[flutter_tts] Erreur lors de la libération des ressources: $e');
     }
   }
-  
-  /// Mode démo : simule la lecture d'un exemple audio
-  /// Retourne une Future qui se résout après un délai
-  Future<void> demoPlayExampleFor(String word) async {
-    ConsoleLogger.info('Simulation de la lecture audio pour: "$word"');
-    
-    // Simuler un délai de lecture
-    await Future.delayed(const Duration(seconds: 2));
-    
-    ConsoleLogger.success('Simulation de lecture audio terminée');
-  }
-  
-  /// Vide le cache audio
-  void clearCache() {
-    ConsoleLogger.info('Vidage du cache audio');
-    _cache.clear();
-    ConsoleLogger.success('Cache audio vidé');
-  }
-  
-  /// Active ou désactive le mode simulation
-  void setSimulationMode(bool enabled) {
-    _simulationMode = enabled;
-    ConsoleLogger.info('Mode simulation ${enabled ? 'activé' : 'désactivé'}');
-  }
+
+  // Les méthodes demoPlayExampleFor, clearCache, setSimulationMode sont retirées car
+  // la logique de cache et de simulation n'est plus gérée ici.
 }

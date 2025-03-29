@@ -1,0 +1,71 @@
+{
+  "buildFiles": [
+    "/Users/afrobotmac/eloquence-privacy/android/app/CMakeLists.txt",
+    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/CMakeLists.txt",
+    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/ggml/CMakeLists.txt",
+    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/ggml/src/CMakeLists.txt",
+    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/ggml/src/ggml-cpu/CMakeLists.txt",
+    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/src/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/afrobotmac/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/afrobotmac/eloquence-privacy/android/app/.cxx/Debug/55l734vn/x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/afrobotmac/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/afrobotmac/eloquence-privacy/android/app/.cxx/Debug/55l734vn/x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "whisper::@768a1c42b04e9c97f72e": {
+      "artifactName": "whisper",
+      "abi": "x86",
+      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libwhisper.so",
+      "runtimeFiles": [
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libggml.so",
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libggml-cpu.so",
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libggml-base.so"
+      ]
+    },
+    "ggml-cpu::@79714969b18af8befa22": {
+      "artifactName": "ggml-cpu",
+      "abi": "x86",
+      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libggml-cpu.so",
+      "runtimeFiles": [
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libggml-base.so",
+        "/Users/afrobotmac/Library/Android/sdk/ndk/26.3.11579264/toolchains/llvm/prebuilt/darwin-x86_64/lib/clang/17/lib/linux/i386/libomp.so"
+      ]
+    },
+    "ggml-base::@79714969b18af8befa22": {
+      "artifactName": "ggml-base",
+      "abi": "x86",
+      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libggml-base.so",
+      "runtimeFiles": []
+    },
+    "ggml::@79714969b18af8befa22": {
+      "artifactName": "ggml",
+      "abi": "x86",
+      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libggml.so",
+      "runtimeFiles": [
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libggml-cpu.so",
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libggml-base.so"
+      ]
+    },
+    "whisper_wrapper::@6890427a1f51a3e7e1df": {
+      "artifactName": "whisper_wrapper",
+      "abi": "x86",
+      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libwhisper_wrapper.so",
+      "runtimeFiles": [
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libwhisper.so",
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libggml.so",
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libggml-cpu.so",
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86/libggml-base.so"
+      ]
+    }
+  }
+}

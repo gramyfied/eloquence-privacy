@@ -1,62 +1,76 @@
 import 'dart:async';
-// Ajouté pour File
+// Ajouté pour jsonDecode
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-// import 'package:flutter_sound/flutter_sound.dart'; // Retiré
-// import 'package:flutter_sound_platform_interface/flutter_sound_platform_interface.dart'; // Import retiré
-import 'package:path_provider/path_provider.dart';
-// import 'package:permission_handler/permission_handler.dart'; // Retiré (géré dans le repo)
 import '../../../app/theme.dart';
 import '../../../core/utils/console_logger.dart';
 import '../../../domain/entities/exercise.dart';
-import '../../../domain/repositories/audio_repository.dart'; // Ajouté
 import '../../../services/service_locator.dart';
 import '../../../services/audio/example_audio_provider.dart';
+import '../../../services/azure/azure_speech_service.dart';
 import '../../../services/evaluation/articulation_evaluation_service.dart';
 import '../../widgets/visual_effects/info_modal.dart';
-import '../../widgets/visual_effects/audio_waveform_visualizer.dart';
 import '../../widgets/visual_effects/celebration_effect.dart';
 import '../../widgets/microphone_button.dart';
 
-/// Écran d'exercice d'articulation
+// TODO: Déplacer vers un fichier de modèle/entité approprié
+class SyllableEvaluationResult {
+  final String syllable;
+  final double score; // Score global pour la syllabe
+  final String recognizedText;
+  final String? error;
+
+  SyllableEvaluationResult({
+    required this.syllable,
+    required this.score,
+    required this.recognizedText,
+    this.error,
+  });
+}
+
+
+/// Écran d'exercice d'articulation (Mode Syllabe par Syllabe)
 class ArticulationExerciseScreen extends StatefulWidget {
-  /// Exercice à réaliser
   final Exercise exercise;
-  
-  /// Callback appelé lorsque l'exercice est terminé
   final Function(Map<String, dynamic> results) onExerciseCompleted;
-  
-  /// Callback appelé lorsque l'utilisateur souhaite quitter l'exercice
   final VoidCallback onExitPressed;
-  
+
   const ArticulationExerciseScreen({
     super.key,
     required this.exercise,
     required this.onExerciseCompleted,
     required this.onExitPressed,
   });
-  
+
   @override
   _ArticulationExerciseScreenState createState() => _ArticulationExerciseScreenState();
 }
 
 class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen> {
   bool _isRecording = false;
+  bool _isProcessing = false; // Pour indiquer l'évaluation en cours
   bool _isExerciseStarted = false;
   bool _isExerciseCompleted = false;
   bool _isPlayingExample = false;
   bool _showCelebration = false;
+
   int _currentWordIndex = 0;
-  String? _currentRecordingPath;
-  DateTime? _recordingStartTime; // Heure de début de l'enregistrement
+  int _currentSyllableIndex = 0;
+  List<String> _currentSyllables = [];
+  String _lastRecognizedSyllable = '';
+
+  // Stocker les résultats par syllabe
+  final List<SyllableEvaluationResult> _syllableResults = [];
+  double _cumulativeScore = 0; // Pour calculer le score final
 
   // Services
   late ExampleAudioProvider _exampleAudioProvider;
-  late ArticulationEvaluationService _evaluationService;
-  late AudioRepository _audioRepository; // Remplacement de _recorder
-  
-  // TODO: Le stream de niveau audio n'est pas fourni par FlutterAudioCaptureRepository pour l'instant
-  final StreamController<double> _audioLevelStreamController = StreamController<double>.broadcast(); 
+  late ArticulationEvaluationService _evaluationService; // Peut-être moins utile ici
+  late AzureSpeechService _azureSpeechService;
+
+  // Stream pour la reconnaissance (on utilisera le résultat final après arrêt)
+  StreamSubscription? _recognitionResultSubscription;
+
   final List<String> _wordsToArticulate = [
     'Professionnalisme',
     'Développement',
@@ -64,443 +78,306 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
     'Stratégique',
     'Collaboration',
   ];
-  
+
   @override
   void initState() {
     super.initState();
-    
-    // Initialiser les services
-    _initializeServices();
-    
-    // Configurer le stream pour les niveaux audio
-    // TODO: Retirer ou adapter cette simulation car le nouveau repo ne fournit pas de stream
-    // Timer.periodic(const Duration(milliseconds: 100), (timer) {
-    //   if (_isRecording) {
-    //     // Pour l'enregistrement, utiliser un niveau audio simulé mais réaliste
-    //     // Note: flutter_sound ne fournit pas d'API directe pour obtenir le niveau audio en temps réel
-    //     // dans toutes les plateformes, donc nous utilisons une simulation
-    //     final baseLevel = 0.5;
-    //     final variation = 0.3 * (DateTime.now().millisecondsSinceEpoch % 10) / 10;
-    //     final audioLevel = (baseLevel + variation).clamp(0.05, 0.9);
-    //     _audioLevelStreamController.add(audioLevel);
-    //   } else if (_isPlayingExample) {
-    //     // Pour la lecture d'exemple, utiliser un niveau simulé
-        final baseLevel = 0.7;
-        final variation = 0.2 * (DateTime.now().millisecondsSinceEpoch % 10) / 10;
-        // final audioLevel = (baseLevel + variation).clamp(0.05, 0.9);
-        // _audioLevelStreamController.add(audioLevel);
-      // }
-    // });
+    _initializeServicesAndSyllables();
   }
-  
-  /// Initialise les services nécessaires pour l'exercice
-  Future<void> _initializeServices() async {
+
+  /// Initialise les services et les syllabes du premier mot
+  Future<void> _initializeServicesAndSyllables() async {
     try {
-      ConsoleLogger.info('Initialisation des services pour l\'exercice d\'articulation');
-      
-      // Récupérer les services depuis le locator
+      ConsoleLogger.info('Initialisation des services (mode syllabe)');
       _exampleAudioProvider = serviceLocator<ExampleAudioProvider>();
       _evaluationService = serviceLocator<ArticulationEvaluationService>();
-      _audioRepository = serviceLocator<AudioRepository>(); // Récupérer le repo audio
-      
-      ConsoleLogger.info('Services récupérés depuis le locator');
-      
-      // L'initialisation (incluant permissions) est gérée par le repository lui-même
-      // lors du premier appel à startRecording si nécessaire.
-      // Pas besoin d'appeler openRecorder ou de gérer les permissions ici.
-      
-      if (mounted) {
-        setState(() {
-          // Prêt à commencer
-        });
-      }
+      _azureSpeechService = serviceLocator<AzureSpeechService>();
+      ConsoleLogger.info('Services récupérés');
+
+      // S'abonner au stream pour capturer le résultat final après l'arrêt
+      _recognitionResultSubscription = _azureSpeechService.recognitionResultStream.listen(
+        _handleRecognitionResult,
+        onError: _handleRecognitionError,
+      );
+      ConsoleLogger.info('Abonnement au stream de résultats Azure effectué.');
+
+      _updateCurrentSyllables(); // Initialiser les syllabes du premier mot
+
+      if (mounted) setState(() {});
     } catch (e) {
-      ConsoleLogger.error('Erreur lors de l\'initialisation des services: $e');
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur lors de l\'initialisation: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      
-      // Même en cas d'erreur, l'application peut fonctionner en mode simulation
-      ConsoleLogger.info('Passage en mode simulation suite à une erreur d\'initialisation');
+      ConsoleLogger.error('Erreur lors de l\'initialisation: $e');
+      // Gérer l'erreur
     }
   }
-  
+
+  /// Met à jour la liste des syllabes pour le mot courant
+  void _updateCurrentSyllables() {
+    if (_currentWordIndex < _wordsToArticulate.length) {
+      final currentWord = _wordsToArticulate[_currentWordIndex];
+      _currentSyllables = _divideSyllables(currentWord);
+      _currentSyllableIndex = 0;
+      ConsoleLogger.info('Mot actuel: $currentWord, Syllabes: $_currentSyllables');
+    } else {
+      // Fin de tous les mots
+      _completeExercise();
+    }
+  }
+
+  /// Gère le résultat de reconnaissance reçu (après arrêt de l'enregistrement)
+  void _handleRecognitionResult(SpeechRecognitionResult result) {
+    if (result.error != null) {
+      _handleRecognitionError(result);
+      return;
+    }
+
+    // On a reçu le texte reconnu pour la syllabe prononcée
+    ConsoleLogger.info('[ArticulationScreen] Texte reconnu pour la syllabe: "${result.text}"');
+    if (_isProcessing) { // Vérifier si on attendait un résultat
+       _lastRecognizedSyllable = result.text;
+       _evaluateCurrentSyllable(); // Lancer l'évaluation
+    } else {
+       ConsoleLogger.warning('[ArticulationScreen] Résultat reçu alors que _isProcessing est false. Ignoré.');
+    }
+  }
+
+  /// Gère les erreurs du stream de reconnaissance
+  void _handleRecognitionError(dynamic errorData) {
+     String errorMessage = 'Erreur inconnue';
+     if (errorData is SpeechRecognitionResult && errorData.error != null) {
+       errorMessage = errorData.error!;
+     } else if (errorData is Error) {
+       errorMessage = errorData.toString();
+     }
+     ConsoleLogger.error('[ArticulationScreen] Erreur du stream Azure: $errorMessage');
+     if (mounted) {
+       ScaffoldMessenger.of(context).showSnackBar(
+         SnackBar(content: Text('Erreur reconnaissance: $errorMessage'), backgroundColor: Colors.red),
+       );
+       setState(() {
+         _isRecording = false;
+         _isProcessing = false;
+       });
+     }
+  }
+
   @override
   void dispose() {
-    // Libérer les ressources
-    _audioLevelStreamController.close();
-    // _audioRepository.dispose(); // Retiré car non défini dans l'interface AudioRepository
-    // TODO: Ajouter dispose() à AudioRepository et à son implémentation si un nettoyage est nécessaire
+    _recognitionResultSubscription?.cancel();
+    // Pas de dispose nécessaire pour AzureSpeechService dans cette version
     super.dispose();
   }
 
-  /// Joue l'exemple audio pour le mot actuel
+  /// Joue l'exemple audio pour la syllabe actuelle
   Future<void> _playExampleAudio() async {
+    if (_isRecording || _isProcessing || _currentSyllables.isEmpty) return;
     try {
-      final currentWord = _wordsToArticulate[_currentWordIndex];
-      ConsoleLogger.info('Lecture de l\'exemple audio pour le mot: $currentWord');
-      
-      setState(() {
-        _isPlayingExample = true;
-      });
-      
-      // Utiliser le service pour jouer l'exemple audio
-      await _exampleAudioProvider.playExampleFor(currentWord);
-      ConsoleLogger.success('Exemple audio lancé avec succès');
-      
-      // Attendre la fin de la lecture
-      ConsoleLogger.info('Attente de la fin de la lecture (3 secondes)');
-      await Future.delayed(const Duration(seconds: 3));
-      
-      if (mounted) {
-        setState(() {
-          _isPlayingExample = false;
-        });
-        ConsoleLogger.info('Fin de la lecture de l\'exemple audio');
-      }
+      final currentSyllable = _currentSyllables[_currentSyllableIndex];
+      ConsoleLogger.info('Lecture de l\'exemple audio pour la syllabe: $currentSyllable');
+      setState(() { _isPlayingExample = true; });
+
+      await _azureSpeechService.synthesizeText(currentSyllable);
+      ConsoleLogger.success('Demande de synthèse vocale envoyée pour: "$currentSyllable"');
+
+      // Estimation courte pour une syllabe
+      await Future.delayed(const Duration(milliseconds: 1500));
+
+      if (mounted) setState(() { _isPlayingExample = false; });
+      ConsoleLogger.info('Fin (estimée) de la lecture de l\'exemple audio');
     } catch (e) {
-      ConsoleLogger.error('Erreur lors de la lecture de l\'exemple audio: $e');
-      
-      // En cas d'erreur, réinitialiser l'état
-      if (mounted) {
-        setState(() {
-          _isPlayingExample = false;
-        });
-      }
+      ConsoleLogger.error('Erreur lors de la synthèse/lecture de l\'exemple: $e');
+      if (mounted) setState(() { _isPlayingExample = false; });
     }
   }
-  
-  /// Démarre l'enregistrement audio
-  Future<void> _startRecording() async {
-    try {
-      ConsoleLogger.recording('Démarrage de l\'enregistrement audio via AudioRepository');
-      
-      // Pas besoin d'ouvrir l'enregistreur ici, géré par le repo
 
-      String recordingPath;
-      
-      // Désactivation du mode de démonstration pour utiliser les services Azure réels
-      ConsoleLogger.recording('Utilisation des services Azure réels pour l\'enregistrement');
-      
-      try {
-        // Générer un chemin d'enregistrement
-        final tempDir = await getTemporaryDirectory();
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final currentWord = _wordsToArticulate[_currentWordIndex].toLowerCase();
-        recordingPath = '${tempDir.path}/${currentWord}_$timestamp.wav';
-        ConsoleLogger.recording('Chemin d\'enregistrement: $recordingPath');
-      } catch (e) {
-        // En cas d'erreur d'accès au système de fichiers, utiliser un chemin simulé
-        // mais avec un préfixe différent pour indiquer qu'il s'agit d'un fichier réel
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final currentWord = _wordsToArticulate[_currentWordIndex].toLowerCase();
-        recordingPath = 'real_temp/${currentWord}_$timestamp.wav';
-        ConsoleLogger.warning('Erreur d\'accès au système de fichiers, utilisation d\'un chemin simulé: $recordingPath');
-      }
-      _currentRecordingPath = recordingPath;
+  /// Démarre ou arrête l'enregistrement pour la syllabe actuelle
+  Future<void> _toggleRecording() async {
+    if (_isExerciseCompleted || _isPlayingExample || _isProcessing) return;
 
-      // Démarrer l'enregistrement via le repository
-      try {
-        await _audioRepository.startRecording(filePath: _currentRecordingPath!);
-        // Le repo loggue déjà le succès/échec interne de startRecorder
-      } catch (e) {
-        // Le repo devrait déjà avoir loggué l'erreur, mais on loggue ici aussi
-        ConsoleLogger.error('Erreur renvoyée par _audioRepository.startRecording: $e');
-        // En cas d'erreur de démarrage de l'enregistrement, passer en mode simulation ?
-        // Ou afficher l'erreur et ne pas démarrer ? Pour l'instant, on continue la simulation.
-        ConsoleLogger.warning('Erreur de démarrage de l\'enregistrement, passage en mode simulation: $e');
-        // Simuler un enregistrement réussi pour la démonstration
-      }
-      
-      _recordingStartTime = DateTime.now(); // Enregistrer l'heure de début
+    if (!_isRecording) {
+      // Démarrer l'enregistrement
+      ConsoleLogger.recording('Demande de démarrage de la reconnaissance pour la syllabe...');
       setState(() {
         _isRecording = true;
-        if (!_isExerciseStarted) {
-          _isExerciseStarted = true;
-        }
+        _lastRecognizedSyllable = '';
+        if (!_isExerciseStarted) _isExerciseStarted = true;
       });
-
-      // Limiter l'enregistrement à 5 secondes maximum
-      ConsoleLogger.info('Limite d\'enregistrement fixée à 5 secondes');
-      Future.delayed(const Duration(seconds: 5), () {
-        if (_isRecording && mounted) {
-          ConsoleLogger.info('Limite de temps atteinte, arrêt automatique de l\'enregistrement');
-          _stopRecording();
-        }
-      });
-    } catch (e) {
-      ConsoleLogger.error('Erreur lors du démarrage de l\'enregistrement: $e');
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur lors de l\'enregistrement: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      
-      // En cas d'erreur, simuler un enregistrement pour la démonstration
-      setState(() {
-        _isRecording = true;
-        if (!_isExerciseStarted) {
-          _isExerciseStarted = true;
-        }
-      });
-      
-      // Simuler un arrêt automatique après 3 secondes
-      Future.delayed(const Duration(seconds: 3), () {
-        if (_isRecording && mounted) {
-          ConsoleLogger.info('Simulation terminée, arrêt automatique');
-          _stopRecording();
-        }
-      });
-    }
-  }
-  
-  /// Arrête l'enregistrement audio et traite le résultat
-  Future<void> _stopRecording() async {
-    if (!_isRecording) return;
-    
-    try {
-      ConsoleLogger.recording('Arrêt de l\'enregistrement audio');
-      
-      // Arrêter l'enregistrement via le repository
-      String stoppedPath = '';
-      try {
-        stoppedPath = await _audioRepository.stopRecording();
-         // Le repo loggue déjà le succès/échec interne et le chemin
-      } catch (e) {
-         // Le repo devrait déjà avoir loggué l'erreur
-        ConsoleLogger.error('Erreur renvoyée par _audioRepository.stopRecording: $e');
-        // En cas d'erreur lors de l'arrêt de l'enregistrement
-        ConsoleLogger.warning('Erreur lors de l\'arrêt de l\'enregistrement, passage en mode simulation: $e');
-        // Continuer le flux normal malgré l'erreur
-      }
-      
-      setState(() {
-        _isRecording = false;
-      });
-      
-      // Passer au mot suivant ou terminer l'exercice
-      if (_currentWordIndex < _wordsToArticulate.length - 1) {
-        ConsoleLogger.info('Passage au mot suivant (${_currentWordIndex + 1} -> ${_currentWordIndex + 2})');
-        setState(() {
-          _currentWordIndex++;
-        });
-      } else {
-        ConsoleLogger.info('Dernier mot enregistré, traitement et finalisation...');
-        // Ne pas appeler _completeExercise directement ici
-        // Appeler une méthode séparée pour traiter le dernier enregistrement et finaliser
-        _processAndCompleteExercise(); 
-      }
-    } catch (e) {
-      ConsoleLogger.error('Erreur lors de l\'arrêt de l\'enregistrement: $e');
-      
-      setState(() {
-        _isRecording = false;
-      });
-      
-      // Même en cas d'erreur, passer au mot suivant pour permettre à l'utilisateur de continuer
-      if (_currentWordIndex < _wordsToArticulate.length - 1) {
-        ConsoleLogger.info('Passage au mot suivant malgré l\'erreur');
-        setState(() {
-          _currentWordIndex++;
-        });
-      } else {
-        ConsoleLogger.info('Dernier mot enregistré malgré l\'erreur, traitement et finalisation...');
-        // Appeler la méthode de traitement même en cas d'erreur d'arrêt
-         _processAndCompleteExercise();
-      }
-    }
-  }
-
-  /// Traite le dernier enregistrement, évalue et affiche l'écran de fin.
-  Future<void> _processAndCompleteExercise() async {
-     if (_isExerciseCompleted) return; // Éviter les appels multiples
-
-    ConsoleLogger.info('Traitement du dernier enregistrement et finalisation de l\'exercice');
-
-    setState(() {
-      _isExerciseCompleted = true;
-      _showCelebration = true;
-    });
-    
-    Map<String, dynamic> results;
-    
-    // Désactivation du mode de démonstration pour utiliser les services Azure réels
-    ConsoleLogger.info('Utilisation des services Azure réels pour l\'évaluation');
-    
-    try {
-      // Vérifier si nous avons un enregistrement à évaluer
-      if (_currentRecordingPath != null && (_currentRecordingPath!.startsWith('real_temp/') || !_currentRecordingPath!.startsWith('web_temp/') && !_currentRecordingPath!.startsWith('temp/'))) {
-        ConsoleLogger.evaluation('Évaluation de l\'enregistrement final: $_currentRecordingPath');
-        
-        try {
-          // Évaluer l'enregistrement avec le service d'évaluation
-          final evaluationResult = await _evaluationService.evaluateRecording(
-            audioFilePath: _currentRecordingPath!,
-            expectedWord: _wordsToArticulate[_currentWordIndex],
-            exerciseLevel: _difficultyToString(widget.exercise.difficulty),
-          );
-          
-          ConsoleLogger.success('Évaluation terminée avec succès');
-          
-          // Préparer les résultats avec les métriques de l'évaluation
-          results = {
-            'score': evaluationResult.score,
-            'clarté_syllabique': evaluationResult.syllableClarity,
-            'précision_consonnes': evaluationResult.consonantPrecision,
-            'netteté_finales': evaluationResult.endingClarity,
-            'commentaires': evaluationResult.feedback,
-            'mots_complétés': _wordsToArticulate.length,
-          };
-          
-          ConsoleLogger.info('Résultats de l\'évaluation:');
-          ConsoleLogger.info('- Score: ${evaluationResult.score}');
-          ConsoleLogger.info('- Clarté syllabique: ${evaluationResult.syllableClarity}');
-          ConsoleLogger.info('- Précision des consonnes: ${evaluationResult.consonantPrecision}');
-          ConsoleLogger.info('- Netteté des finales: ${evaluationResult.endingClarity}');
-        } catch (e) {
-          // En cas d'erreur d'évaluation, passer en mode simulation
-          ConsoleLogger.warning('Erreur lors de l\'évaluation, passage en mode simulation: $e');
-          rethrow; // Relancer l'erreur pour être capturée par le bloc catch externe
-        }
-      } else {
-        // Fallback si pas d'enregistrement valide (simulé pour la démonstration)
-        ConsoleLogger.warning('Aucun enregistrement valide trouvé, utilisation du mode de démonstration');
-        throw Exception('Aucun enregistrement valide'); // Forcer le passage au mode simulation
-      }
-    } catch (e) {
-      ConsoleLogger.error('Erreur lors de l\'évaluation de l\'enregistrement: $e');
-      
-      // En cas d'erreur, utiliser des résultats simulés
-      final score = 75 + (DateTime.now().millisecondsSinceEpoch % 15);
-      
-      results = {
-        'score': score,
-        'clarté_syllabique': score - 5 + (DateTime.now().millisecondsSinceEpoch % 10),
-        'précision_consonnes': score + 5 - (DateTime.now().millisecondsSinceEpoch % 10),
-        'netteté_finales': score - 10 + (DateTime.now().millisecondsSinceEpoch % 20),
-        'commentaires': 'Excellente articulation ! Votre prononciation des syllabes est claire et précise. Les consonnes sont bien définies et les finales de mots sont nettes. Continuez à travailler sur les enchaînements syllabiques pour une fluidité encore meilleure.',
-        'mots_complétés': _wordsToArticulate.length,
-      };
-      
-      ConsoleLogger.warning('Utilisation des résultats simulés suite à une erreur');
-    }
-    
-    // Afficher l'effet de célébration
-    ConsoleLogger.info('Affichage de l\'effet de célébration');
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return Stack(
-          children: [
-            // Effet de célébration
-            CelebrationEffect(
-              intensity: 0.8,
-              primaryColor: AppTheme.primaryColor,
-              secondaryColor: AppTheme.accentGreen,
-              durationSeconds: 3,
-              onComplete: () {
-                ConsoleLogger.info('Animation de célébration terminée');
-                Navigator.of(context).pop();
-                // Attendre un court instant avant d'appeler le callback
-                ConsoleLogger.info('Préparation du callback de fin d\'exercice');
-                Future.delayed(const Duration(milliseconds: 500), () {
-                  ConsoleLogger.success('Exercice d\'articulation terminé avec succès');
-                  widget.onExerciseCompleted(results);
-                });
-              },
-            ),
-            
-            // Message de félicitations
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppTheme.darkSurface.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.check_circle,
-                      color: AppTheme.accentGreen,
-                      size: 64,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Exercice terminé !',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Score: ${results['score'].toInt()}',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.accentGreen,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      results['commentaires'] as String,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _toggleRecording() {
-    if (_isRecording) {
-      // Vérifier si le délai minimum est écoulé avant d'arrêter
-      if (_recordingStartTime != null &&
-          DateTime.now().difference(_recordingStartTime!) < const Duration(seconds: 1)) {
-        ConsoleLogger.recording('Tentative d\'arrêt trop rapide ignorée (moins de 1s)');
-        // Optionnel: Afficher un message à l'utilisateur
-        // ScaffoldMessenger.of(context).showSnackBar(
-        //   const SnackBar(content: Text("Maintenez pour enregistrer"), duration: Duration(milliseconds: 800)),
-        // );
-        return; // Ignorer l'arrêt
-      }
-      ConsoleLogger.recording('Demande d\'arrêt de l\'enregistrement');
-      _stopRecording();
+      // Utiliser la reconnaissance simple (qui s'arrête au silence)
+      await _azureSpeechService.startStreamingRecognition(); // Ou une méthode simple si dispo
     } else {
-      ConsoleLogger.recording('Demande de démarrage de l\'enregistrement');
-      _startRecording();
+      // Arrêter l'enregistrement et déclencher l'évaluation
+      ConsoleLogger.recording('Demande d\'arrêt de la reconnaissance...');
+      setState(() {
+        _isRecording = false;
+        _isProcessing = true; // Indiquer qu'on attend l'évaluation
+      });
+      await _azureSpeechService.stopStreamingRecognition();
+      // Le résultat sera traité dans _handleRecognitionResult
     }
   }
-  
+
+  /// Évalue la syllabe reconnue
+  Future<void> _evaluateCurrentSyllable() async {
+    if (_currentSyllables.isEmpty) return;
+
+    final expectedSyllable = _currentSyllables[_currentSyllableIndex];
+    ConsoleLogger.evaluation('Début évaluation syllabe: "$_lastRecognizedSyllable" vs "$expectedSyllable"');
+    final stopwatch = Stopwatch()..start(); // Mesurer le temps
+
+    try {
+      ConsoleLogger.evaluation('Appel à _azureSpeechService.evaluatePronunciation...');
+      final evaluationResult = await _azureSpeechService.evaluatePronunciation(
+        spokenText: _lastRecognizedSyllable,
+        expectedText: expectedSyllable,
+      );
+      stopwatch.stop();
+      ConsoleLogger.evaluation('Retour de evaluatePronunciation après ${stopwatch.elapsedMilliseconds}ms');
+      // ); // Parenthèse en trop supprimée
+
+      final syllableResult = SyllableEvaluationResult(
+        syllable: expectedSyllable,
+        score: evaluationResult.pronunciationScore,
+        recognizedText: _lastRecognizedSyllable,
+        error: evaluationResult.error,
+      );
+      _syllableResults.add(syllableResult);
+      _cumulativeScore += evaluationResult.pronunciationScore;
+
+      ConsoleLogger.success('Évaluation syllabe "$expectedSyllable": Score ${evaluationResult.pronunciationScore.toStringAsFixed(1)}');
+      if (evaluationResult.error != null) {
+        ConsoleLogger.warning('- Fallback utilisé: ${evaluationResult.error}');
+      }
+
+      // Passer à la syllabe/mot suivant
+      _moveToNextStep();
+
+    } catch (e) {
+      stopwatch.stop();
+      ConsoleLogger.error('Erreur dans _evaluateCurrentSyllable après ${stopwatch.elapsedMilliseconds}ms: $e');
+      // Ajouter un résultat d'erreur et passer à la suite
+      _syllableResults.add(SyllableEvaluationResult(
+        syllable: expectedSyllable, score: 0, recognizedText: _lastRecognizedSyllable, error: e.toString()
+      ));
+      _moveToNextStep();
+    } finally {
+       if (mounted) {
+         setState(() { _isProcessing = false; });
+       }
+    }
+  }
+
+  /// Passe à la syllabe suivante ou au mot suivant ou termine l'exercice
+  void _moveToNextStep() {
+    if (_currentSyllableIndex < _currentSyllables.length - 1) {
+      // Syllabe suivante
+      setState(() {
+        _currentSyllableIndex++;
+        _lastRecognizedSyllable = '';
+      });
+       ConsoleLogger.info('Passage à la syllabe suivante: ${_currentSyllables[_currentSyllableIndex]}');
+    } else if (_currentWordIndex < _wordsToArticulate.length - 1) {
+      // Mot suivant
+      setState(() {
+        _currentWordIndex++;
+        _updateCurrentSyllables(); // Met à jour _currentSyllables et réinitialise _currentSyllableIndex
+        _lastRecognizedSyllable = '';
+      });
+       ConsoleLogger.info('Passage au mot suivant: ${_wordsToArticulate[_currentWordIndex]}');
+    } else {
+      // Fin de l'exercice
+      _completeExercise();
+    }
+  }
+
+  /// Finalise l'exercice et affiche les résultats globaux
+  void _completeExercise() {
+     if (_isExerciseCompleted) return;
+     ConsoleLogger.info('Finalisation de l\'exercice d\'articulation (syllabe par syllabe)');
+
+     setState(() {
+       _isExerciseCompleted = true;
+       _showCelebration = true;
+     });
+
+     // Calculer le score moyen
+     final averageScore = _syllableResults.isNotEmpty ? _cumulativeScore / _syllableResults.length : 0.0;
+
+     // Préparer les résultats finaux (simplifié pour l'instant)
+     final finalResults = {
+       'score': averageScore,
+       'commentaires': 'Exercice terminé. Score moyen des syllabes: ${averageScore.toStringAsFixed(1)}',
+       'mots_complétés': _wordsToArticulate.length,
+       // On pourrait ajouter plus de détails basés sur _syllableResults
+     };
+
+     // Afficher l'écran de fin (similaire à avant, mais avec le score moyen)
+     _showCompletionDialog(finalResults);
+  }
+
+
+  /// Affiche la boîte de dialogue de fin d'exercice
+  void _showCompletionDialog(Map<String, dynamic> results) {
+     ConsoleLogger.info('Affichage de l\'effet de célébration et des résultats finaux');
+     if (mounted) {
+       showDialog(
+         context: context,
+         barrierDismissible: false,
+         builder: (context) {
+           return Stack(
+             children: [
+               CelebrationEffect(
+                 intensity: 0.8,
+                 primaryColor: AppTheme.primaryColor,
+                 secondaryColor: AppTheme.accentGreen,
+                 durationSeconds: 3,
+                 onComplete: () {
+                   ConsoleLogger.info('Animation de célébration terminée');
+                   if (mounted) {
+                     Navigator.of(context).pop();
+                     Future.delayed(const Duration(milliseconds: 500), () {
+                       if (mounted) {
+                         ConsoleLogger.success('Exercice d\'articulation terminé avec succès');
+                         widget.onExerciseCompleted(results);
+                       }
+                     });
+                   }
+                 },
+               ),
+               Center(
+                 child: Container(
+                   padding: const EdgeInsets.all(24),
+                   decoration: BoxDecoration(
+                     color: AppTheme.darkSurface.withOpacity(0.9),
+                     borderRadius: BorderRadius.circular(16),
+                     boxShadow: [
+                       BoxShadow(
+                         color: Colors.black.withOpacity(0.3),
+                         blurRadius: 10,
+                         offset: const Offset(0, 5),
+                       ),
+                     ],
+                   ),
+                   child: Column(
+                     mainAxisSize: MainAxisSize.min,
+                     children: [
+                       const Icon(Icons.check_circle, color: AppTheme.accentGreen, size: 64),
+                       const SizedBox(height: 16),
+                       const Text('Exercice terminé !', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+                       const SizedBox(height: 8),
+                       Text('Score Moyen: ${results['score'].toInt()}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.accentGreen)),
+                       const SizedBox(height: 16),
+                       Text(results['commentaires'] as String, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, color: Colors.white)),
+                     ],
+                   ),
+                 ),
+               ),
+             ],
+           );
+         },
+       );
+     }
+  }
+
+
   void _showInfoModal() {
     ConsoleLogger.info('Affichage de la modale d\'information pour l\'exercice: ${widget.exercise.title}');
     showDialog(
@@ -514,15 +391,14 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
           'Augmentation de l\'impact de vos messages clés',
           'Amélioration de la perception de votre expertise',
         ],
-        instructions: 'Écoutez l\'exemple audio en appuyant sur le bouton de lecture. '
-            'Puis, enregistrez-vous en prononçant le mot affiché en articulant clairement chaque syllabe. '
-            'Concentrez-vous sur la précision des consonnes et la netteté des voyelles. '
-            'L\'exercice vous guidera à travers plusieurs mots professionnels à articuler.',
+        instructions: 'Écoutez l\'exemple audio de la syllabe en appuyant sur le bouton de lecture. '
+            'Puis, maintenez le bouton microphone pour vous enregistrer en prononçant la syllabe affichée. Relâchez pour arrêter et obtenir une évaluation. '
+            'Concentrez-vous sur la précision de chaque syllabe.',
         backgroundColor: AppTheme.primaryColor,
       ),
     );
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -565,26 +441,26 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
       ),
       body: Column(
         children: [
-          // En-tête avec indicateur de progression
           _buildProgressHeader(),
-          
-          // Zone principale avec le mot à articuler
           Expanded(
             flex: 3,
             child: _buildMainContent(),
           ),
-          
-          // Zone de contrôles
           _buildControls(),
-          
-          // Zone de feedback
-          _buildFeedbackArea(),
+          _buildFeedbackArea(), // Pourrait afficher le feedback de la dernière syllabe
         ],
       ),
     );
   }
-  
+
   Widget _buildProgressHeader() {
+    int totalSyllables = _wordsToArticulate.map((w) => _divideSyllables(w).length).reduce((a, b) => a + b);
+    int completedSyllables = 0;
+    for(int i=0; i < _currentWordIndex; i++){
+        completedSyllables += _divideSyllables(_wordsToArticulate[i]).length;
+    }
+    completedSyllables += _currentSyllableIndex;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Column(
@@ -594,7 +470,7 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Mot ${_currentWordIndex + 1}/${_wordsToArticulate.length}',
+                'Mot ${_currentWordIndex + 1}/${_wordsToArticulate.length} - Syllabe ${_currentSyllableIndex + 1}/${_currentSyllables.length}',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -619,7 +495,7 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
           ),
           const SizedBox(height: 8),
           LinearProgressIndicator(
-            value: (_currentWordIndex + 1) / _wordsToArticulate.length,
+            value: totalSyllables > 0 ? completedSyllables / totalSyllables : 0,
             backgroundColor: Colors.white.withOpacity(0.1),
             color: AppTheme.primaryColor,
           ),
@@ -627,81 +503,77 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
       ),
     );
   }
-  
+
   Widget _buildMainContent() {
-    final currentWord = _wordsToArticulate[_currentWordIndex];
-    
-    // Diviser le mot en syllabes (simplification pour la démonstration)
-    final syllables = _divideSyllables(currentWord);
-    
+    if (_currentSyllables.isEmpty) {
+      return Center(child: CircularProgressIndicator()); // Chargement initial
+    }
+    // final currentSyllable = _currentSyllables[_currentSyllableIndex]; // Plus nécessaire ici
+    final currentWord = _wordsToArticulate[_currentWordIndex]; // Mot complet
+
     return Container(
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Mot complet
-          Text(
-            currentWord,
-            style: const TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 24),
-          
-          // Syllabes
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.darkSurface,
-              borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: syllables.map((syllable) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: Text(
-                    syllable,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
+          // Mot complet avec syllabe en surbrillance
+          RichText(
+            textAlign: TextAlign.center,
+            text: TextSpan(
+              style: const TextStyle( // Style par défaut (syllabes non actives)
+                fontSize: 32, // Taille de base pour le mot
+                fontWeight: FontWeight.normal,
+                color: Colors.white70,
+                height: 1.5, // Ajuster l'interligne si nécessaire
+              ),
+              children: List.generate(_currentSyllables.length, (index) {
+                final syllable = _currentSyllables[index];
+                final isActive = index == _currentSyllableIndex;
+                return TextSpan(
+                  text: syllable,
+                  style: isActive
+                      ? const TextStyle( // Style pour la syllabe active
+                          fontWeight: FontWeight.bold,
+                          fontSize: 40, // Plus grand pour la mise en évidence
+                          color: AppTheme.primaryColor,
+                          // Ajouter d'autres styles si désiré (ex: soulignement)
+                        )
+                      : const TextStyle( // Style explicite pour les syllabes inactives
+                          fontWeight: FontWeight.normal,
+                          fontSize: 32, // Taille de base
+                          color: Colors.white70,
+                        ),
                 );
-              }).toList(),
+              }),
             ),
           ),
-          const SizedBox(height: 32),
-          
-          // Visualisation audio
+          const SizedBox(height: 32), // Espacement
+
+          // Placeholder pour la visualisation
           Expanded(
-            child: AudioWaveformVisualizer(
-              audioLevelStream: _audioLevelStreamController.stream,
-              color: _isRecording
-                  ? AppTheme.accentRed
-                  : _isPlayingExample
-                      ? AppTheme.accentGreen
-                      : AppTheme.primaryColor,
-              active: _isRecording || _isPlayingExample,
+            child: Center(
+              child: Icon(
+                _isRecording ? Icons.mic : (_isProcessing ? Icons.hourglass_top : Icons.mic_none),
+                size: 80,
+                color: _isRecording ? AppTheme.accentRed : (_isProcessing ? Colors.orangeAccent : AppTheme.primaryColor.withOpacity(0.5)),
+              ),
             ),
           ),
         ],
       ),
     );
   }
-  
+
   Widget _buildControls() {
+    bool canRecord = !_isPlayingExample && !_isProcessing && !_isExerciseCompleted;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 24),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Bouton d'exemple audio
+          // Bouton d'exemple audio (pour la syllabe)
           ElevatedButton.icon(
-            onPressed: _isPlayingExample || _isRecording ? null : _playExampleAudio,
+            onPressed: _isPlayingExample || _isRecording || _isProcessing ? null : _playExampleAudio,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.darkSurface,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -721,52 +593,59 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
             ),
           ),
           const SizedBox(width: 24),
-          
+
           // Bouton d'enregistrement
           PulsatingMicrophoneButton(
             size: 64,
             isRecording: _isRecording,
             baseColor: AppTheme.primaryColor,
             recordingColor: AppTheme.accentRed,
-            audioLevelStream: _audioLevelStreamController.stream,
-            onPressed: () {
-              if (!_isPlayingExample) {
-                _toggleRecording();
-              }
-            },
+            onPressed: canRecord ? () { _toggleRecording(); } : () {}, // Correction: Passer fonction vide si désactivé
           ),
         ],
       ),
     );
   }
-  
+
   Widget _buildFeedbackArea() {
+    // Afficher le résultat de la dernière syllabe évaluée
+    final lastResult = _syllableResults.isNotEmpty ? _syllableResults.last : null;
     return Container(
-      padding: const EdgeInsets.all(24),
+      height: 100, // Hauteur fixe pour la zone de feedback
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Conseils',
+            'Dernière Syllabe (${lastResult?.syllable ?? '-'})',
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            'Articulez chaque syllabe distinctement. Exagérez légèrement les mouvements de votre bouche pour améliorer la clarté.',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.white.withOpacity(0.8),
+          if (lastResult != null)
+            Text(
+              'Score: ${lastResult.score.toStringAsFixed(1)} - Reconnu: "${lastResult.recognizedText}" ${lastResult.error != null ? '(Fallback)' : ''}',
+              style: TextStyle(
+                fontSize: 14,
+                color: lastResult.score > 70 ? AppTheme.accentGreen : (lastResult.score > 40 ? Colors.orangeAccent : AppTheme.accentRed),
+              ),
+            )
+          else
+             Text(
+              'Prononcez la syllabe affichée.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white.withOpacity(0.8),
+              ),
             ),
-          ),
         ],
       ),
     );
   }
-  
+
   String _difficultyToString(ExerciseDifficulty difficulty) {
     switch (difficulty) {
       case ExerciseDifficulty.facile:
@@ -779,7 +658,7 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
         return 'Inconnu';
     }
   }
-  
+
   List<String> _divideSyllables(String word) {
     // Simplification pour la démonstration
     // Dans une implémentation réelle, on utiliserait un algorithme de division syllabique

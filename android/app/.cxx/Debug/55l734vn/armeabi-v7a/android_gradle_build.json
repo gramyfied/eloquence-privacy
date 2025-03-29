@@ -1,0 +1,88 @@
+{
+  "buildFiles": [
+    "/Users/afrobotmac/eloquence-privacy/android/app/CMakeLists.txt",
+    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/CMakeLists.txt",
+    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/ggml/CMakeLists.txt",
+    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/ggml/src/CMakeLists.txt",
+    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/ggml/src/ggml-cpu/CMakeLists.txt",
+    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/src/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/afrobotmac/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/afrobotmac/eloquence-privacy/android/app/.cxx/Debug/55l734vn/armeabi-v7a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/afrobotmac/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/afrobotmac/eloquence-privacy/android/app/.cxx/Debug/55l734vn/armeabi-v7a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "ggml::@79714969b18af8befa22": {
+      "toolchain": "toolchain",
+      "abi": "armeabi-v7a",
+      "artifactName": "ggml",
+      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libggml.so",
+      "runtimeFiles": [
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libggml-cpu.so",
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libggml-base.so"
+      ]
+    },
+    "ggml-base::@79714969b18af8befa22": {
+      "toolchain": "toolchain",
+      "abi": "armeabi-v7a",
+      "artifactName": "ggml-base",
+      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libggml-base.so",
+      "runtimeFiles": []
+    },
+    "ggml-cpu::@79714969b18af8befa22": {
+      "toolchain": "toolchain",
+      "abi": "armeabi-v7a",
+      "artifactName": "ggml-cpu",
+      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libggml-cpu.so",
+      "runtimeFiles": [
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libggml-base.so",
+        "/Users/afrobotmac/Library/Android/sdk/ndk/26.3.11579264/toolchains/llvm/prebuilt/darwin-x86_64/lib/clang/17/lib/linux/arm/libomp.so"
+      ]
+    },
+    "whisper::@768a1c42b04e9c97f72e": {
+      "toolchain": "toolchain",
+      "abi": "armeabi-v7a",
+      "artifactName": "whisper",
+      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libwhisper.so",
+      "runtimeFiles": [
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libggml.so",
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libggml-cpu.so",
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libggml-base.so"
+      ]
+    },
+    "whisper_wrapper::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "armeabi-v7a",
+      "artifactName": "whisper_wrapper",
+      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libwhisper_wrapper.so",
+      "runtimeFiles": [
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libwhisper.so",
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libggml.so",
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libggml-cpu.so",
+        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/armeabi-v7a/libggml-base.so"
+      ]
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/Users/afrobotmac/Library/Android/sdk/ndk/26.3.11579264/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/Users/afrobotmac/Library/Android/sdk/ndk/26.3.11579264/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [
+    "c"
+  ],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}

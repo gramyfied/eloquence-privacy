@@ -10,12 +10,15 @@ import '../infrastructure/repositories/supabase_profile_repository.dart';
 import '../infrastructure/repositories/supabase_statistics_repository.dart';
 import '../infrastructure/repositories/supabase_session_repository.dart';
 import '../infrastructure/repositories/supabase_exercise_repository.dart';
+import 'package:flutter_tts/flutter_tts.dart'; // Ajouté
+import '../infrastructure/native/whisper_bindings.dart'; // Ajouté pour FFI
+import '../infrastructure/native/whisper_service.dart'; // Ajouté pour FFI
 
 // Services
-import 'azure/azure_tts_service.dart';
+// import 'azure/azure_tts_service.dart'; // Retiré
 import 'azure/azure_speech_service.dart';
 import 'openai/openai_feedback_service.dart';
-import 'audio/audio_player_manager.dart';
+// import 'audio/audio_player_manager.dart'; // Retiré
 import 'audio/example_audio_provider.dart';
 import 'evaluation/articulation_evaluation_service.dart';
 
@@ -25,50 +28,50 @@ void setupServiceLocator() {
   // Supabase client
   final supabaseClient = Supabase.instance.client;
   serviceLocator.registerLazySingleton<SupabaseClient>(() => supabaseClient);
-  
+
   // Repositories
   serviceLocator.registerLazySingleton<AuthRepository>(
     () => SupabaseAuthRepository(serviceLocator<SupabaseClient>())
   );
-  
+
   serviceLocator.registerLazySingleton<SupabaseProfileRepository>(
     () => SupabaseProfileRepository(serviceLocator<SupabaseClient>())
   );
-  
+
   serviceLocator.registerLazySingleton<SupabaseStatisticsRepository>(
     () => SupabaseStatisticsRepository(serviceLocator<SupabaseClient>())
   );
-  
+
   serviceLocator.registerLazySingleton<SupabaseSessionRepository>(
     () => SupabaseSessionRepository(serviceLocator<SupabaseClient>())
   );
-  
+
   serviceLocator.registerLazySingleton<ExerciseRepository>(
     () => SupabaseExerciseRepository(serviceLocator<SupabaseClient>())
   );
-  
+
   // Audio Repository (Nouvelle implémentation avec flutter_sound)
   serviceLocator.registerLazySingleton<AudioRepository>(
     () => FlutterSoundRepository()
   );
 
-  // Azure Services
-  serviceLocator.registerLazySingleton<AzureTTSService>(
-    () => AzureTTSService(
-      subscriptionKey: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'] ?? '',
-      region: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'] ?? 'westeurope',
-      voiceName: 'fr-FR-DeniseNeural',
-    )
-  );
-  
+  // Azure Services (TTS retiré)
+  // serviceLocator.registerLazySingleton<AzureTTSService>(
+  //   () => AzureTTSService(
+  //     subscriptionKey: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'] ?? '',
+  //     region: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'] ?? 'westeurope',
+  //     voiceName: 'fr-FR-DeniseNeural',
+  //   )
+  // );
+
   serviceLocator.registerLazySingleton<AzureSpeechService>(
-    () => AzureSpeechService(
+    () => AzureSpeechService( // Gardé pour STT et Évaluation (pour l'instant)
       subscriptionKey: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'] ?? '',
       region: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'] ?? 'westeurope',
       language: 'fr-FR',
     )
   );
-  
+
   // OpenAI Service (Azure OpenAI)
   serviceLocator.registerLazySingleton<OpenAIFeedbackService>(
     () => OpenAIFeedbackService(
@@ -78,24 +81,33 @@ void setupServiceLocator() {
       // apiVersion: '...', // Optionnel, utilise la valeur par défaut définie dans le service
     )
   );
-  
-  // Audio Services
-  serviceLocator.registerLazySingleton<AudioPlayerManager>(
-    () => AudioPlayerManager()
-  );
-  
+
+  // Audio Services (AudioPlayerManager retiré, FlutterTts ajouté)
+  // serviceLocator.registerLazySingleton<AudioPlayerManager>(
+  //   () => AudioPlayerManager()
+  // );
+
+  // Enregistrer FlutterTts
+  serviceLocator.registerLazySingleton<FlutterTts>(() => FlutterTts());
+
+  // Mettre à jour ExampleAudioProvider pour utiliser FlutterTts
   serviceLocator.registerLazySingleton<ExampleAudioProvider>(
     () => ExampleAudioProvider(
-      ttsService: serviceLocator<AzureTTSService>(),
-      audioPlayer: serviceLocator<AudioPlayerManager>(),
+      flutterTts: serviceLocator<FlutterTts>(), // Injecter FlutterTts
     )
   );
-  
+
   // Evaluation Services
   serviceLocator.registerLazySingleton<ArticulationEvaluationService>(
     () => ArticulationEvaluationService(
       speechService: serviceLocator<AzureSpeechService>(),
       feedbackService: serviceLocator<OpenAIFeedbackService>(),
     )
+  );
+
+  // FFI Whisper Services (Ajouté)
+  serviceLocator.registerLazySingleton<WhisperBindings>(() => WhisperBindings());
+  serviceLocator.registerLazySingleton<WhisperService>(
+    () => WhisperService(bindings: serviceLocator<WhisperBindings>())
   );
 }

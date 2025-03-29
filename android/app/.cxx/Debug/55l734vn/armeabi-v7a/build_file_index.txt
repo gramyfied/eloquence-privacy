@@ -1,0 +1,6 @@
+/Users/afrobotmac/eloquence-privacy/android/app/CMakeLists.txt
+/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/CMakeLists.txt
+/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/ggml/CMakeLists.txt
+/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/ggml/src/CMakeLists.txt
+/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/ggml/src/ggml-cpu/CMakeLists.txt
+/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/src/CMakeLists.txt

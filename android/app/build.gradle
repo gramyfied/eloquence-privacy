@@ -12,11 +12,11 @@ android {
 
     // Redéfinir explicitement la compatibilité Java ET la toolchain Kotlin
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21 
-        targetCompatibility = JavaVersion.VERSION_21 
+        sourceCompatibility = JavaVersion.VERSION_17 // Changé de 21 à 17
+        targetCompatibility = JavaVersion.VERSION_17 // Changé de 21 à 17
     }
     kotlin { 
-        jvmToolchain(21)
+        jvmToolchain(17) // Changé de 21 à 17
     }
     // compileOptions { // Ancienne config commentée
     //     sourceCompatibility = JavaVersion.VERSION_21 
@@ -45,8 +45,25 @@ android {
             signingConfig = signingConfigs.debug
         }
     }
+
+    // Configuration pour compiler le code C++ avec CMake
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt" // Chemin vers notre fichier CMakeLists.txt
+            // Laisser Gradle utiliser la version CMake du SDK Android par défaut
+            // version "3.10.2" 
+        }
+    }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.8.22")) // Example Kotlin BOM, adjust if needed
+    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8") // Use jdk8 for better compatibility
+    // Dépendance Azure Speech SDK (Retour à la version précédente)
+    implementation("com.microsoft.cognitiveservices.speech:client-sdk:1.38.0") // Retour à 1.38.0
+    // Ajoutez ici d'autres dépendances Android si nécessaire
 }

@@ -129,11 +129,11 @@ class FlutterSoundRepository implements AudioRepository {
       return; // Arrêter si l'ouverture échoue
     }
 
-    // 4. Préparer le chemin et le codec (Test avec Opus OGG)
-    const recordCodec = Codec.opusOGG; // Tester avec Opus in OGG container
-    // Ajuster l'extension du fichier pour correspondre au codec
-    _currentRecordingPath = '${filePath.replaceAll(RegExp(r'\.[^.]+$'), '')}.ogg';
-    ConsoleLogger.warning('TEST: Utilisation du chemin: $_currentRecordingPath et Codec: $recordCodec');
+    // 4. Préparer le chemin et le codec (Utilisation de AAC car WAV pose problème)
+    const recordCodec = Codec.aacADTS; // Utiliser AAC
+    // S'assurer que l'extension est .aac
+    _currentRecordingPath = '${filePath.replaceAll(RegExp(r'\.[^.]+$'), '')}.aac'; // Utiliser .aac
+    ConsoleLogger.info('Utilisation du chemin: $_currentRecordingPath et Codec: $recordCodec');
 
     // 5. Démarrer l'enregistrement
     try {
@@ -141,9 +141,9 @@ class FlutterSoundRepository implements AudioRepository {
       await _recorder.startRecorder(
         toFile: _currentRecordingPath,
         codec: recordCodec,
-        sampleRate: sampleRate, // Opus supports various sample rates
-        numChannels: numChannels, // Opus supports mono/stereo
-        // bitRate is generally not used for Opus
+        sampleRate: sampleRate,
+        numChannels: numChannels,
+        // bitRate: bitRate, // Supprimé car pas toujours nécessaire/utile pour PCM WAV
       );
       ConsoleLogger.info('Retour de _recorder.startRecorder. Vérification de _recorder.isRecording...');
 
@@ -197,12 +197,17 @@ class FlutterSoundRepository implements AudioRepository {
       _isRecording = false; // Mettre à jour notre flag immédiatement
       ConsoleLogger.success('Enregistrement arrêté. Chemin retourné par stopRecorder: $returnedPath');
 
+      // Délai de diagnostic retiré
+      // ConsoleLogger.info('Ajout d\'un délai de 200ms après stopRecorder...');
+      // await Future.delayed(const Duration(milliseconds: 200));
+      // ConsoleLogger.info('Fin du délai.');
+
     } catch (e) {
       ConsoleLogger.error('Erreur CATCHée lors de l\'appel à _recorder.stopRecorder: $e');
       _isRecording = false; // Assurer que le flag est faux en cas d'erreur
       // Ne pas fermer le recorder ici, le faire dans finally
-      // Retourner le chemin prévu même si stop a échoué ? Ou lancer une erreur ?
-      // Pour l'instant, on continue pour fermer le recorder et vérifier le fichier.
+      // Relancer l'erreur pour que l'appelant soit informé
+      rethrow;
     } finally {
        // Fermer le recorder dans tous les cas après une tentative d'arrêt
        try {
@@ -225,9 +230,9 @@ class FlutterSoundRepository implements AudioRepository {
           if (await file.exists()) {
          final length = await file.length();
          ConsoleLogger.info('Fichier trouvé à "$checkPath", taille: $length octets.');
-         // Ogg container has some overhead, but an empty file should still be very small.
-         if (length <= 100) { // Keep a small threshold
-            ConsoleLogger.warning('Le fichier OGG enregistré semble vide ou très petit (taille: $length octets).');
+         // Vérifier si le fichier WAV est vide (contient seulement l'en-tête)
+         if (length <= 44) {
+            ConsoleLogger.warning('Le fichier WAV enregistré est vide ou ne contient que l\'en-tête (taille: $length octets).');
          }
       } else {
          ConsoleLogger.error('Le fichier "$checkPath" n\'existe pas après l\'arrêt.');
@@ -283,16 +288,17 @@ class FlutterSoundRepository implements AudioRepository {
 
     // Déterminer le codec en fonction de l'extension
     Codec codecToUse;
-    // Adapter la lecture pour gérer OGG/Opus
-    if (filePath.toLowerCase().endsWith('.ogg')) {
-       codecToUse = Codec.opusOGG;
-    } else if (filePath.toLowerCase().endsWith('.wav')) {
+    // Simplification: Assumer WAV pour la lecture si enregistré par ce repo
+    // Ou vérifier l'extension si des fichiers externes peuvent être lus
+    if (filePath.toLowerCase().endsWith('.wav')) {
        codecToUse = Codec.pcm16WAV;
     } else if (filePath.toLowerCase().endsWith('.aac')) {
+       // Garder la lecture AAC si nécessaire pour d'anciens fichiers de test
        codecToUse = Codec.aacADTS;
-    } else {
-       ConsoleLogger.warning('Extension de fichier non reconnue pour la lecture: $filePath. Tentative avec Opus/OGG.');
-       codecToUse = Codec.opusOGG; // Défaut à OGG/Opus
+    }
+    else {
+       ConsoleLogger.warning('Extension de fichier non reconnue pour la lecture: $filePath. Tentative avec WAV.');
+       codecToUse = Codec.pcm16WAV; // Défaut à WAV
     }
 
     try {
@@ -360,8 +366,8 @@ class FlutterSoundRepository implements AudioRepository {
     // Génère un chemin potentiel, mais le chemin réel est géré par startRecording
     final dir = await getTemporaryDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-    // L'extension correspond maintenant au codec de test (OGG)
-    final extension = '.ogg';
+    // L'extension correspond maintenant au codec utilisé (AAC)
+    final extension = '.aac'; // Utiliser .aac
     return path.join(dir.path, 'recording_$timestamp$extension');
   }
 
