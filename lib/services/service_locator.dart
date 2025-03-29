@@ -10,12 +10,13 @@ import '../infrastructure/repositories/supabase_profile_repository.dart';
 import '../infrastructure/repositories/supabase_statistics_repository.dart';
 import '../infrastructure/repositories/supabase_session_repository.dart';
 import '../infrastructure/repositories/supabase_exercise_repository.dart';
+import 'package:flutter_tts/flutter_tts.dart'; // Ajouté
 
 // Services
-import 'azure/azure_tts_service.dart';
+// import 'azure/azure_tts_service.dart'; // Retiré
 import 'azure/azure_speech_service.dart';
 import 'openai/openai_feedback_service.dart';
-import 'audio/audio_player_manager.dart';
+// import 'audio/audio_player_manager.dart'; // Retiré
 import 'audio/example_audio_provider.dart';
 import 'evaluation/articulation_evaluation_service.dart';
 
@@ -52,16 +53,16 @@ void setupServiceLocator() {
     () => FlutterSoundRepository()
   );
 
-  // Azure Services
-  serviceLocator.registerLazySingleton<AzureTTSService>(
-    () => AzureTTSService(
-      subscriptionKey: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'] ?? '',
-      region: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'] ?? 'westeurope',
-      voiceName: 'fr-FR-DeniseNeural',
-    )
-  );
+  // Azure Services (TTS retiré)
+  // serviceLocator.registerLazySingleton<AzureTTSService>(
+  //   () => AzureTTSService(
+  //     subscriptionKey: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'] ?? '',
+  //     region: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'] ?? 'westeurope',
+  //     voiceName: 'fr-FR-DeniseNeural',
+  //   )
+  // );
   
-  serviceLocator.registerLazySingleton<AzureSpeechService>(
+  serviceLocator.registerLazySingleton<AzureSpeechService>( // Gardé pour STT et Évaluation (pour l'instant)
     () => AzureSpeechService(
       subscriptionKey: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'] ?? '',
       region: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'] ?? 'westeurope',
@@ -79,15 +80,18 @@ void setupServiceLocator() {
     )
   );
   
-  // Audio Services
-  serviceLocator.registerLazySingleton<AudioPlayerManager>(
-    () => AudioPlayerManager()
-  );
+  // Audio Services (AudioPlayerManager retiré, FlutterTts ajouté)
+  // serviceLocator.registerLazySingleton<AudioPlayerManager>(
+  //   () => AudioPlayerManager()
+  // );
+
+  // Enregistrer FlutterTts
+  serviceLocator.registerLazySingleton<FlutterTts>(() => FlutterTts());
   
+  // Mettre à jour ExampleAudioProvider pour utiliser FlutterTts
   serviceLocator.registerLazySingleton<ExampleAudioProvider>(
     () => ExampleAudioProvider(
-      ttsService: serviceLocator<AzureTTSService>(),
-      audioPlayer: serviceLocator<AudioPlayerManager>(),
+      flutterTts: serviceLocator<FlutterTts>(), // Injecter FlutterTts
     )
   );
   
