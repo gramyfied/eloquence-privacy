@@ -32,6 +32,8 @@ dependencies:
   get_it: ^8.0.3
   
   # Audio
+  # azure_speech_recognition_null_safety_fix: ^1.0.2 # Remplacé par flutter_azure_speech_fix
+  # flutter_azure_speech_fix: ^0.1.0 # Retiré - Utilisation de Platform Channels
   flutter_sound: "^9.28.0" # Réactivé pour remplacer flutter_audio_capture
   # flutter_audio_capture: ^1.1.8 # INCOMPATIBLE avec l'intégration v2 - Supprimé
   just_audio: ^0.9.36 # Ajouté pour la lecture audio
@@ -72,7 +74,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-  build_runner: ^2.4.15
+  build_runner: ^2.4.14 # Rétrogradé pour compatibilité avec app_links 6.0.0
   json_serializable: ^6.9.4
   flutter_launcher_icons: ^0.14.3
   mockito: ^5.4.5
@@ -108,3 +110,7 @@ flutter:
   #       - asset: fonts/Schyler-Regular.ttf
   #       - asset: fonts/Schyler-Italic.ttf
   #         style: italic
+
+# Forcer une version spécifique d'une dépendance transitive
+dependency_overrides:
+  app_links: 6.0.0
