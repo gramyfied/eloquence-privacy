@@ -59,7 +59,8 @@ void main() async {
   // --- Test d'initialisation Whisper FFI ---
   try {
     ConsoleLogger.info('[main] Tentative d\'initialisation de WhisperService...');
-    await serviceLocator<WhisperService>().initialize(modelAssetName: 'ggml-small.bin');
+    // Utiliser le nouveau nom de modèle plus léger
+    await serviceLocator<WhisperService>().initialize(modelAssetName: 'ggml-base.bin');
     ConsoleLogger.success('[main] WhisperService initialisé avec succès (test FFI).');
   } catch (e) {
     ConsoleLogger.error('[main] Échec de l\'initialisation de WhisperService: $e');
