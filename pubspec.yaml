@@ -37,6 +37,7 @@ dependencies:
   flutter_sound: "^9.28.0" # Réactivé pour remplacer flutter_audio_capture
   # flutter_audio_capture: ^1.1.8 # INCOMPATIBLE avec l'intégration v2 - Supprimé
   just_audio: ^0.9.36 # Ajouté pour la lecture audio
+  flutter_tts: ^4.2.2 # Ajouté pour le TTS natif offline
   permission_handler: "^11.4.0"
   permission_handler_android: "^12.1.0"
   permission_handler_apple: "^9.4.6"
@@ -111,6 +112,6 @@ flutter:
   #       - asset: fonts/Schyler-Italic.ttf
   #         style: italic
 
-# Forcer une version spécifique d'une dépendance transitive
-dependency_overrides:
-  app_links: 6.0.0
+# Forcer une version spécifique d'une dépendance transitive - Section supprimée pour résoudre le conflit
+# dependency_overrides:
+#   app_links: 6.0.0
