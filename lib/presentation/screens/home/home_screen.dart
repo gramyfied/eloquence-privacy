@@ -27,22 +27,40 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.darkBackground,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 24),
-              _buildNewSessionCard(),
-              const SizedBox(height: 24),
-              _buildStats(),
-              const SizedBox(height: 24),
-              _buildOngoingChallenges(),
-              const Spacer(),
-              _buildBottomNavBar(),
-            ],
-          ),
+        // Utiliser une Column principale pour structurer Header / Scroll / BottomNav
+        child: Column(
+          children: [
+            // --- Header (Fixe en haut) ---
+            Padding(
+              padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0, bottom: 24.0), // Ajout padding bottom
+              child: _buildHeader(),
+            ),
+
+            // --- Zone de contenu scrollable ---
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0), // Padding horizontal ici
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildNewSessionCard(),
+                    const SizedBox(height: 24),
+                    _buildStats(),
+                    const SizedBox(height: 24),
+                    _buildOngoingChallenges(),
+                    // Ajouter un SizedBox en bas pour l'espacement avant la fin du scroll
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            ),
+
+            // --- Bottom Nav Bar (Fixe en bas) ---
+            Padding(
+              padding: const EdgeInsets.all(16.0), // Padding autour de la nav bar
+              child: _buildBottomNavBar(),
+            ),
+          ],
         ),
       ),
     );
@@ -153,7 +171,7 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
             ),
-            
+
             // Content
             Padding(
               padding: const EdgeInsets.all(24.0),
@@ -205,6 +223,8 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildStats() {
+    // Note: La partie Stats utilise déjà un SingleChildScrollView horizontal interne
+    // donc elle gère son propre overflow horizontal si nécessaire.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -232,7 +252,6 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 16),
-        // Utilisation d'un SingleChildScrollView pour éviter les débordements
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -278,6 +297,7 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              // Ajouter d'autres StatCard si nécessaire
             ],
           ),
         ),
