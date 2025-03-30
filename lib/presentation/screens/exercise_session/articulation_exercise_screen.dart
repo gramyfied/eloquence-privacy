@@ -251,15 +251,22 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
                  );
 
                 // Mettre à jour l'état dans le setState principal
+                final String rawRecognizedText = result.text ?? '';
                 setState(() {
-                  _lastRecognizedText = result.text ?? '';
+                  _lastRecognizedText = rawRecognizedText; // Garder le texte brut si nécessaire ailleurs
                   _isProcessing = false;
                   _evaluationResult = currentEvaluationResult;
                 });
 
                 ConsoleLogger.info('[UI] Résultat final Azure traité. Lancement de la génération de feedback OpenAI.');
-                // Lancer OpenAI après la mise à jour de l'état
-                _getOpenAiFeedback(currentEvaluationResult); // Passer le résultat actuel
+                // Nettoyer le texte reconnu avant de l'envoyer à OpenAI (supprimer ponctuation et astérisques)
+                final String cleanedRecognizedText = rawRecognizedText.replaceAll(RegExp(r'[,\.!?\*]'), '').toLowerCase();
+                ConsoleLogger.info('Texte reconnu nettoyé pour OpenAI: "$cleanedRecognizedText"');
+
+                // Lancer OpenAI après la mise à jour de l'état, avec le texte nettoyé
+                // Note: _getOpenAiFeedback utilise _lastRecognizedText, nous devons le mettre à jour ou passer le texte nettoyé
+                // Mise à jour de _getOpenAiFeedback pour accepter le texte nettoyé en paramètre
+                _getOpenAiFeedback(currentEvaluationResult, cleanedRecognizedText); // Passer le texte nettoyé
 
               }); // Future.microtask ends here
               // _evaluatePhrase(result.text ?? ''); // Ne plus appeler _evaluatePhrase ici
@@ -523,7 +530,8 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
   }
 
   /// Obtient le feedback coaching d'OpenAI basé sur l'évaluation Azure
-  Future<void> _getOpenAiFeedback(ArticulationEvaluationResult? azureResult) async {
+  // Correction: Ajouter le paramètre cleanedRecognizedText
+  Future<void> _getOpenAiFeedback(ArticulationEvaluationResult? azureResult, String cleanedRecognizedText) async {
     if (azureResult == null) {
       ConsoleLogger.warning('Tentative d\'appel OpenAI sans résultat Azure.');
       _completeExercise(); // Finaliser avec le feedback Azure seul
@@ -536,7 +544,8 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
     final Map<String, dynamic> metrics = {
       'score_global_accuracy': (azureResult.score is num ? azureResult.score : 0.0),
       'score_prononciation': (azureResult.syllableClarity is num ? azureResult.syllableClarity : 0.0), // Approximation
-      'texte_reconnu': _lastRecognizedText,
+      // Correction: Utiliser le texte nettoyé pour les métriques OpenAI
+      'texte_reconnu': cleanedRecognizedText,
       // TODO: Extraire et ajouter des métriques plus fines depuis azureResult.details si disponible
       // Par exemple: erreurs par syllabe, phonèmes mal prononcés, etc.
     };
@@ -546,11 +555,14 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
 
     ConsoleLogger.info('Appel à OpenAI generateFeedback...');
     try {
+      // Correction: Utiliser le texte nettoyé pour l'appel OpenAI
+      // Correction: Nettoyer aussi le texte attendu pour la comparaison (supprimer ponctuation et astérisques)
+      final String cleanedExpectedText = _textToRead.replaceAll(RegExp(r'[,\.!?\*]'), '').toLowerCase();
       final feedback = await _openAIFeedbackService.generateFeedback(
         exerciseType: 'Répétition Syllabique', // Type d'exercice
         exerciseLevel: _difficultyToString(widget.exercise.difficulty), // Niveau
-        spokenText: _lastRecognizedText, // Texte reconnu
-        expectedText: _textToRead, // Texte original attendu
+        spokenText: cleanedRecognizedText, // Texte reconnu et nettoyé
+        expectedText: cleanedExpectedText, // Texte attendu nettoyé
         metrics: metrics, // Métriques extraites/calculées
       );
       ConsoleLogger.success('Feedback OpenAI reçu: "$feedback"');
