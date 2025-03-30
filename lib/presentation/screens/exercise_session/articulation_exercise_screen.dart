@@ -129,7 +129,7 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
 
       for (String word in words) {
         // Normaliser le mot (minuscules, suppression ponctuation simple) pour la recherche
-        String normalizedWord = word.toLowerCase().replaceAll(RegExp(r'[,\.!?]'), '');
+        String normalizedWord = word.toLowerCase().replaceAll(RegExp(r'[\,\.\!?]'), '');
         String? wordSyllabification = _syllabificationService.getSyllabification(normalizedWord);
 
         if (wordSyllabification != null && wordSyllabification.isNotEmpty) {
