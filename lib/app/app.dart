@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // Ajouté
-import 'package:supabase_flutter/supabase_flutter.dart';
+// Ajouté
 import 'router.dart'; // Contient createRouter
 import 'theme.dart';
 import '../domain/repositories/auth_repository.dart';

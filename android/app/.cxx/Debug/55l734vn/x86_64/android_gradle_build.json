@@ -1,11 +1,6 @@
 {
   "buildFiles": [
-    "/Users/afrobotmac/eloquence-privacy/android/app/CMakeLists.txt",
-    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/CMakeLists.txt",
-    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/ggml/CMakeLists.txt",
-    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/ggml/src/CMakeLists.txt",
-    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/ggml/src/ggml-cpu/CMakeLists.txt",
-    "/Users/afrobotmac/eloquence-privacy/native/whisper.cpp/src/CMakeLists.txt"
+    "/Users/afrobotmac/eloquence-privacy/android/app/CMakeLists.txt"
   ],
   "cleanCommandsComponents": [
     [
@@ -21,68 +16,13 @@
     "/Users/afrobotmac/eloquence-privacy/android/app/.cxx/Debug/55l734vn/x86_64",
     "{LIST_OF_TARGETS_TO_BUILD}"
   ],
-  "libraries": {
-    "ggml::@79714969b18af8befa22": {
-      "toolchain": "toolchain",
-      "abi": "x86_64",
-      "artifactName": "ggml",
-      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libggml.so",
-      "runtimeFiles": [
-        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libggml-cpu.so",
-        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libggml-base.so"
-      ]
-    },
-    "ggml-base::@79714969b18af8befa22": {
-      "toolchain": "toolchain",
-      "abi": "x86_64",
-      "artifactName": "ggml-base",
-      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libggml-base.so",
-      "runtimeFiles": []
-    },
-    "ggml-cpu::@79714969b18af8befa22": {
-      "toolchain": "toolchain",
-      "abi": "x86_64",
-      "artifactName": "ggml-cpu",
-      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libggml-cpu.so",
-      "runtimeFiles": [
-        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libggml-base.so",
-        "/Users/afrobotmac/Library/Android/sdk/ndk/26.3.11579264/toolchains/llvm/prebuilt/darwin-x86_64/lib/clang/17/lib/linux/x86_64/libomp.so"
-      ]
-    },
-    "whisper::@768a1c42b04e9c97f72e": {
-      "toolchain": "toolchain",
-      "abi": "x86_64",
-      "artifactName": "whisper",
-      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libwhisper.so",
-      "runtimeFiles": [
-        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libggml.so",
-        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libggml-cpu.so",
-        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libggml-base.so"
-      ]
-    },
-    "whisper_wrapper::@6890427a1f51a3e7e1df": {
-      "toolchain": "toolchain",
-      "abi": "x86_64",
-      "artifactName": "whisper_wrapper",
-      "output": "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libwhisper_wrapper.so",
-      "runtimeFiles": [
-        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libwhisper.so",
-        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libggml.so",
-        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libggml-cpu.so",
-        "/Users/afrobotmac/eloquence-privacy/build/app/intermediates/cxx/Debug/55l734vn/obj/x86_64/libggml-base.so"
-      ]
-    }
-  },
+  "libraries": {},
   "toolchains": {
     "toolchain": {
       "cCompilerExecutable": "/Users/afrobotmac/Library/Android/sdk/ndk/26.3.11579264/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
       "cppCompilerExecutable": "/Users/afrobotmac/Library/Android/sdk/ndk/26.3.11579264/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
     }
   },
-  "cFileExtensions": [
-    "c"
-  ],
-  "cppFileExtensions": [
-    "cpp"
-  ]
+  "cFileExtensions": [],
+  "cppFileExtensions": []
 }

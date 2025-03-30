@@ -1,0 +1,2 @@
+/Users/afrobotmac/eloquence-privacy/android/app/.cxx/Debug/1135j3ab/x86/CMakeFiles/edit_cache.dir
+/Users/afrobotmac/eloquence-privacy/android/app/.cxx/Debug/1135j3ab/x86/CMakeFiles/rebuild_cache.dir

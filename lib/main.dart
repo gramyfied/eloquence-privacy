@@ -6,8 +6,8 @@ import 'package:intl/date_symbol_data_local.dart'; // Pour initialiser les local
 
 import 'app/app.dart';
 // import 'app/router.dart'; // L'import du router n'est pas nécessaire ici
-import 'core/utils/console_logger.dart';
 import 'services/service_locator.dart'; // Contient setupServiceLocator et serviceLocator
+import 'services/lexique/syllabification_service.dart'; // Importer le service
 import 'domain/repositories/auth_repository.dart';
 import 'domain/repositories/exercise_repository.dart';
 // Correction des imports pour les repositories Supabase
@@ -25,7 +25,8 @@ import 'infrastructure/repositories/supabase_statistics_repository.dart';
 // import 'presentation/blocs/profile/profile_bloc.dart';
 // import 'presentation/blocs/session/session_bloc.dart';
 // import 'presentation/blocs/statistics/statistics_bloc.dart';
-import 'infrastructure/native/whisper_service.dart'; // Ajouté pour test FFI
+// Supprimer l'import de WhisperService FFI
+// import 'infrastructure/native/whisper_service.dart';
 
 // --- PLACEHOLDER pour les Blocs manquants ---
 // Créez ces classes ou supprimez leur utilisation si elles ne sont plus nécessaires
@@ -56,17 +57,10 @@ void main() async {
   // Configurer l'injection de dépendances
   setupServiceLocator();
 
-  // --- Test d'initialisation Whisper FFI ---
-  try {
-    ConsoleLogger.info('[main] Tentative d\'initialisation de WhisperService...');
-    // Utiliser le nouveau nom de modèle plus léger
-    await serviceLocator<WhisperService>().initialize(modelAssetName: 'ggml-base.bin');
-    ConsoleLogger.success('[main] WhisperService initialisé avec succès (test FFI).');
-  } catch (e) {
-    ConsoleLogger.error('[main] Échec de l\'initialisation de WhisperService: $e');
-  }
-  // --- Fin du test ---
+  // Charger le lexique de syllabification
+  await serviceLocator<SyllabificationService>().loadLexicon();
 
+  // Supprimer le bloc d'initialisation de WhisperService FFI
 
   // Obtenir les repositories depuis le service locator
   // (Au lieu d'instancier des classes Service inexistantes)

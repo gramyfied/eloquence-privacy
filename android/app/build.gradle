@@ -61,9 +61,19 @@ flutter {
 }
 
 dependencies {
-    implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.8.22")) // Example Kotlin BOM, adjust if needed
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8") // Use jdk8 for better compatibility
-    // Dépendance Azure Speech SDK (Retour à la version précédente)
-    implementation("com.microsoft.cognitiveservices.speech:client-sdk:1.38.0") // Retour à 1.38.0
+    // Kotlin Standard Library (BOM supprimé pour simplifier, la version sera déduite du plugin)
+    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+
+    // Dépendances AndroidX essentielles
+    implementation "androidx.core:core-ktx:1.9.0" // Version spécifique pour la stabilité
+    implementation "androidx.annotation:annotation:1.7.1" // Version spécifique pour la stabilité
+
+    // Dépendance Azure Speech SDK
+    implementation("com.microsoft.cognitiveservices.speech:client-sdk:1.38.0")
+
+    // Les dépendances Flutter (flutter_embedding) sont normalement ajoutées automatiquement
+    // par le plugin dev.flutter.flutter-gradle-plugin. Ne pas les ajouter manuellement ici
+    // sauf si absolument nécessaire après d'autres diagnostics.
+
     // Ajoutez ici d'autres dépendances Android si nécessaire
 }
