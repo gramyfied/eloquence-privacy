@@ -13,7 +13,7 @@ import com.microsoft.cognitiveservices.speech.audio.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-// Version restaurée (avant refactoring complexe)
+// Version corrigée
 class AzureSpeechHandler(private val context: Context, private val messenger: BinaryMessenger) : MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
 
     private val methodChannelName = "com.eloquence.app/azure_speech"
@@ -192,7 +192,7 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
         recognizer.recognizing.addEventListener { _, e ->
             Log.d(logTag, "Recognizing: ${e.result.text}")
             sendEvent("partial", mapOf("text" to e.result.text))
-            e.result.close() // Libérer le résultat partiel
+            // e.result.close() // Pas nécessaire/possible pour les résultats partiels
         }
 
         recognizer.recognized.addEventListener { _, e ->
@@ -228,7 +228,7 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
                 }
             } finally {
                  pronunciationResult?.close() // Libérer l'objet PronunciationAssessmentResult
-                 result.close() // Libérer l'objet résultat principal
+                 // result.close() // Supprimer cet appel, géré par le SDK
             }
         }
 
@@ -237,7 +237,7 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
             val errorDetails = "Reason: ${e.reason}, Code: ${e.errorCode}, Details: ${e.errorDetails}"
             sendEvent("error", mapOf("code" to e.errorCode.name, "message" to errorDetails))
             releaseRecognizerResources() // Nettoyer en cas d'annulation
-            e.close()
+            // e.close() // Pas nécessaire/possible pour les arguments d'événement
         }
 
          recognizer.sessionStarted.addEventListener { _, _ ->
@@ -268,23 +268,34 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
             audioConfig = AudioConfig.fromStreamInput(audioInputStream)
             speechRecognizer = SpeechRecognizer(speechConfig, audioConfig)
 
-            if (referenceText != null && referenceText.isNotEmpty) {
+            // Correction: Utiliser isNotEmpty() et le constructeur de PronunciationAssessmentConfig
+            if (referenceText != null && referenceText.isNotEmpty()) { // Correction ici
                 Log.d(logTag, "Applying Pronunciation Assessment config for: \"$referenceText\"")
-                val escapedReferenceText = referenceText.replace("\"", "\\\"")
-                val pronunciationConfigJson = """
-                    {
-                        "referenceText": "$escapedReferenceText",
-                        "gradingSystem": "HundredMark",
-                        "granularity": "Phoneme",
-                        "dimension": "Comprehensive",
-                        "enableMiscue": "true"
-                    }
-                """.trimIndent()
-                val pronunciationConfig = PronunciationAssessmentConfig.fromJSON(pronunciationConfigJson)
-                pronunciationConfig.applyTo(speechRecognizer)
-                pronunciationConfig.close()
-                Log.d(logTag, "Pronunciation Assessment config applied.")
+                var pronunciationConfig: PronunciationAssessmentConfig? = null // Déclarer nullable
+                try {
+                    // Utiliser le constructeur directement avec les noms complets des Enums
+                    pronunciationConfig = PronunciationAssessmentConfig(
+                        referenceText,
+                        PronunciationAssessmentGradingSystem.HundredMark, // Nom complet
+                        PronunciationAssessmentGranularity.Phoneme,       // Nom complet
+                        true                       // enableMiscue
+                    )
+                    // Optionnel: Définir d'autres propriétés si nécessaire
+                    // pronunciationConfig.setDimension(PronunciationAssessmentDimension.Comprehensive)
+
+                    pronunciationConfig.applyTo(speechRecognizer)
+                    Log.d(logTag, "Pronunciation Assessment config applied.")
+                } catch (configError: Exception) {
+                     Log.e(logTag, "Error creating/applying PronunciationAssessmentConfig: ${configError.message}", configError)
+                     sendEvent("error", mapOf("code" to "PRON_CONFIG_ERROR", "message" to "Error setting up pronunciation assessment: ${configError.message}"))
+                     // Continuer sans évaluation de prononciation ? Ou arrêter ? Pour l'instant on continue.
+                } finally {
+                     pronunciationConfig?.close() // Important de fermer l'objet config après l'avoir appliqué, même en cas d'erreur partielle
+                }
+            } else {
+                 Log.d(logTag, "No reference text provided, skipping Pronunciation Assessment config.")
             }
+
 
             setupRecognizerEvents(speechRecognizer)
 
