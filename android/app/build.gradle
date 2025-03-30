@@ -12,11 +12,11 @@ android {
 
     // Redéfinir explicitement la compatibilité Java ET la toolchain Kotlin
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21 
-        targetCompatibility = JavaVersion.VERSION_21 
+        sourceCompatibility = JavaVersion.VERSION_17 // Changé de 21 à 17
+        targetCompatibility = JavaVersion.VERSION_17 // Changé de 21 à 17
     }
     kotlin { 
-        jvmToolchain(21)
+        jvmToolchain(17) // Changé de 21 à 17
     }
     // compileOptions { // Ancienne config commentée
     //     sourceCompatibility = JavaVersion.VERSION_21 
@@ -45,8 +45,35 @@ android {
             signingConfig = signingConfigs.debug
         }
     }
+
+    // Configuration pour compiler le code C++ avec CMake
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt" // Chemin vers notre fichier CMakeLists.txt
+            // Laisser Gradle utiliser la version CMake du SDK Android par défaut
+            // version "3.10.2" 
+        }
+    }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Kotlin Standard Library (BOM supprimé pour simplifier, la version sera déduite du plugin)
+    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+
+    // Dépendances AndroidX essentielles
+    implementation "androidx.core:core-ktx:1.9.0" // Version spécifique pour la stabilité
+    implementation "androidx.annotation:annotation:1.7.1" // Version spécifique pour la stabilité
+
+    // Dépendance Azure Speech SDK
+    implementation("com.microsoft.cognitiveservices.speech:client-sdk:1.38.0")
+
+    // Les dépendances Flutter (flutter_embedding) sont normalement ajoutées automatiquement
+    // par le plugin dev.flutter.flutter-gradle-plugin. Ne pas les ajouter manuellement ici
+    // sauf si absolument nécessaire après d'autres diagnostics.
+
+    // Ajoutez ici d'autres dépendances Android si nécessaire
 }

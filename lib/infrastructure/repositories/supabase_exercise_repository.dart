@@ -49,9 +49,9 @@ class SupabaseExerciseRepository implements ExerciseRepository {
       final response = await _supabaseClient
           .from('exercises')
           .select('*')
-          .eq('category_id', categoryId)
-          .order('difficulty_level', ascending: true);
-      
+          .eq('category', categoryId) // Correction: Utiliser 'category' au lieu de 'category_id'
+          .order('difficulty', ascending: true); // Correction: Utiliser 'difficulty' au lieu de 'difficulty_level'
+
       if ((response as List).isNotEmpty) {
         print("Exercices récupérés depuis Supabase: ${response.length}");
         
@@ -70,7 +70,7 @@ class SupabaseExerciseRepository implements ExerciseRepository {
             objective: data['objective'] ?? '',
             instructions: data['instructions'] ?? '',
             textToRead: data['text_to_read'],
-            difficulty: _mapStringToExerciseDifficulty(data['difficulty_level'] ?? 'moyen'),
+            difficulty: _mapStringToExerciseDifficulty(data['difficulty'] ?? 'moyen'), // Correction: Utiliser 'difficulty'
             category: _mapToExerciseCategory(categoryResponse),
             evaluationParameters: data['evaluation_parameters'] ?? {},
           );
@@ -332,7 +332,7 @@ class SupabaseExerciseRepository implements ExerciseRepository {
       objective: data['objective'],
       instructions: data['instructions'],
       textToRead: data['text_to_read'],
-      difficulty: _mapStringToExerciseDifficulty(data['difficulty_level']),
+      difficulty: _mapStringToExerciseDifficulty(data['difficulty']), // Correction: Utiliser 'difficulty'
       category: _mapToExerciseCategory(categoryData),
       evaluationParameters: data['evaluation_parameters'] ?? {},
     );
