@@ -3,13 +3,13 @@ description: Application de coaching vocal basée sur Flutter
 
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
-publish_to: 'none' 
+publish_to: 'none'
 
 # Version + info de build
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.7.0 <4.0.0'
+  sdk: '^3.7.0' # Format recommandé
 
 # Dépendances du projet
 dependencies:
@@ -23,20 +23,18 @@ dependencies:
   fl_chart: ^0.70.2
   lottie: ^3.3.1
   shimmer: "3.0.0"
-  
+
   # Gestion d'état
   flutter_bloc: ^9.1.0
   provider: ^6.1.2
-  
+
   # Injection de dépendances
   get_it: ^8.0.3
-  
+
   # Audio
-  # azure_speech_recognition_null_safety_fix: ^1.0.2 # Remplacé par flutter_azure_speech_fix
-  # flutter_azure_speech_fix: ^0.1.0 # Retiré - Utilisation de Platform Channels
-  flutter_sound: "^9.28.0" # Réactivé pour remplacer flutter_audio_capture
-  # flutter_audio_capture: ^1.1.8 # INCOMPATIBLE avec l'intégration v2 - Supprimé
-  just_audio: ^0.9.36 # Ajouté pour la lecture audio
+  # flutter_sound: "^9.28.0" # Remplacé par record
+  record: ^5.0.5 # Ajouté pour l'enregistrement audio
+  just_audio: ^0.9.36 # Gardé pour la lecture audio
   flutter_tts: ^4.2.2 # Ajouté pour le TTS natif offline
   permission_handler: "^11.4.0"
   permission_handler_android: "^12.1.0"
@@ -45,19 +43,20 @@ dependencies:
   permission_handler_windows: "^0.2.1"
   path_provider: "^2.1.5"
   path: "1.9.1"
-  
+  wav: ^1.0.0 # Gardé pour lire les fichiers WAV
+
   # Services en ligne
   supabase_flutter: ^2.8.4
   http: ^1.3.0
   dio: ^5.8.0+1
-  
+
   # Navigation
   go_router: ^14.8.1
-  
+
   # Stockage local
   shared_preferences: "2.2.0"
   sqflite: "2.4.2"
-  
+
   # Utils
   intl: ^0.20.2
   logger: ^2.5.0
@@ -65,13 +64,17 @@ dependencies:
   uuid: "4.5.1"
   image_picker: ^1.0.7
   universal_html: ^2.2.4
-  
+
+  # FFI (Supprimé car Whisper FFI n'est plus utilisé)
+  # ffi: ^2.1.2
+
   # Configuration
   yaml: "3.1.3"
   json_annotation: ^4.9.0
   flutter_dotenv: ^5.1.0
 
 dev_dependencies:
+  # ffigen: ^11.0.0 # Supprimé car Whisper FFI n'est plus utilisé
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
@@ -102,6 +105,8 @@ flutter:
     - assets/animations/
     - assets/icons/
     - assets/config/
+    - assets/lexique/ # Ajout du lexique syllabique
+    # - assets/models/ # Supprimé car Whisper FFI n'est plus utilisé
     - .env
 
   # Fonts
