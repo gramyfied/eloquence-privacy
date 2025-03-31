@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart'; // Ajouté
 import '../../core/utils/console_logger.dart';
 // import '../azure/azure_tts_service.dart'; // Retiré
