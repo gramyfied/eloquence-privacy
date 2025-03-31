@@ -45,5 +45,8 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Ajouter la description pour l'utilisation du microphone -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>L'accès au microphone est nécessaire pour enregistrer votre voix lors des exercices d'articulation.</string>
 </dict>
 </plist>

@@ -1,35 +1,30 @@
 import 'dart:async';
-// Ajouté pour jsonDecode
+// Pour kDebugMode
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart'; // Importer permission_handler
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Importer dotenv
 import '../../../app/theme.dart';
 import '../../../core/utils/console_logger.dart';
 import '../../../domain/entities/exercise.dart';
 import '../../../services/service_locator.dart';
 import '../../../services/audio/example_audio_provider.dart';
+import '../../../services/lexique/syllabification_service.dart';
+import '../../../services/openai/openai_feedback_service.dart'; // Importer OpenAI Service
+// Correction: Importer AzureSpeechService car nous allons l'utiliser pour le streaming
 import '../../../services/azure/azure_speech_service.dart';
+// Supprimer l'import de WhisperService car nous le remplaçons
+// import '../../../infrastructure/native/whisper_service.dart';
+import '../../../domain/repositories/audio_repository.dart'; // Ajouté
+// Correction: Importer la classe de résultat depuis le service
 import '../../../services/evaluation/articulation_evaluation_service.dart';
 import '../../widgets/visual_effects/info_modal.dart';
 import '../../widgets/visual_effects/celebration_effect.dart';
 import '../../widgets/microphone_button.dart';
 
-// TODO: Déplacer vers un fichier de modèle/entité approprié
-class SyllableEvaluationResult {
-  final String syllable;
-  final double score; // Score global pour la syllabe
-  final String recognizedText;
-  final String? error;
+// Supprimé: Définition locale de WordEvaluationResult
 
-  SyllableEvaluationResult({
-    required this.syllable,
-    required this.score,
-    required this.recognizedText,
-    this.error,
-  });
-}
-
-
-/// Écran d'exercice d'articulation (Mode Syllabe par Syllabe)
+/// Écran d'exercice d'articulation (Mode Mot/Phrase Complet)
 class ArticulationExerciseScreen extends StatefulWidget {
   final Exercise exercise;
   final Function(Map<String, dynamic> results) onExerciseCompleted;
@@ -48,268 +43,666 @@ class ArticulationExerciseScreen extends StatefulWidget {
 
 class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen> {
   bool _isRecording = false;
-  bool _isProcessing = false; // Pour indiquer l'évaluation en cours
+  bool _isProcessing = false; // Pour indiquer la transcription/évaluation en cours
   bool _isExerciseStarted = false;
   bool _isExerciseCompleted = false;
   bool _isPlayingExample = false;
   bool _showCelebration = false;
 
-  int _currentWordIndex = 0;
-  int _currentSyllableIndex = 0;
-  List<String> _currentSyllables = [];
-  String _lastRecognizedSyllable = '';
+  String _textToRead = ''; // Texte original à lire
+  String _displayText = ''; // Texte à afficher (syllabes formatées)
+  List<String> _syllables = []; // Liste des syllabes
+  String _referenceTextForAzure = ''; // Texte formaté pour Azure (ex: "pro fes sion nel")
+  String _lastRecognizedText = ''; // Texte complet reconnu par Azure
+  String _openAiFeedback = ''; // Feedback généré par OpenAI
+  // String? _currentRecordingFilePath; // Plus nécessaire si on utilise le streaming directement
 
-  // Stocker les résultats par syllabe
-  final List<SyllableEvaluationResult> _syllableResults = [];
-  double _cumulativeScore = 0; // Pour calculer le score final
+  // Stocker le résultat global en utilisant la classe importée
+  ArticulationEvaluationResult? _evaluationResult; // Correction du type
 
   // Services
   late ExampleAudioProvider _exampleAudioProvider;
-  late ArticulationEvaluationService _evaluationService; // Peut-être moins utile ici
+  late ArticulationEvaluationService _evaluationService;
+  // Remplacer WhisperService par AzureSpeechService
   late AzureSpeechService _azureSpeechService;
+  late AudioRepository _audioRepository;
+  late SyllabificationService _syllabificationService;
+  late OpenAIFeedbackService _openAIFeedbackService; // Ajouter OpenAI Service
 
-  // Stream pour la reconnaissance (on utilisera le résultat final après arrêt)
+  // Stream Subscriptions
+  StreamSubscription? _audioStreamSubscription;
   StreamSubscription? _recognitionResultSubscription;
-
-  final List<String> _wordsToArticulate = [
-    'Professionnalisme',
-    'Développement',
-    'Communication',
-    'Stratégique',
-    'Collaboration',
-  ];
 
   @override
   void initState() {
     super.initState();
-    _initializeServicesAndSyllables();
+    _initializeServicesAndText();
   }
 
-  /// Initialise les services et les syllabes du premier mot
-  Future<void> _initializeServicesAndSyllables() async {
+  /// Initialise les services et le texte à lire
+  Future<void> _initializeServicesAndText() async {
     try {
-      ConsoleLogger.info('Initialisation des services (mode syllabe)');
+      ConsoleLogger.info('Initialisation des services (mode mot/phrase)');
       _exampleAudioProvider = serviceLocator<ExampleAudioProvider>();
       _evaluationService = serviceLocator<ArticulationEvaluationService>();
       _azureSpeechService = serviceLocator<AzureSpeechService>();
+      _audioRepository = serviceLocator<AudioRepository>();
+      _syllabificationService = serviceLocator<SyllabificationService>();
+      _openAIFeedbackService = serviceLocator<OpenAIFeedbackService>(); // Récupérer OpenAI Service
       ConsoleLogger.info('Services récupérés');
 
-      // S'abonner au stream pour capturer le résultat final après l'arrêt
-      _recognitionResultSubscription = _azureSpeechService.recognitionResultStream.listen(
-        _handleRecognitionResult,
-        onError: _handleRecognitionError,
-      );
-      ConsoleLogger.info('Abonnement au stream de résultats Azure effectué.');
+      // S'assurer que le lexique est chargé (normalement fait dans main.dart)
+      if (!_syllabificationService.isLoaded) {
+        ConsoleLogger.warning('Le lexique de syllabification n\'est pas chargé ! Tentative de chargement...');
+        await _syllabificationService.loadLexicon(); // Charger si ce n'est pas déjà fait
+      }
 
-      _updateCurrentSyllables(); // Initialiser les syllabes du premier mot
+      // Initialiser AzureSpeechService avec les clés depuis .env
+      final azureKey = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'];
+      final azureRegion = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'];
+
+      if (azureKey != null && azureRegion != null) {
+        bool initialized = await _azureSpeechService.initialize(
+          subscriptionKey: azureKey,
+          region: azureRegion,
+        );
+        if (initialized) {
+          ConsoleLogger.success('AzureSpeechService initialisé avec succès.');
+        } else {
+          ConsoleLogger.error('Échec de l\'initialisation d\'AzureSpeechService.');
+          // Gérer l'échec d'initialisation (afficher un message, désactiver le bouton micro...)
+        }
+      } else {
+        ConsoleLogger.error('Clé ou région Azure manquante dans .env');
+        // Gérer l'absence de clés
+      }
+
+      // Toujours générer une nouvelle phrase pour l'exercice d'articulation
+      ConsoleLogger.info('Génération systématique d\'une nouvelle phrase via OpenAI...');
+      try {
+        // TODO: Passer des sons cibles si l'exercice les définit (ex: widget.exercise.targetSounds)
+        _textToRead = await _openAIFeedbackService.generateArticulationSentence();
+        ConsoleLogger.info('Phrase générée par OpenAI: "$_textToRead"');
+      } catch (e) {
+        ConsoleLogger.error('Erreur lors de la génération de la phrase: $e');
+        _textToRead = "Le soleil sèche six chemises sur six cintres."; // Fallback
+        ConsoleLogger.warning('Utilisation de la phrase fallback: "$_textToRead"');
+      }
+
+      // Syllabifier la phrase générée (ou fallback)
+      List<String> words = _textToRead.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+      List<String> syllabifiedWords = [];
+      List<String> allSyllables = [];
+      bool syllabificationFoundForAll = true;
+
+      for (String word in words) {
+        // Normaliser le mot (minuscules, suppression ponctuation simple) pour la recherche
+        // Garder la version locale (HEAD) de la résolution de conflit
+        String normalizedWord = word.toLowerCase().replaceAll(RegExp(r'[,\.!?]'), '');
+        String? wordSyllabification = _syllabificationService.getSyllabification(normalizedWord);
+
+        if (wordSyllabification != null && wordSyllabification.isNotEmpty) {
+          syllabifiedWords.add(wordSyllabification); // Garder les tirets pour l'affichage
+          // Ajouter les syllabes individuelles à la liste globale
+          allSyllables.addAll(wordSyllabification.split(RegExp(r'\s*-\s*')).map((s) => s.trim()).where((s) => s.isNotEmpty));
+        } else {
+          syllabifiedWords.add(word); // Ajouter le mot original si non trouvé
+          allSyllables.add(word); // Considérer le mot comme une seule syllabe
+          syllabificationFoundForAll = false;
+          ConsoleLogger.warning('Syllabification non trouvée pour le mot: "$word" (normalisé: "$normalizedWord")');
+        }
+      }
+
+      _displayText = syllabifiedWords.join(' '); // Joindre les mots syllabifiés (ou non) pour l'affichage
+      _syllables = allSyllables; // Liste de toutes les syllabes (ou mots)
+      _referenceTextForAzure = _syllables.join(' '); // Joindre toutes les syllabes/mots avec espace pour Azure
+
+      if (syllabificationFoundForAll) {
+        ConsoleLogger.info('Texte syllabifié (affichage): "$_displayText"');
+      } else {
+        ConsoleLogger.warning('Syllabification partielle. Affichage: "$_displayText"');
+      }
+      ConsoleLogger.info('Syllabes/Mots pour Azure: $_syllables');
+      ConsoleLogger.info('Texte référence Azure: "$_referenceTextForAzure"');
+
+      // S'abonner aux résultats de reconnaissance
+      _subscribeToRecognitionResults();
 
       if (mounted) setState(() {});
     } catch (e) {
       ConsoleLogger.error('Erreur lors de l\'initialisation: $e');
-      // Gérer l'erreur
     }
   }
 
-  /// Met à jour la liste des syllabes pour le mot courant
-  void _updateCurrentSyllables() {
-    if (_currentWordIndex < _wordsToArticulate.length) {
-      final currentWord = _wordsToArticulate[_currentWordIndex];
-      _currentSyllables = _divideSyllables(currentWord);
-      _currentSyllableIndex = 0;
-      ConsoleLogger.info('Mot actuel: $currentWord, Syllabes: $_currentSyllables');
-    } else {
-      // Fin de tous les mots
-      _completeExercise();
-    }
+  /// S'abonne au stream de résultats d'AzureSpeechService
+  void _subscribeToRecognitionResults() {
+    _recognitionResultSubscription?.cancel(); // Annuler l'abonnement précédent s'il existe
+    // Correction: Utiliser recognitionStream au lieu de recognitionResultStream
+    _recognitionResultSubscription = _azureSpeechService.recognitionStream.listen(
+      (result) {
+        // Le type de 'result' est maintenant AzureSpeechEvent
+        // Adapter la logique pour utiliser result.type, result.text, result.errorMessage etc.
+        ConsoleLogger.info('[UI] Événement de reconnaissance reçu: ${result.toString()}');
+        if (mounted) {
+          // Gérer les différents types d'événements
+          switch (result.type) {
+            case AzureSpeechEventType.partial:
+              // Optionnel: Mettre à jour l'UI avec le résultat partiel si souhaité
+              // setState(() { _lastRecognizedText = result.text ?? ''; });
+              break;
+            case AzureSpeechEventType.finalResult:
+              // Utiliser Future.microtask pour s'assurer que setState est terminé avant d'appeler _getOpenAiFeedback
+              // et pour éviter les erreurs potentielles liées à l'appel de setState pendant le build.
+              Future.microtask(() {
+                if (!mounted) return; // Vérifier si le widget est toujours monté
+
+                // Correction: Utiliser la conversion sûre pour le résultat de prononciation
+                final Map<String, dynamic>? safePronunciationResult = _safelyConvertMap(result.pronunciationResult);
+                ConsoleLogger.info('[UI] Résultat Pronunciation Assessment reçu (converti): $safePronunciationResult');
+
+                // Analyser le résultat Azure et préparer les données pour OpenAI (utiliser safePronunciationResult)
+                double overallScore = (safePronunciationResult?['AccuracyScore'] as num?)?.toDouble() ?? 0.0;
+                double pronScore = (safePronunciationResult?['PronunciationScore'] as num?)?.toDouble() ?? 0.0;
+                double fluencyScore = (safePronunciationResult?['FluencyScore'] as num?)?.toDouble() ?? 0.0;
+                List<Map<String, dynamic>> wordsDetails = []; // Pour stocker les détails par "mot" (syllabe)
+
+                // --- Début de l'analyse détaillée (utiliser safePronunciationResult) ---
+                if (safePronunciationResult != null && safePronunciationResult['Words'] is List) {
+                  // Utiliser la liste convertie (qui contient des Map<String, dynamic>?)
+                  final List? words = safePronunciationResult['Words'] as List?;
+                  if (words != null) {
+                    for (var wordData in words) {
+                      // Chaque wordData devrait maintenant être une Map<String, dynamic>?
+                      if (wordData is Map<String, dynamic>) { // If block starts
+                        String wordText = wordData['Word'] ?? '';
+                        double wordAccuracy = (wordData['AccuracyScore'] as num?)?.toDouble() ?? 0.0;
+                        List<String> phonemeErrors = [];
+                        if (wordData['Phonemes'] is List) {
+                          final List? phonemes = wordData['Phonemes'] as List?; // Safe cast
+                          if (phonemes != null) {
+                            for (var phonemeData in phonemes) {
+                              if (phonemeData is Map<String, dynamic>) {
+                                String errorType = phonemeData['ErrorType'] ?? 'None';
+                                if (errorType != 'None') {
+                                  phonemeErrors.add('${phonemeData['Phoneme'] ?? '?'} ($errorType)');
+                                }
+                              }
+                            }
+                          }
+                        }
+                        wordsDetails.add({
+                          'syllabe': wordText,
+                          'score': wordAccuracy,
+                          'erreurs_phonemes': phonemeErrors.isNotEmpty ? phonemeErrors.join(', ') : 'Aucune',
+                        });
+                      } // Correction: Closing brace for 'if (wordData is Map<String, dynamic>)' added back
+                    } // for loop ends
+                  } // if (words != null) ends
+                } // if (safePronunciationResult != null ...) ends
+                // --- Fin de l'analyse détaillée ---
+
+                // Créer un feedback Azure plus détaillé (exemple)
+                String azureFeedback = 'Score Global: ${pronScore.toStringAsFixed(1)}, Précision: ${overallScore.toStringAsFixed(1)}, Fluidité: ${fluencyScore.toStringAsFixed(1)}.';
+                if (wordsDetails.isNotEmpty) {
+                   azureFeedback += '\nDétails par syllabe: ${wordsDetails.map((w) => "${w['syllabe']}(${w['score'].toStringAsFixed(0)})").join(', ')}';
+                }
+                 ConsoleLogger.info('[ANALYSIS] Feedback Azure détaillé (pré-OpenAI): $azureFeedback');
+                 ConsoleLogger.info('[ANALYSIS] Détails mots/syllabes extraits: $wordsDetails');
+
+                // Préparer le résultat de l'évaluation
+                final currentEvaluationResult = ArticulationEvaluationResult(
+                   score: overallScore,
+                   syllableClarity: pronScore, // Utiliser PronunciationScore
+                   consonantPrecision: overallScore, // Approximation
+                   endingClarity: overallScore, // Approximation
+                   feedback: azureFeedback, // Feedback basé sur Azure pour l'instant
+                   details: safePronunciationResult // Stocker les détails bruts convertis
+                 );
+
+                // Mettre à jour l'état dans le setState principal
+                final String rawRecognizedText = result.text ?? '';
+                setState(() {
+                  _lastRecognizedText = rawRecognizedText; // Garder le texte brut si nécessaire ailleurs
+                  _isProcessing = false;
+                  _evaluationResult = currentEvaluationResult;
+                });
+
+                ConsoleLogger.info('[UI] Résultat final Azure traité. Lancement de la génération de feedback OpenAI.');
+                // Nettoyer le texte reconnu avant de l'envoyer à OpenAI (supprimer ponctuation et astérisques)
+                final String cleanedRecognizedText = rawRecognizedText.replaceAll(RegExp(r'[,\.!?\*]'), '').toLowerCase();
+                ConsoleLogger.info('Texte reconnu nettoyé pour OpenAI: "$cleanedRecognizedText"');
+
+                // Lancer OpenAI après la mise à jour de l'état, avec le texte nettoyé
+                // Note: _getOpenAiFeedback utilise _lastRecognizedText, nous devons le mettre à jour ou passer le texte nettoyé
+                // Mise à jour de _getOpenAiFeedback pour accepter le texte nettoyé en paramètre
+                _getOpenAiFeedback(currentEvaluationResult, cleanedRecognizedText); // Passer le texte nettoyé
+
+              }); // Future.microtask ends here
+              // _evaluatePhrase(result.text ?? ''); // Ne plus appeler _evaluatePhrase ici
+              break;
+            case AzureSpeechEventType.error:
+              ConsoleLogger.error('[UI] Erreur de reconnaissance reçue: ${result.errorCode} - ${result.errorMessage}');
+              setState(() {
+                 _evaluationResult = ArticulationEvaluationResult(
+                   score: 0, syllableClarity: 0, consonantPrecision: 0, endingClarity: 0,
+                   feedback: 'Erreur de reconnaissance: ${result.errorMessage}', error: result.errorMessage
+                 );
+                 _isProcessing = false;
+                 _isExerciseCompleted = true; // Marquer comme complété en cas d'erreur
+              });
+              _completeExercise(); // Afficher l'erreur
+              break;
+            case AzureSpeechEventType.status:
+               ConsoleLogger.info('[UI] Statut reçu: ${result.statusMessage}');
+               // Mettre à jour l'UI en fonction du statut si nécessaire
+               // Ex: setState(() { _statusMessage = result.statusMessage; });
+              break;
+          }
+        }
+      },
+      onError: (error) {
+        // L'erreur du stream lui-même est gérée par .handleError dans AzureSpeechService
+        // Ici, on gère les erreurs applicatives transmises comme des événements
+        ConsoleLogger.error('[UI] Erreur applicative reçue via stream: $error');
+        if (mounted && error is AzureSpeechEvent && error.type == AzureSpeechEventType.error) {
+           setState(() {
+             _evaluationResult = ArticulationEvaluationResult(
+               score: 0, syllableClarity: 0, consonantPrecision: 0, endingClarity: 0,
+               feedback: 'Erreur: ${error.errorMessage}', error: error.errorMessage
+             );
+             _isProcessing = false;
+             _isExerciseCompleted = true;
+           });
+           _completeExercise();
+        } else if (mounted) {
+           // Gérer d'autres types d'erreurs du stream si nécessaire
+           setState(() {
+             _evaluationResult = ArticulationEvaluationResult(
+               score: 0, syllableClarity: 0, consonantPrecision: 0, endingClarity: 0,
+               feedback: 'Erreur inconnue du stream', error: error.toString()
+             );
+             _isProcessing = false;
+             _isExerciseCompleted = true;
+           });
+           _completeExercise();
+        }
+      },
+      onDone: () {
+        ConsoleLogger.info('[UI] Stream de reconnaissance terminé.');
+        // Gérer la fin du stream si nécessaire
+        if (mounted && _isProcessing) { // Si on attendait encore un résultat
+           setState(() { _isProcessing = false; });
+           // Peut-être afficher un message si aucun résultat final n'a été reçu ?
+        }
+      }
+    );
+     ConsoleLogger.info('[UI] Abonné au stream de résultats de reconnaissance.');
   }
 
-  /// Gère le résultat de reconnaissance reçu (après arrêt de l'enregistrement)
-  void _handleRecognitionResult(SpeechRecognitionResult result) {
-    if (result.error != null) {
-      _handleRecognitionError(result);
-      return;
-    }
-
-    // On a reçu le texte reconnu pour la syllabe prononcée
-    ConsoleLogger.info('[ArticulationScreen] Texte reconnu pour la syllabe: "${result.text}"');
-    if (_isProcessing) { // Vérifier si on attendait un résultat
-       _lastRecognizedSyllable = result.text;
-       _evaluateCurrentSyllable(); // Lancer l'évaluation
-    } else {
-       ConsoleLogger.warning('[ArticulationScreen] Résultat reçu alors que _isProcessing est false. Ignoré.');
-    }
-  }
-
-  /// Gère les erreurs du stream de reconnaissance
-  void _handleRecognitionError(dynamic errorData) {
-     String errorMessage = 'Erreur inconnue';
-     if (errorData is SpeechRecognitionResult && errorData.error != null) {
-       errorMessage = errorData.error!;
-     } else if (errorData is Error) {
-       errorMessage = errorData.toString();
-     }
-     ConsoleLogger.error('[ArticulationScreen] Erreur du stream Azure: $errorMessage');
-     if (mounted) {
-       ScaffoldMessenger.of(context).showSnackBar(
-         SnackBar(content: Text('Erreur reconnaissance: $errorMessage'), backgroundColor: Colors.red),
-       );
-       setState(() {
-         _isRecording = false;
-         _isProcessing = false;
-       });
-     }
-  }
 
   @override
   void dispose() {
+    // Annuler les abonnements aux streams
+    _audioStreamSubscription?.cancel();
     _recognitionResultSubscription?.cancel();
-    // Pas de dispose nécessaire pour AzureSpeechService dans cette version
+    // Assurer l'arrêt de l'enregistrement ou de la lecture si l'écran est quitté
+    if (_isRecording) {
+      _audioRepository.stopRecording();
+      // Correction: Utiliser stopRecognition
+      _azureSpeechService.stopRecognition();
+    }
+    _audioRepository.stopPlayback(); // Arrêter la lecture d'exemple
+    // Pas besoin de disposer les services récupérés via GetIt ici
     super.dispose();
   }
 
-  /// Joue l'exemple audio pour la syllabe actuelle
+  /// Joue l'exemple audio pour le texte complet
   Future<void> _playExampleAudio() async {
-    if (_isRecording || _isProcessing || _currentSyllables.isEmpty) return;
+    if (_isRecording || _isProcessing || _textToRead.isEmpty) return;
     try {
-      final currentSyllable = _currentSyllables[_currentSyllableIndex];
-      ConsoleLogger.info('Lecture de l\'exemple audio pour la syllabe: $currentSyllable');
+      ConsoleLogger.info('Lecture de l\'exemple audio pour: "$_textToRead"');
       setState(() { _isPlayingExample = true; });
 
-      await _azureSpeechService.synthesizeText(currentSyllable);
-      ConsoleLogger.success('Demande de synthèse vocale envoyée pour: "$currentSyllable"');
-
-      // Estimation courte pour une syllabe
-      await Future.delayed(const Duration(milliseconds: 1500));
+      await _exampleAudioProvider.playExampleFor(_textToRead);
+      await _exampleAudioProvider.isPlayingStream.firstWhere((playing) => !playing);
 
       if (mounted) setState(() { _isPlayingExample = false; });
-      ConsoleLogger.info('Fin (estimée) de la lecture de l\'exemple audio');
+      ConsoleLogger.info('Fin de la lecture de l\'exemple audio');
     } catch (e) {
-      ConsoleLogger.error('Erreur lors de la synthèse/lecture de l\'exemple: $e');
+      ConsoleLogger.error('Erreur lors de la lecture de l\'exemple: $e');
       if (mounted) setState(() { _isPlayingExample = false; });
     }
   }
 
-  /// Démarre ou arrête l'enregistrement pour la syllabe actuelle
+  /// Joue la séquence des syllabes avec pauses
+  Future<void> _playSyllableSequenceAudio() async {
+    if (_isRecording || _isProcessing || _syllables.isEmpty || _isPlayingExample) return;
+    try {
+      ConsoleLogger.info('Lecture de la séquence syllabique: ${_syllables.join(" - ")}');
+      setState(() { _isPlayingExample = true; });
+
+      for (int i = 0; i < _syllables.length; i++) {
+        if (!mounted || !_isPlayingExample) break; // Arrêter si l'état change
+        final syllable = _syllables[i];
+        ConsoleLogger.info('Lecture syllabe: "$syllable"');
+        await _exampleAudioProvider.playExampleFor(syllable);
+        // Attendre la fin de la lecture de la syllabe
+        await _exampleAudioProvider.isPlayingStream.firstWhere((playing) => !playing);
+
+        // Ajouter une pause après chaque syllabe sauf la dernière
+        if (i < _syllables.length - 1) {
+          await Future.delayed(const Duration(milliseconds: 400)); // Pause de 400ms entre syllabes
+        }
+      }
+
+      if (mounted) setState(() { _isPlayingExample = false; });
+      ConsoleLogger.info('Fin de la lecture de la séquence syllabique');
+
+    } catch (e) {
+      ConsoleLogger.error('Erreur lors de la lecture de la séquence syllabique: $e');
+      if (mounted) setState(() { _isPlayingExample = false; });
+    }
+  }
+
+
+  /// Démarre ou arrête l'enregistrement et le streaming vers Azure
   Future<void> _toggleRecording() async {
     if (_isExerciseCompleted || _isPlayingExample || _isProcessing) return;
 
     if (!_isRecording) {
-      // Démarrer l'enregistrement
-      ConsoleLogger.recording('Demande de démarrage de la reconnaissance pour la syllabe...');
-      setState(() {
-        _isRecording = true;
-        _lastRecognizedSyllable = '';
-        if (!_isExerciseStarted) _isExerciseStarted = true;
-      });
-      // Utiliser la reconnaissance simple (qui s'arrête au silence)
-      await _azureSpeechService.startStreamingRecognition(); // Ou une méthode simple si dispo
+      // Démarrer l'enregistrement et le streaming
+      try {
+        // 1. Vérifier et demander la permission microphone
+        if (!await _requestMicrophonePermission()) {
+           ConsoleLogger.warning('Permission microphone refusée ou non accordée.');
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text('Permission microphone requise.'), backgroundColor: Colors.orange),
+           );
+           return; // Ne pas continuer si la permission n'est pas accordée
+        }
+
+         ConsoleLogger.recording('Démarrage de l\'enregistrement streamé...');
+
+         // 2. Vérifier explicitement que le service Azure est initialisé
+         if (!_azureSpeechService.isInitialized) {
+           ConsoleLogger.error('Tentative d\'enregistrement alors qu\'AzureSpeechService n\'est pas initialisé.');
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text('Service de reconnaissance non prêt. Veuillez patienter.'), backgroundColor: Colors.orange),
+           );
+           return; // Ne pas continuer
+         }
+
+         // 3. Démarrer le stream audio depuis le repository
+         final audioStream = await _audioRepository.startRecordingStream();
+
+        // 4. Démarrer la reconnaissance streaming Azure AVEC le texte de référence syllabique
+        await _azureSpeechService.startRecognition(
+          referenceText: _referenceTextForAzure, // Passer le texte référence
+          // Assurez-vous que votre AzureSpeechService gère ce paramètre
+          // et configure PronunciationAssessmentConfig correctement.
+        );
+
+        setState(() {
+          _isRecording = true;
+          _lastRecognizedText = '';
+          _evaluationResult = null;
+          if (!_isExerciseStarted) _isExerciseStarted = true;
+        });
+
+        // Écouter le stream audio et envoyer les chunks à Azure
+        _audioStreamSubscription?.cancel(); // Annuler l'ancien abonnement si existant
+        _audioStreamSubscription = audioStream.listen(
+          (data) {
+            // Envoyer les données audio au service Azure (via Platform Channel)
+            // S'assurer que le service est prêt avant d'envoyer (optionnel mais plus sûr)
+            // if (_azureSpeechService.isInitialized) { // Ajouter une propriété isInitialized si besoin
+               _azureSpeechService.sendAudioChunk(data);
+            // }
+            // ConsoleLogger.info('Chunk audio envoyé (${data.length} bytes)'); // Garder commenté pour éviter trop de logs
+          },
+          onError: (error) {
+            ConsoleLogger.error('Erreur du stream audio: $error');
+            // Gérer l'erreur, peut-être arrêter la reconnaissance ?
+            _stopRecordingAndRecognition(); // Arrêter proprement
+          },
+          onDone: () {
+            ConsoleLogger.info('Stream audio terminé.');
+            // Indiquer à Azure que l'envoi est terminé (si nécessaire par l'API/SDK natif)
+            // Peut-être appeler stopRecognition ici si ce n'est pas déjà fait
+          },
+        );
+
+      } catch (e) {
+        ConsoleLogger.error('Erreur lors du démarrage de l\'enregistrement streamé: $e');
+        if(mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur enregistrement: $e'), backgroundColor: Colors.red),
+          );
+          // Assurer que l'état est propre
+          setState(() {
+            _isRecording = false;
+            _isProcessing = false;
+          });
+        }
+      }
     } else {
-      // Arrêter l'enregistrement et déclencher l'évaluation
-      ConsoleLogger.recording('Demande d\'arrêt de la reconnaissance...');
-      setState(() {
-        _isRecording = false;
-        _isProcessing = true; // Indiquer qu'on attend l'évaluation
-      });
-      await _azureSpeechService.stopStreamingRecognition();
-      // Le résultat sera traité dans _handleRecognitionResult
+      // Arrêter l'enregistrement et la reconnaissance
+      await _stopRecordingAndRecognition();
+     }
+  }
+
+  /// Vérifie et demande la permission microphone si nécessaire.
+  /// Retourne true si la permission est accordée, false sinon.
+  Future<bool> _requestMicrophonePermission() async {
+    var status = await Permission.microphone.status;
+    if (status.isGranted) {
+      return true;
+    } else {
+      status = await Permission.microphone.request();
+      if (status.isGranted) {
+        return true;
+      } else {
+        ConsoleLogger.error('Permission microphone refusée par l\'utilisateur.');
+        // Optionnel: Afficher un message plus persistant ou ouvrir les paramètres de l'application
+        // openAppSettings();
+        return false;
+      }
     }
   }
 
-  /// Évalue la syllabe reconnue
-  Future<void> _evaluateCurrentSyllable() async {
-    if (_currentSyllables.isEmpty) return;
+  /// Méthode pour arrêter proprement l'enregistrement et la reconnaissance Azure
+  Future<void> _stopRecordingAndRecognition() async {
+      ConsoleLogger.recording('Arrêt de l\'enregistrement streamé...');
+      setState(() {
+        _isRecording = false;
+        _isProcessing = true; // Indiquer qu'on attend le résultat final d'Azure
+      });
+      try {
+        // Annuler l'abonnement au stream audio local
+        await _audioStreamSubscription?.cancel();
+        _audioStreamSubscription = null;
 
-    final expectedSyllable = _currentSyllables[_currentSyllableIndex];
-    ConsoleLogger.evaluation('Début évaluation syllabe: "$_lastRecognizedSyllable" vs "$expectedSyllable"');
-    final stopwatch = Stopwatch()..start(); // Mesurer le temps
+        // Arrêter l'enregistrement dans le repository
+        // stopRecording retourne maintenant String?
+        await _audioRepository.stopRecording(); // La valeur de retour n'est pas utile ici
 
+        // Arrêter la reconnaissance côté Azure (indique la fin de l'audio)
+        // Correction: Utiliser stopRecognition
+        await _azureSpeechService.stopRecognition();
+
+        ConsoleLogger.info('Enregistrement et reconnaissance arrêtés. Attente du résultat final...');
+        // Le résultat final arrivera via le _recognitionResultSubscription
+
+      } catch (e) {
+        ConsoleLogger.error('Erreur lors de l\'arrêt de l\'enregistrement/reconnaissance: $e');
+         if(mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+             SnackBar(content: Text('Erreur arrêt: $e'), backgroundColor: Colors.red),
+           );
+           setState(() { _isProcessing = false; }); // Réinitialiser si erreur à l'arrêt
+         }
+      }
+  }
+
+  /// Obtient le feedback coaching d'OpenAI basé sur l'évaluation Azure
+  // Correction: Ajouter le paramètre cleanedRecognizedText
+  Future<void> _getOpenAiFeedback(ArticulationEvaluationResult? azureResult, String cleanedRecognizedText) async {
+    if (azureResult == null) {
+      ConsoleLogger.warning('Tentative d\'appel OpenAI sans résultat Azure.');
+      _completeExercise(); // Finaliser avec le feedback Azure seul
+      return;
+    }
+
+    setState(() { _isProcessing = true; _openAiFeedback = 'Génération du feedback...'; }); // Indiquer le traitement OpenAI
+
+    // Préparer les arguments pour le service OpenAI, avec vérifications de type
+    final Map<String, dynamic> metrics = {
+      'score_global_accuracy': (azureResult.score is num ? azureResult.score : 0.0),
+      'score_prononciation': (azureResult.syllableClarity is num ? azureResult.syllableClarity : 0.0), // Approximation
+      // Correction: Utiliser le texte nettoyé pour les métriques OpenAI
+      'texte_reconnu': cleanedRecognizedText,
+      // TODO: Extraire et ajouter des métriques plus fines depuis azureResult.details si disponible
+      // Par exemple: erreurs par syllabe, phonèmes mal prononcés, etc.
+    };
+     if (azureResult.error != null) {
+       metrics['erreur_azure'] = azureResult.error;
+     }
+
+    ConsoleLogger.info('Appel à OpenAI generateFeedback...');
     try {
-      ConsoleLogger.evaluation('Appel à _azureSpeechService.evaluatePronunciation...');
-      final evaluationResult = await _azureSpeechService.evaluatePronunciation(
-        spokenText: _lastRecognizedSyllable,
-        expectedText: expectedSyllable,
+      // Correction: Utiliser le texte nettoyé pour l'appel OpenAI
+      // Correction: Nettoyer aussi le texte attendu pour la comparaison (supprimer ponctuation et astérisques)
+      final String cleanedExpectedText = _textToRead.replaceAll(RegExp(r'[,\.!?\*]'), '').toLowerCase();
+      final feedback = await _openAIFeedbackService.generateFeedback(
+        exerciseType: 'Répétition Syllabique', // Type d'exercice
+        exerciseLevel: _difficultyToString(widget.exercise.difficulty), // Niveau
+        spokenText: cleanedRecognizedText, // Texte reconnu et nettoyé
+        expectedText: cleanedExpectedText, // Texte attendu nettoyé
+        metrics: metrics, // Métriques extraites/calculées
       );
-      stopwatch.stop();
-      ConsoleLogger.evaluation('Retour de evaluatePronunciation après ${stopwatch.elapsedMilliseconds}ms');
-      // ); // Parenthèse en trop supprimée
+      ConsoleLogger.success('Feedback OpenAI reçu: "$feedback"');
+      setState(() {
+        _openAiFeedback = feedback;
+        // Optionnel: Mettre à jour le feedback dans _evaluationResult si souhaité
+        _evaluationResult = _evaluationResult?.copyWith(feedback: feedback);
+      });
 
-      final syllableResult = SyllableEvaluationResult(
-        syllable: expectedSyllable,
-        score: evaluationResult.pronunciationScore,
-        recognizedText: _lastRecognizedSyllable,
-        error: evaluationResult.error,
-      );
-      _syllableResults.add(syllableResult);
-      _cumulativeScore += evaluationResult.pronunciationScore;
-
-      ConsoleLogger.success('Évaluation syllabe "$expectedSyllable": Score ${evaluationResult.pronunciationScore.toStringAsFixed(1)}');
-      if (evaluationResult.error != null) {
-        ConsoleLogger.warning('- Fallback utilisé: ${evaluationResult.error}');
+      // Jouer le feedback OpenAI via TTS
+      if (feedback.isNotEmpty && !feedback.startsWith('Erreur')) {
+        ConsoleLogger.info('Lecture du feedback OpenAI via TTS...');
+        // Assurer qu'aucune autre lecture n'est en cours
+        await _audioRepository.stopPlayback();
+        await _exampleAudioProvider.playExampleFor(feedback);
+        // Pas besoin d'attendre la fin ici, la lecture se fait en arrière-plan
       }
 
-      // Passer à la syllabe/mot suivant
-      _moveToNextStep();
+    } catch (e) {
+      ConsoleLogger.error('Erreur lors de la récupération du feedback OpenAI: $e');
+      setState(() {
+        _openAiFeedback = 'Erreur lors de la génération du feedback.';
+        // Garder le feedback Azure comme fallback
+        _evaluationResult = _evaluationResult?.copyWith(feedback: _evaluationResult?.feedback ?? 'Évaluation Azure terminée.');
+      });
+    } finally {
+       // Finaliser l'exercice après avoir reçu (ou échoué à recevoir) le feedback OpenAI
+       _completeExercise();
+    }
+  }
+
+
+  /* // Ancienne fonction d'évaluation, mise en commentaire car l'évaluation vient d'Azure
+  /// Évalue la phrase reconnue (reçue du stream Azure)
+  Future<void> _evaluatePhrase(String recognizedText) async {
+    // Ne pas évaluer si le texte reconnu est vide ou si on est déjà en train d'évaluer
+    // ou si l'exercice est déjà marqué comme complété (pour éviter double évaluation si résultat arrive tard)
+    if (recognizedText.isEmpty || _isProcessing || _isExerciseCompleted) return;
+
+    setState(() { _isProcessing = true; }); // Indiquer le début de l'évaluation
+
+    ConsoleLogger.evaluation('Début évaluation phrase (Azure): "$recognizedText" vs "$_textToRead"');
+    final stopwatch = Stopwatch()..start();
+
+    try {
+      // Utiliser le service d'évaluation (qui pourrait utiliser Azure Pronunciation Assessment ou une logique locale)
+      ConsoleLogger.evaluation('Appel à _evaluationService.evaluateRecording...');
+      // Note: evaluateRecording prend un audioFilePath, ce qui n'est pas pertinent ici.
+      // Il faudra peut-être adapter l'interface/implémentation d'ArticulationEvaluationService
+      // pour accepter directement le texte reconnu ou utiliser une autre méthode.
+      // Pour l'instant, on passe une valeur factice pour audioFilePath.
+      final ArticulationEvaluationResult evaluationResult = await _evaluationService.evaluateRecording(
+        audioFilePath: "streaming_audio", // Chemin factice
+        expectedWord: _textToRead,
+        recognizedText: recognizedText, // Passer le texte d'Azure
+        exerciseLevel: _difficultyToString(widget.exercise.difficulty),
+      );
+      stopwatch.stop();
+      ConsoleLogger.evaluation('Retour de evaluateRecording après ${stopwatch.elapsedMilliseconds}ms');
+
+      // Assigner directement le résultat
+      _evaluationResult = evaluationResult;
+
+      ConsoleLogger.success('Évaluation phrase: Score ${evaluationResult.score.toStringAsFixed(1)}');
+      if (evaluationResult.error != null) {
+        ConsoleLogger.warning('- Erreur évaluation: ${evaluationResult.error}');
+      }
+
+      _completeExercise();
 
     } catch (e) {
       stopwatch.stop();
-      ConsoleLogger.error('Erreur dans _evaluateCurrentSyllable après ${stopwatch.elapsedMilliseconds}ms: $e');
-      // Ajouter un résultat d'erreur et passer à la suite
-      _syllableResults.add(SyllableEvaluationResult(
-        syllable: expectedSyllable, score: 0, recognizedText: _lastRecognizedSyllable, error: e.toString()
-      ));
-      _moveToNextStep();
+      ConsoleLogger.error('Erreur dans _evaluatePhrase après ${stopwatch.elapsedMilliseconds}ms: $e');
+      setState(() {
+        _evaluationResult = ArticulationEvaluationResult(
+          score: 0, syllableClarity: 0, consonantPrecision: 0, endingClarity: 0,
+          feedback: 'Erreur d\'évaluation', error: e.toString()
+        );
+        _isExerciseCompleted = true; // Marquer comme complété même en cas d'erreur d'évaluation
+      });
+       _completeExercise(); // Afficher l'erreur
     } finally {
        if (mounted) {
-         setState(() { _isProcessing = false; });
+         // Ne remettre _isProcessing à false que si l'exercice n'est pas déjà marqué comme complété
+         // pour éviter des états incohérents si _completeExercise a déjà été appelé
+         if (!_isExerciseCompleted) {
+            setState(() { _isProcessing = false; });
+         }
        }
     }
   }
-
-  /// Passe à la syllabe suivante ou au mot suivant ou termine l'exercice
-  void _moveToNextStep() {
-    if (_currentSyllableIndex < _currentSyllables.length - 1) {
-      // Syllabe suivante
-      setState(() {
-        _currentSyllableIndex++;
-        _lastRecognizedSyllable = '';
-      });
-       ConsoleLogger.info('Passage à la syllabe suivante: ${_currentSyllables[_currentSyllableIndex]}');
-    } else if (_currentWordIndex < _wordsToArticulate.length - 1) {
-      // Mot suivant
-      setState(() {
-        _currentWordIndex++;
-        _updateCurrentSyllables(); // Met à jour _currentSyllables et réinitialise _currentSyllableIndex
-        _lastRecognizedSyllable = '';
-      });
-       ConsoleLogger.info('Passage au mot suivant: ${_wordsToArticulate[_currentWordIndex]}');
-    } else {
-      // Fin de l'exercice
-      _completeExercise();
-    }
-  }
+  */
 
   /// Finalise l'exercice et affiche les résultats globaux
   void _completeExercise() {
+     // Ne pas compléter plusieurs fois si des résultats arrivent en décalé
      if (_isExerciseCompleted) return;
-     ConsoleLogger.info('Finalisation de l\'exercice d\'articulation (syllabe par syllabe)');
+     ConsoleLogger.info('Finalisation de l\'exercice d\'articulation (mot/phrase)');
 
      setState(() {
        _isExerciseCompleted = true;
-       _showCelebration = true;
+       _isProcessing = false; // Assurer que l'indicateur de traitement est arrêté
+       _showCelebration = (_evaluationResult?.score ?? 0) > 70;
      });
 
-     // Calculer le score moyen
-     final averageScore = _syllableResults.isNotEmpty ? _cumulativeScore / _syllableResults.length : 0.0;
-
-     // Préparer les résultats finaux (simplifié pour l'instant)
+     // Préparer les résultats finaux en utilisant _evaluationResult
      final finalResults = {
-       'score': averageScore,
-       'commentaires': 'Exercice terminé. Score moyen des syllabes: ${averageScore.toStringAsFixed(1)}',
-       'mots_complétés': _wordsToArticulate.length,
-       // On pourrait ajouter plus de détails basés sur _syllableResults
+       'score': _evaluationResult?.score ?? 0,
+       'commentaires': _evaluationResult?.feedback ?? 'Évaluation terminée.', // Utiliser le feedback du résultat
+       'texte_reconnu': _lastRecognizedText,
+       'erreur': _evaluationResult?.error, // Propager l'erreur éventuelle
+       // Ajouter d'autres métriques si disponibles
+       'clarté_syllabique': _evaluationResult?.syllableClarity ?? 0,
+       'précision_consonnes': _evaluationResult?.consonantPrecision ?? 0,
+       'netteté_finales': _evaluationResult?.endingClarity ?? 0,
+       // Ajouter le feedback OpenAI s'il est disponible
+       'feedback_openai': _openAiFeedback.isNotEmpty ? _openAiFeedback : null,
      };
 
-     // Afficher l'écran de fin (similaire à avant, mais avec le score moyen)
+     // Mettre à jour le feedback dans les résultats si OpenAI a fourni quelque chose
+     if (_openAiFeedback.isNotEmpty && !_openAiFeedback.startsWith('Erreur')) {
+       finalResults['commentaires'] = _openAiFeedback;
+     }
+
+
      _showCompletionDialog(finalResults);
   }
 
@@ -322,52 +715,83 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
          context: context,
          barrierDismissible: false,
          builder: (context) {
+           bool success = (results['score'] ?? 0) > 70 && results['erreur'] == null;
            return Stack(
              children: [
-               CelebrationEffect(
-                 intensity: 0.8,
-                 primaryColor: AppTheme.primaryColor,
-                 secondaryColor: AppTheme.accentGreen,
-                 durationSeconds: 3,
-                 onComplete: () {
-                   ConsoleLogger.info('Animation de célébration terminée');
-                   if (mounted) {
-                     Navigator.of(context).pop();
-                     Future.delayed(const Duration(milliseconds: 500), () {
-                       if (mounted) {
-                         ConsoleLogger.success('Exercice d\'articulation terminé avec succès');
-                         widget.onExerciseCompleted(results);
-                       }
-                     });
-                   }
-                 },
-               ),
+               if (success)
+                 CelebrationEffect(
+                   intensity: 0.8,
+                   primaryColor: AppTheme.primaryColor,
+                   secondaryColor: AppTheme.accentGreen,
+                   durationSeconds: 3,
+                   onComplete: () {
+                     ConsoleLogger.info('Animation de célébration terminée');
+                     if (mounted) {
+                       Navigator.of(context).pop(); // Fermer la dialog
+                       Future.delayed(const Duration(milliseconds: 100), () {
+                         if (mounted) {
+                           ConsoleLogger.success('Exercice terminé avec succès');
+                           widget.onExerciseCompleted(results);
+                         }
+                       });
+                     }
+                   },
+                 ),
                Center(
-                 child: Container(
-                   padding: const EdgeInsets.all(24),
-                   decoration: BoxDecoration(
-                     color: AppTheme.darkSurface.withOpacity(0.9),
-                     borderRadius: BorderRadius.circular(16),
-                     boxShadow: [
-                       BoxShadow(
-                         color: Colors.black.withOpacity(0.3),
-                         blurRadius: 10,
-                         offset: const Offset(0, 5),
-                       ),
-                     ],
-                   ),
-                   child: Column(
-                     mainAxisSize: MainAxisSize.min,
+                 child: AlertDialog(
+                   backgroundColor: AppTheme.darkSurface,
+                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                   title: Row(
                      children: [
-                       const Icon(Icons.check_circle, color: AppTheme.accentGreen, size: 64),
-                       const SizedBox(height: 16),
-                       const Text('Exercice terminé !', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-                       const SizedBox(height: 8),
-                       Text('Score Moyen: ${results['score'].toInt()}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.accentGreen)),
-                       const SizedBox(height: 16),
-                       Text(results['commentaires'] as String, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, color: Colors.white)),
+                       Icon(success ? Icons.check_circle : Icons.info_outline, color: success ? AppTheme.accentGreen : Colors.orangeAccent, size: 32),
+                       const SizedBox(width: 16),
+                       Text(success ? 'Exercice terminé !' : 'Résultats', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                      ],
                    ),
+                   content: Column(
+                     mainAxisSize: MainAxisSize.min,
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     children: [
+                       Text('Score: ${results['score'].toInt()}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: success ? AppTheme.accentGreen : Colors.orangeAccent)),
+                       const SizedBox(height: 12),
+                       Text('Attendu: "$_textToRead" (${_syllables.join(" - ")})', style: TextStyle(fontSize: 14, color: Colors.white70)),
+                       const SizedBox(height: 8),
+                       Text('Reconnu: "${results['texte_reconnu']}"', style: TextStyle(fontSize: 14, color: Colors.white)),
+                       // Afficher le feedback (OpenAI si dispo, sinon Azure/local)
+                       const SizedBox(height: 8),
+                       Text('Feedback: ${results['commentaires']}', style: TextStyle(fontSize: 14, color: Colors.white)),
+                       if (results['erreur'] != null) ...[
+                         const SizedBox(height: 8),
+                         Text('Erreur: ${results['erreur']}', style: TextStyle(fontSize: 14, color: AppTheme.accentRed)),
+                       ]
+                     ],
+                   ),
+                   actions: [
+                     TextButton(
+                       onPressed: () {
+                         Navigator.of(context).pop();
+                         widget.onExitPressed();
+                       },
+                       child: const Text('Quitter', style: TextStyle(color: Colors.white70)),
+                     ),
+                     ElevatedButton(
+                       style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+                       onPressed: () {
+                         Navigator.of(context).pop();
+                         setState(() {
+                           _isExerciseCompleted = false;
+                           _isExerciseStarted = false;
+                           _isProcessing = false;
+                           _isRecording = false;
+                           _lastRecognizedText = '';
+                           _evaluationResult = null;
+                           _showCelebration = false;
+                           _openAiFeedback = ''; // Réinitialiser le feedback OpenAI
+                         });
+                       },
+                       child: const Text('Réessayer', style: TextStyle(color: Colors.white)),
+                     ),
+                   ],
                  ),
                ),
              ],
@@ -391,9 +815,9 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
           'Augmentation de l\'impact de vos messages clés',
           'Amélioration de la perception de votre expertise',
         ],
-        instructions: 'Écoutez l\'exemple audio de la syllabe en appuyant sur le bouton de lecture. '
-            'Puis, maintenez le bouton microphone pour vous enregistrer en prononçant la syllabe affichée. Relâchez pour arrêter et obtenir une évaluation. '
-            'Concentrez-vous sur la précision de chaque syllabe.',
+        instructions: 'Écoutez l\'exemple audio en appuyant sur le bouton de lecture. '
+            'Puis, appuyez sur le bouton microphone pour démarrer l\'enregistrement. Prononcez le texte affiché. '
+            'Appuyez à nouveau sur le bouton microphone pour arrêter l\'enregistrement et obtenir l\'évaluation.',
         backgroundColor: AppTheme.primaryColor,
       ),
     );
@@ -441,127 +865,69 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
       ),
       body: Column(
         children: [
-          _buildProgressHeader(),
           Expanded(
             flex: 3,
             child: _buildMainContent(),
           ),
           _buildControls(),
-          _buildFeedbackArea(), // Pourrait afficher le feedback de la dernière syllabe
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProgressHeader() {
-    int totalSyllables = _wordsToArticulate.map((w) => _divideSyllables(w).length).reduce((a, b) => a + b);
-    int completedSyllables = 0;
-    for(int i=0; i < _currentWordIndex; i++){
-        completedSyllables += _divideSyllables(_wordsToArticulate[i]).length;
-    }
-    completedSyllables += _currentSyllableIndex;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Mot ${_currentWordIndex + 1}/${_wordsToArticulate.length} - Syllabe ${_currentSyllableIndex + 1}/${_currentSyllables.length}',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  'Niveau: ${_difficultyToString(widget.exercise.difficulty)}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(
-            value: totalSyllables > 0 ? completedSyllables / totalSyllables : 0,
-            backgroundColor: Colors.white.withOpacity(0.1),
-            color: AppTheme.primaryColor,
-          ),
+          _buildFeedbackArea(),
         ],
       ),
     );
   }
 
   Widget _buildMainContent() {
-    if (_currentSyllables.isEmpty) {
-      return Center(child: CircularProgressIndicator()); // Chargement initial
-    }
-    // final currentSyllable = _currentSyllables[_currentSyllableIndex]; // Plus nécessaire ici
-    final currentWord = _wordsToArticulate[_currentWordIndex]; // Mot complet
-
     return Container(
       padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Mot complet avec syllabe en surbrillance
-          RichText(
-            textAlign: TextAlign.center,
-            text: TextSpan(
-              style: const TextStyle( // Style par défaut (syllabes non actives)
-                fontSize: 32, // Taille de base pour le mot
-                fontWeight: FontWeight.normal,
-                color: Colors.white70,
-                height: 1.5, // Ajuster l'interligne si nécessaire
-              ),
-              children: List.generate(_currentSyllables.length, (index) {
-                final syllable = _currentSyllables[index];
-                final isActive = index == _currentSyllableIndex;
-                return TextSpan(
-                  text: syllable,
-                  style: isActive
-                      ? const TextStyle( // Style pour la syllabe active
-                          fontWeight: FontWeight.bold,
-                          fontSize: 40, // Plus grand pour la mise en évidence
-                          color: AppTheme.primaryColor,
-                          // Ajouter d'autres styles si désiré (ex: soulignement)
-                        )
-                      : const TextStyle( // Style explicite pour les syllabes inactives
-                          fontWeight: FontWeight.normal,
-                          fontSize: 32, // Taille de base
-                          color: Colors.white70,
-                        ),
-                );
-              }),
-            ),
-          ),
-          const SizedBox(height: 32), // Espacement
-
-          // Placeholder pour la visualisation
-          Expanded(
-            child: Center(
-              child: Icon(
-                _isRecording ? Icons.mic : (_isProcessing ? Icons.hourglass_top : Icons.mic_none),
-                size: 80,
-                color: _isRecording ? AppTheme.accentRed : (_isProcessing ? Colors.orangeAccent : AppTheme.primaryColor.withOpacity(0.5)),
+      // Wrap the Column with SingleChildScrollView to prevent overflow
+      child: SingleChildScrollView(
+        child: Column(
+          // mainAxisAlignment: MainAxisAlignment.center, // Remove center alignment
+          crossAxisAlignment: CrossAxisAlignment.center, // Center text horizontally
+          children: [
+            // Afficher le mot original
+            Text(
+              _textToRead,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w500,
+                color: Colors.white.withOpacity(0.8),
+                height: 1.4,
               ),
             ),
-          ),
-        ],
-      ),
-    );
+            // Correction: N'afficher le texte syllabifié que s'il est différent de l'original
+            if (_displayText != _textToRead) ...[
+              const SizedBox(height: 16),
+              // Afficher la décomposition syllabique
+              Text(
+                _displayText, // Contient les syllabes avec tirets
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.normal,
+                  color: Colors.white,
+                  height: 1.5,
+                ),
+              ),
+            ] else ...[
+              // Ajouter un espace même si le texte n'est pas affiché pour garder la mise en page cohérente
+              const SizedBox(height: 16 + 28 * 1.5), // Hauteur approximative du Text + SizedBox
+            ],
+            // Add space before the icon
+            const SizedBox(height: 32), // Adjust spacing as needed
+            // Icon (no longer needs Spacers or Center around it)
+            Icon(
+              _isRecording ? Icons.mic : (_isProcessing ? Icons.hourglass_top : Icons.mic_none),
+              size: 80,
+              color: _isRecording ? AppTheme.accentRed : (_isProcessing ? Colors.orangeAccent : AppTheme.primaryColor.withOpacity(0.5)),
+            ),
+            // Add some space at the bottom if needed, or let padding handle it
+            const SizedBox(height: 20),
+          ],
+        ), // Closing Column
+      ), // Closing SingleChildScrollView
+    ); // Closing Container
   }
 
   Widget _buildControls() {
@@ -569,13 +935,13 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 24),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly, // Espacer les boutons
         children: [
-          // Bouton d'exemple audio (pour la syllabe)
+          // Bouton pour jouer le mot complet
           ElevatedButton.icon(
             onPressed: _isPlayingExample || _isRecording || _isProcessing ? null : _playExampleAudio,
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.darkSurface,
+              backgroundColor: AppTheme.darkSurface.withOpacity(0.8),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppTheme.borderRadius2),
@@ -583,24 +949,43 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
             ),
             icon: Icon(
               _isPlayingExample ? Icons.stop : Icons.play_arrow,
-              color: AppTheme.accentGreen,
+              color: Colors.tealAccent[100],
             ),
             label: Text(
-              'Exemple',
+              'Mot', // Label changé
               style: TextStyle(
                 color: Colors.white.withOpacity(0.9),
               ),
             ),
           ),
-          const SizedBox(width: 24),
-
-          // Bouton d'enregistrement
+          // Bouton Microphone
           PulsatingMicrophoneButton(
-            size: 64,
+            size: 72, // Légèrement plus grand
             isRecording: _isRecording,
             baseColor: AppTheme.primaryColor,
             recordingColor: AppTheme.accentRed,
-            onPressed: canRecord ? () { _toggleRecording(); } : () {}, // Correction: Passer fonction vide si désactivé
+            onPressed: canRecord ? () { _toggleRecording(); } : () {},
+          ),
+          // Bouton pour jouer la séquence syllabique
+          ElevatedButton.icon(
+            onPressed: _isPlayingExample || _isRecording || _isProcessing || _syllables.length <= 1 ? null : _playSyllableSequenceAudio,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.darkSurface.withOpacity(0.8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.borderRadius2),
+              ),
+            ),
+            icon: Icon(
+              _isPlayingExample ? Icons.stop_circle_outlined : Icons.segment, // Icône différente
+              color: Colors.tealAccent[100],
+            ),
+            label: Text(
+              'Syllabes', // Label changé
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.9),
+              ),
+            ),
           ),
         ],
       ),
@@ -608,40 +993,62 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
   }
 
   Widget _buildFeedbackArea() {
-    // Afficher le résultat de la dernière syllabe évaluée
-    final lastResult = _syllableResults.isNotEmpty ? _syllableResults.last : null;
+    final result = _evaluationResult;
     return Container(
-      height: 100, // Hauteur fixe pour la zone de feedback
+      height: 100,
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Dernière Syllabe (${lastResult?.syllable ?? '-'})',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (lastResult != null)
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Text(
-              'Score: ${lastResult.score.toStringAsFixed(1)} - Reconnu: "${lastResult.recognizedText}" ${lastResult.error != null ? '(Fallback)' : ''}',
+              'Résultat',
               style: TextStyle(
-                fontSize: 14,
-                color: lastResult.score > 70 ? AppTheme.accentGreen : (lastResult.score > 40 ? Colors.orangeAccent : AppTheme.accentRed),
-              ),
-            )
-          else
-             Text(
-              'Prononcez la syllabe affichée.',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.white.withOpacity(0.8),
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
             ),
-        ],
+            const SizedBox(height: 8),
+            if (_isProcessing)
+              Row(children: [
+                 const CircularProgressIndicator(strokeWidth: 2),
+                 const SizedBox(width: 8),
+                 Text(_openAiFeedback.isNotEmpty ? _openAiFeedback : 'Traitement Azure...', style: const TextStyle(color: Colors.white70))
+              ])
+            else if (result != null)
+              Text(
+                // Afficher le feedback final (OpenAI si dispo, sinon celui de l'évaluation Azure/locale)
+                _openAiFeedback.isNotEmpty && !_openAiFeedback.startsWith('Erreur')
+                  ? _openAiFeedback
+                  : (result.error != null
+                      ? 'Erreur: ${result.error}'
+                      : 'Score: ${result.score.toStringAsFixed(1)} - ${result.feedback}'),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: result.error != null
+                      ? AppTheme.accentRed
+                      : (result.score > 70 ? AppTheme.accentGreen : (result.score > 40 ? Colors.orangeAccent : AppTheme.accentRed)), // Utiliser result.score (AccuracyScore) pour la couleur
+                ),
+              )
+            else if (_isExerciseStarted && !_isRecording) // Afficher seulement si on a démarré et arrêté
+               Text(
+                'Enregistrement terminé. En attente d\'évaluation...',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(0.8),
+                ),
+              )
+            else
+               Text(
+                'Appuyez sur le micro pour enregistrer.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(0.8),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -659,28 +1066,39 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
     }
   }
 
-  List<String> _divideSyllables(String word) {
-    // Simplification pour la démonstration
-    // Dans une implémentation réelle, on utiliserait un algorithme de division syllabique
-    switch (word.toLowerCase()) {
-      case 'professionnalisme':
-        return ['pro', 'fe', 'ssio', 'nna', 'lisme'];
-      case 'développement':
-        return ['dé', 've', 'lo', 'ppe', 'ment'];
-      case 'communication':
-        return ['co', 'mmu', 'ni', 'ca', 'tion'];
-      case 'stratégique':
-        return ['stra', 'té', 'gique'];
-      case 'collaboration':
-        return ['co', 'lla', 'bo', 'ra', 'tion'];
-      default:
-        // Diviser tous les 2 caractères pour une simplification
-        final result = <String>[];
-        for (int i = 0; i < word.length; i += 2) {
-          final end = i + 2 < word.length ? i + 2 : word.length;
-          result.add(word.substring(i, end));
-        }
-        return result;
-    }
+  // La fonction _divideSyllables n'est plus nécessaire ici
+  // List<String> _divideSyllables(String word) { ... }
+
+  // --- Fonctions utilitaires pour la conversion de Map ---
+
+  /// Convertit de manière récursive une Map<dynamic, dynamic>? en Map<String, dynamic>?
+  Map<String, dynamic>? _safelyConvertMap(Map<dynamic, dynamic>? originalMap) {
+    if (originalMap == null) return null;
+    final Map<String, dynamic> newMap = {};
+    originalMap.forEach((key, value) {
+      final String stringKey = key.toString(); // Convertir la clé en String
+      if (value is Map<dynamic, dynamic>) {
+        newMap[stringKey] = _safelyConvertMap(value); // Appel récursif pour les maps imbriquées
+      } else if (value is List) {
+        newMap[stringKey] = _safelyConvertList(value); // Gérer les listes
+      } else {
+        newMap[stringKey] = value; // Assigner les autres types directement
+      }
+    });
+    return newMap;
+  }
+
+  /// Convertit de manière récursive une List<dynamic>? en List<dynamic>?, en convertissant les Maps imbriquées.
+  List<dynamic>? _safelyConvertList(List<dynamic>? originalList) {
+    if (originalList == null) return null;
+    return originalList.map((item) {
+      if (item is Map<dynamic, dynamic>) {
+        return _safelyConvertMap(item); // Convertir les maps dans la liste
+      } else if (item is List) {
+        return _safelyConvertList(item); // Appel récursif pour les listes imbriquées
+      } else {
+        return item; // Garder les autres types tels quels
+      }
+    }).toList();
   }
 }

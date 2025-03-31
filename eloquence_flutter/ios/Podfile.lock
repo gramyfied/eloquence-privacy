@@ -1,0 +1,23 @@
+PODS:
+  - Flutter (1.0.0)
+  - MicrosoftCognitiveServicesSpeech-iOS (1.38.0)
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - MicrosoftCognitiveServicesSpeech-iOS (~> 1.38.0)
+
+SPEC REPOS:
+  trunk:
+    - MicrosoftCognitiveServicesSpeech-iOS
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+
+SPEC CHECKSUMS:
+  Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
+  MicrosoftCognitiveServicesSpeech-iOS: 614ca9b9bcb836d210823bf31abef7cb5b101035
+
+PODFILE CHECKSUM: 30cfe5cdc3cb5990261c47d2608caceb28cc195f
+
+COCOAPODS: 1.16.2

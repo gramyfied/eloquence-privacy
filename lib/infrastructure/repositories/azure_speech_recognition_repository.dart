@@ -48,17 +48,23 @@ class AzureSpeechRecognitionRepository implements SpeechRecognitionRepository {
       }
       
       _isInitialized = true;
+      print('[AzureSpeechRecognitionRepository initialize] Instance $hashCode initialized successfully.');
     } catch (e) {
       _isInitialized = false;
+      print('[AzureSpeechRecognitionRepository initialize] Instance $hashCode FAILED initialization: $e');
       throw Exception('Échec de l\'initialisation du service Azure Speech: $e');
     }
   }
   
   @override
   Future<SpeechRecognitionResult> recognizeFromFile(String filePath) async {
-    _checkInitialization();
+    print('[AzureSpeechRecognitionRepository] recognizeFromFile called for path: $filePath');
     
     try {
+      // Vérifier l'initialisation juste avant l'opération
+      _checkInitialization(); 
+      print('[AzureSpeechRecognitionRepository] Initialization check passed inside recognizeFromFile try block.');
+
       // Simuler la reconnaissance vocale à partir d'un fichier
       // Dans une implémentation réelle, nous utiliserions le SDK Azure
       
@@ -143,9 +149,13 @@ class AzureSpeechRecognitionRepository implements SpeechRecognitionRepository {
     required String spokenText, 
     required String expectedText
   }) async {
-    _checkInitialization();
-    
+    print('[AzureSpeechRecognitionRepository] evaluatePronunciation called for text: "$spokenText" vs "$expectedText"');
+
     try {
+      // Vérifier l'initialisation juste avant l'opération
+      _checkInitialization();
+      print('[AzureSpeechRecognitionRepository] Initialization check passed inside evaluatePronunciation try block.');
+
       // Simuler l'évaluation de la prononciation
       // Normalement, nous utiliserions le SDK Azure
       
@@ -243,7 +253,10 @@ class AzureSpeechRecognitionRepository implements SpeechRecognitionRepository {
   }
   
   void _checkInitialization() {
+    // Log instance hashcode here as well
+    print('[AzureSpeechRecognitionRepository _checkInitialization] Checking instance $hashCode: _isInitialized = $_isInitialized');
     if (!_isInitialized) {
+      print('[AzureSpeechRecognitionRepository _checkInitialization] ERROR: Instance $hashCode is not initialized!');
       throw Exception('Le service Azure Speech n\'est pas initialisé');
     }
   }

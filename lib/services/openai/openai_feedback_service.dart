@@ -8,14 +8,14 @@ class OpenAIFeedbackService {
   final String endpoint; // Endpoint Azure OpenAI
   final String deploymentName; // Nom du déploiement Azure OpenAI
   final String apiVersion; // Version de l'API Azure OpenAI
-  
+
   OpenAIFeedbackService({
     required this.apiKey,
     required this.endpoint,
     required this.deploymentName,
     this.apiVersion = '2023-07-01-preview', // Utiliser une version d'API appropriée
   });
-  
+
   /// Génère un feedback personnalisé basé sur les résultats d'évaluation
   Future<String> generateFeedback({
     required String exerciseType,
@@ -30,7 +30,7 @@ class OpenAIFeedbackService {
       ConsoleLogger.info('🤖 [OPENAI] - Niveau: $exerciseLevel');
       ConsoleLogger.info('🤖 [OPENAI] - Texte prononcé: "$spokenText"');
       ConsoleLogger.info('🤖 [OPENAI] - Texte attendu: "$expectedText"');
-      
+
       // Construire le prompt pour OpenAI
       final prompt = _buildPrompt(
         exerciseType: exerciseType,
@@ -39,9 +39,9 @@ class OpenAIFeedbackService {
         expectedText: expectedText,
         metrics: metrics,
       );
-      
+
       ConsoleLogger.info('Prompt OpenAI construit');
-      
+
       // Vérifier si les informations Azure OpenAI sont vides
       if (apiKey.isEmpty || endpoint.isEmpty || deploymentName.isEmpty) {
         ConsoleLogger.warning('🤖 [AZURE OPENAI] Informations Azure OpenAI manquantes (clé, endpoint ou déploiement), utilisation du mode fallback');
@@ -50,13 +50,13 @@ class OpenAIFeedbackService {
           metrics: metrics,
         );
       }
-      
+
       // Appeler l'API Azure OpenAI
       try {
         ConsoleLogger.info('Appel de l\'API Azure OpenAI');
         // Construire l'URL Azure OpenAI
         final url = Uri.parse('$endpoint/openai/deployments/$deploymentName/chat/completions?api-version=$apiVersion');
-        
+
         final response = await http.post(
           url,
           headers: {
@@ -79,10 +79,12 @@ class OpenAIFeedbackService {
             'max_tokens': 500,
           }),
         );
-        
+
         if (response.statusCode == 200) {
           ConsoleLogger.success('Réponse reçue de l\'API OpenAI');
-          final data = jsonDecode(response.body);
+          // Décoder explicitement en UTF-8 à partir des bytes pour éviter les problèmes d'encodage
+          final responseBody = utf8.decode(response.bodyBytes);
+          final data = jsonDecode(responseBody);
           final feedback = data['choices'][0]['message']['content'];
           ConsoleLogger.info('Feedback généré: "$feedback"');
           return feedback;
@@ -96,7 +98,7 @@ class OpenAIFeedbackService {
       }
     } catch (e) {
       ConsoleLogger.error('Erreur lors de la génération du feedback: $e');
-      
+
       // En cas d'erreur, utiliser le mode fallback
       return _generateFallbackFeedback(
         exerciseType: exerciseType,
@@ -104,7 +106,7 @@ class OpenAIFeedbackService {
       );
     }
   }
-  
+
   /// Construit le prompt pour OpenAI
   String _buildPrompt({
     required String exerciseType,
@@ -116,7 +118,7 @@ class OpenAIFeedbackService {
     final metricsString = metrics.entries
         .map((e) => '- ${e.key}: ${e.value is double ? e.value.toStringAsFixed(1) : e.value}')
         .join('\n');
-    
+
     return '''
 Contexte: Exercice de $exerciseType, niveau $exerciseLevel
 Texte attendu: "$expectedText"
@@ -130,68 +132,166 @@ Inclus des conseils pratiques pour améliorer les aspects les plus faibles.
 Limite ta réponse à 3-4 phrases maximum.
 ''';
   }
-  
+
   /// Génère un feedback de secours basé sur le type d'exercice et les métriques
   String _generateFallbackFeedback({
     required String exerciseType,
     required Map<String, dynamic> metrics,
   }) {
     ConsoleLogger.warning('Utilisation du mode fallback pour la génération de feedback');
-    
+
     // Déterminer les points forts et les points faibles
     final List<String> strengths = [];
     final List<String> weaknesses = [];
-    
+
     metrics.forEach((key, value) {
-      if (key == 'pronunciationScore' || key == 'error') {
+      if (key == 'pronunciationScore' || key == 'error' || key == 'texte_reconnu' || key == 'erreur_azure') { // Ignorer les clés non numériques connues
         return;
       }
-      
-      final score = value is double ? value : (value as num).toDouble();
-      
-      if (score >= 85) {
-        if (key == 'syllableClarity') {
-          strengths.add('clarté syllabique');
-        } else if (key == 'consonantPrecision') {
-          strengths.add('précision des consonnes');
-        } else if (key == 'endingClarity') {
-          strengths.add('netteté des finales');
-        } else {
-          strengths.add(key);
-        }
-      } else if (score < 75) {
-        if (key == 'syllableClarity') {
-          weaknesses.add('clarté syllabique');
-        } else if (key == 'consonantPrecision') {
-          weaknesses.add('précision des consonnes');
-        } else if (key == 'endingClarity') {
-          weaknesses.add('netteté des finales');
-        } else {
-          weaknesses.add(key);
-        }
+
+      // Essayer de convertir la valeur en double, ignorer si ce n'est pas un nombre
+      double? score;
+      if (value is num) {
+          score = value.toDouble();
+      } else if (value is String) {
+          score = double.tryParse(value);
+      }
+
+      if (score != null) {
+          if (score >= 85) {
+              if (key == 'syllableClarity') {
+                strengths.add('clarté syllabique');
+              } else if (key == 'consonantPrecision') {
+                strengths.add('précision des consonnes');
+              } else if (key == 'endingClarity') {
+                strengths.add('netteté des finales');
+              } else if (key.toLowerCase().contains('score')) {
+                 strengths.add(key.replaceAll('_', ' '));
+              }
+          } else if (score < 75) {
+              if (key == 'syllableClarity') {
+                weaknesses.add('clarté syllabique');
+              } else if (key == 'consonantPrecision') {
+                weaknesses.add('précision des consonnes');
+              } else if (key == 'endingClarity') {
+                weaknesses.add('netteté des finales');
+              } else if (key.toLowerCase().contains('score')) {
+                 weaknesses.add(key.replaceAll('_', ' '));
+              }
+          }
+      } else {
+         ConsoleLogger.info('Ignorer la métrique non numérique dans fallback: $key ($value)');
       }
     });
-    
+
     // Générer un feedback basé sur les points forts et les points faibles
     String feedback = '';
-    
-    if (exerciseType.toLowerCase().contains('articulation')) {
+
+    if (exerciseType.toLowerCase().contains('articulation') || exerciseType.toLowerCase().contains('syllabique')) { // Élargir la condition
       if (strengths.isNotEmpty) {
-        feedback += 'Excellente articulation ! Votre ${strengths.join(' et votre ')} ${strengths.length > 1 ? 'sont' : 'est'} particulièrement ${strengths.length > 1 ? 'bonnes' : 'bonne'}. ';
+        feedback += 'Excellente performance ! Votre ${strengths.join(' et votre ')} ${strengths.length > 1 ? 'sont' : 'est'} particulièrement ${strengths.length > 1 ? 'bonnes' : 'bonne'}. ';
       } else {
-        feedback += 'Bonne articulation globale. ';
+        feedback += 'Bonne performance globale. ';
       }
-      
+
       if (weaknesses.isNotEmpty) {
-        feedback += 'Continuez à travailler sur votre ${weaknesses.join(' et votre ')} en exagérant légèrement les mouvements de votre bouche. ';
+        feedback += 'Concentrez-vous sur votre ${weaknesses.join(' et votre ')}. Essayez d\'exagérer légèrement les mouvements pour plus de clarté. ';
       }
-      
-      feedback += 'Pratiquez régulièrement pour développer une articulation encore plus précise et naturelle.';
+
+      feedback += 'Continuez cette pratique régulière !';
     } else {
-      feedback = 'Excellent travail ! Votre prononciation est claire et précise. Continuez à pratiquer régulièrement pour améliorer encore votre aisance vocale.';
+      // Feedback générique si le type d'exercice n'est pas reconnu
+      double? overallScore = metrics['score_global_accuracy'] is num ? (metrics['score_global_accuracy'] as num).toDouble() : null;
+      if (overallScore != null && overallScore >= 70) {
+         feedback = 'Excellent travail ! Votre prononciation est claire et précise. Continuez ainsi !';
+      } else {
+         feedback = 'Bon effort. Pratiquez régulièrement pour améliorer votre aisance et votre précision.';
+      }
     }
-    
+
     ConsoleLogger.info('Feedback fallback généré: "$feedback"');
     return feedback;
+  }
+
+  /// Génère une phrase pour un exercice d'articulation
+  Future<String> generateArticulationSentence({
+    String? targetSounds, // Optionnel: pour cibler des sons spécifiques
+    int minWords = 8,
+    int maxWords = 15,
+    String language = 'fr-FR', // Langue cible
+  }) async {
+    ConsoleLogger.info('🤖 [OPENAI] Génération de phrase d\'articulation...');
+    if (targetSounds != null) {
+      ConsoleLogger.info('🤖 [OPENAI] - Ciblage sons: $targetSounds');
+    }
+    ConsoleLogger.info('🤖 [OPENAI] - Longueur: $minWords-$maxWords mots');
+
+    // Construire le prompt pour la génération de phrase
+    String prompt = '''
+Génère une seule phrase en français ($language) pour un exercice d'articulation.
+Objectif: Pratiquer une articulation claire et précise.
+Contraintes:
+- Longueur: entre $minWords et $maxWords mots.
+- Doit être grammaticalement correcte et naturelle pour un locuteur adulte.
+''';
+    if (targetSounds != null && targetSounds.isNotEmpty) {
+      prompt += '- Mettre l\'accent sur les sons suivants: $targetSounds.\n';
+    }
+    prompt += '\nNe fournis que la phrase générée, sans aucune introduction, explication ou guillemets.';
+
+    // Vérifier si les informations Azure OpenAI sont vides
+    if (apiKey.isEmpty || endpoint.isEmpty || deploymentName.isEmpty) {
+      ConsoleLogger.warning('🤖 [AZURE OPENAI] Informations Azure OpenAI manquantes. Impossible de générer la phrase.');
+      // Retourner une phrase par défaut en cas d'échec de configuration
+      return "Le rapide renard brun saute par-dessus le chien paresseux.";
+    }
+
+    // Appeler l'API Azure OpenAI
+    try {
+      ConsoleLogger.info('Appel de l\'API Azure OpenAI pour génération de phrase');
+      final url = Uri.parse('$endpoint/openai/deployments/$deploymentName/chat/completions?api-version=$apiVersion');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': apiKey,
+        },
+        body: jsonEncode({
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'Tu es un générateur de contenu spécialisé dans la création de phrases pour des exercices de diction et d\'articulation en français.',
+            },
+            {
+              'role': 'user',
+              'content': prompt,
+            },
+          ],
+          'temperature': 0.8, // Un peu plus de créativité pour les phrases
+          'max_tokens': 100, // Suffisant pour une phrase
+          'top_p': 0.95,
+          'frequency_penalty': 0.2, // Éviter répétitions trop fréquentes
+          'presence_penalty': 0.1,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseBody = utf8.decode(response.bodyBytes);
+        final data = jsonDecode(responseBody);
+        String sentence = data['choices'][0]['message']['content'].trim();
+        // Nettoyer la phrase (enlever guillemets potentiels)
+        sentence = sentence.replaceAll(RegExp(r'^"|"$'), '');
+        ConsoleLogger.success('🤖 [OPENAI] Phrase générée: "$sentence"');
+        return sentence;
+      } else {
+        ConsoleLogger.error('🤖 [OPENAI] Erreur API lors de la génération de phrase: ${response.statusCode}, ${response.body}');
+        throw Exception('Erreur API OpenAI: ${response.statusCode}');
+      }
+    } catch (e) {
+      ConsoleLogger.error('🤖 [OPENAI] Erreur lors de la génération de phrase: $e');
+      // Retourner une phrase par défaut en cas d'erreur
+      return "Le soleil sèche six chemises sur six cintres.";
+    }
   }
 }

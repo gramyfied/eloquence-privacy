@@ -4,23 +4,31 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/repositories/audio_repository.dart'; // Ajouté
 import '../domain/repositories/auth_repository.dart';
 import '../domain/repositories/exercise_repository.dart';
-import '../infrastructure/repositories/flutter_sound_repository.dart'; // Remplacé flutter_audio_capture
+import '../domain/repositories/speech_recognition_repository.dart'; // Import de l'interface
+// import '../infrastructure/repositories/flutter_sound_repository.dart'; // Remplacé par record_audio_repository
+import '../infrastructure/repositories/record_audio_repository.dart'; // Ajouté
+import '../infrastructure/repositories/azure_speech_recognition_repository.dart'; // Import de l'implémentation
 import '../infrastructure/repositories/supabase_auth_repository.dart';
 import '../infrastructure/repositories/supabase_profile_repository.dart';
 import '../infrastructure/repositories/supabase_statistics_repository.dart';
 import '../infrastructure/repositories/supabase_session_repository.dart';
 import '../infrastructure/repositories/supabase_exercise_repository.dart';
-import 'package:flutter_tts/flutter_tts.dart'; // Ajouté
-import '../infrastructure/native/whisper_bindings.dart'; // Ajouté pour FFI
-import '../infrastructure/native/whisper_service.dart'; // Ajouté pour FFI
+// import 'package:flutter_tts/flutter_tts.dart'; // Retiré
 
 // Services
-// import 'azure/azure_tts_service.dart'; // Retiré
-import 'azure/azure_speech_service.dart';
+import 'azure/azure_tts_service.dart'; // Ajouté
+import 'azure/azure_speech_service.dart'; // Gardé pour l'instant (si PronunciationEvaluationResult est utilisé ailleurs)
+import 'package:just_audio/just_audio.dart'; // Ajouté pour AudioPlayer
+// Supprimer les imports FFI Whisper
+// import '../infrastructure/native/whisper_bindings.dart';
+// import '../infrastructure/native/whisper_service.dart';
 import 'openai/openai_feedback_service.dart';
 // import 'audio/audio_player_manager.dart'; // Retiré
 import 'audio/example_audio_provider.dart';
+// Importer le service Azure Whisper (si nous le recréons plus tard)
+// import 'azure/azure_whisper_service.dart';
 import 'evaluation/articulation_evaluation_service.dart';
+import 'lexique/syllabification_service.dart'; // Ajout du service de syllabification
 
 final serviceLocator = GetIt.instance;
 
@@ -50,29 +58,25 @@ void setupServiceLocator() {
     () => SupabaseExerciseRepository(serviceLocator<SupabaseClient>())
   );
 
-  // Audio Repository (Nouvelle implémentation avec flutter_sound)
+  // Audio Repository (Nouvelle implémentation avec record)
   serviceLocator.registerLazySingleton<AudioRepository>(
-    () => FlutterSoundRepository()
+    () => RecordAudioRepository() // Utiliser la nouvelle implémentation
   );
 
-  // Azure Services (TTS retiré)
-  // serviceLocator.registerLazySingleton<AzureTTSService>(
-  //   () => AzureTTSService(
-  //     subscriptionKey: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'] ?? '',
-  //     region: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'] ?? 'westeurope',
-  //     voiceName: 'fr-FR-DeniseNeural',
-  //   )
-  // );
+  // Enregistrer l'implémentation (simulée) de SpeechRecognitionRepository
+  // TODO: Remplacer par la vraie implémentation si nécessaire
+  serviceLocator.registerLazySingleton<SpeechRecognitionRepository>(
+    () => AzureSpeechRecognitionRepository()
+  );
 
+  // Azure Services (TTS retiré, SpeechService gardé pour l'instant si PronunciationEvaluationResult est utilisé)
+  // Si PronunciationEvaluationResult n'est plus utilisé, on peut supprimer AzureSpeechService complètement.
+  // Correction: Appeler le constructeur par défaut. L'initialisation se fait via la méthode `initialize`.
   serviceLocator.registerLazySingleton<AzureSpeechService>(
-    () => AzureSpeechService( // Gardé pour STT et Évaluation (pour l'instant)
-      subscriptionKey: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'] ?? '',
-      region: dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'] ?? 'westeurope',
-      language: 'fr-FR',
-    )
+    () => AzureSpeechService()
   );
 
-  // OpenAI Service (Azure OpenAI)
+  // OpenAI Service (Azure OpenAI) - Gardé pour référence future
   serviceLocator.registerLazySingleton<OpenAIFeedbackService>(
     () => OpenAIFeedbackService(
       apiKey: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_KEY'] ?? '',
@@ -87,27 +91,40 @@ void setupServiceLocator() {
   //   () => AudioPlayerManager()
   // );
 
-  // Enregistrer FlutterTts
-  serviceLocator.registerLazySingleton<FlutterTts>(() => FlutterTts());
+  // Enregistrer AudioPlayer (nécessaire pour AzureTtsService)
+  // Utiliser registerFactory pour obtenir une nouvelle instance si nécessaire,
+  // ou registerLazySingleton si une seule instance suffit pour toute l'app.
+  serviceLocator.registerFactory<AudioPlayer>(() => AudioPlayer());
 
-  // Mettre à jour ExampleAudioProvider pour utiliser FlutterTts
-  serviceLocator.registerLazySingleton<ExampleAudioProvider>(
-    () => ExampleAudioProvider(
-      flutterTts: serviceLocator<FlutterTts>(), // Injecter FlutterTts
-    )
+  // Enregistrer AzureTtsService (qui utilise AudioPlayer)
+  serviceLocator.registerLazySingleton<AzureTtsService>(
+    () => AzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
   );
 
-  // Evaluation Services
+  // Supprimer l'enregistrement de FlutterTts
+  // serviceLocator.registerLazySingleton<FlutterTts>(() => FlutterTts());
+
+  // Mettre à jour ExampleAudioProvider (il récupère AzureTtsService en interne)
+  serviceLocator.registerLazySingleton<ExampleAudioProvider>(
+    () => ExampleAudioProvider() // N'a plus besoin de dépendances injectées ici
+  );
+
+  // Evaluation Services (Simplifié pour être offline)
   serviceLocator.registerLazySingleton<ArticulationEvaluationService>(
     () => ArticulationEvaluationService(
-      speechService: serviceLocator<AzureSpeechService>(),
-      feedbackService: serviceLocator<OpenAIFeedbackService>(),
-    )
+      // feedbackService: serviceLocator<OpenAIFeedbackService>(), // Supprimé pour l'instant
+    ) // Correction: Supprimer les paramètres
   );
 
-  // FFI Whisper Services (Ajouté)
-  serviceLocator.registerLazySingleton<WhisperBindings>(() => WhisperBindings());
-  serviceLocator.registerLazySingleton<WhisperService>(
-    () => WhisperService(bindings: serviceLocator<WhisperBindings>())
-  );
+  // Supprimer l'enregistrement de WhisperService FFI
+  // serviceLocator.registerLazySingleton<WhisperBindings>(() => WhisperBindings());
+  // serviceLocator.registerLazySingleton<WhisperService>(
+  //   () => WhisperService(bindings: serviceLocator<WhisperBindings>())
+  // );
+
+  // Enregistrer AzureWhisperService si nous décidons de l'utiliser
+  // serviceLocator.registerLazySingleton<AzureWhisperService>(() => AzureWhisperService());
+
+  // Enregistrer le service de syllabification
+  serviceLocator.registerLazySingleton<SyllabificationService>(() => SyllabificationService());
 }

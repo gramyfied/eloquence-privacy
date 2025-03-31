@@ -70,26 +70,26 @@ class ExerciseCategoriesScreen extends StatelessWidget {
       Color cardColor;
       IconData categoryIcon;
       
-      // Define colors and icons based on category type
+      // Define colors and icons based on category type using AppTheme
       switch (category.type) {
         case ExerciseCategoryType.fondamentaux:
-          cardColor = const Color(0xFF4A90E2); // Bleu
+          cardColor = AppTheme.secondaryColor; // Bleu secondaire
           categoryIcon = Icons.foundation;
           break;
         case ExerciseCategoryType.impactPresence:
-          cardColor = const Color(0xFF50E3C2); // Turquoise
+          cardColor = AppTheme.primaryColor; // Violet principal
           categoryIcon = Icons.record_voice_over;
           break;
         case ExerciseCategoryType.clarteExpressivite:
-          cardColor = const Color(0xFFFF9500); // Orange
+          cardColor = AppTheme.accentYellow; // Jaune
           categoryIcon = Icons.mic;
           break;
         case ExerciseCategoryType.applicationProfessionnelle:
-          cardColor = const Color(0xFFFF3B30); // Rouge
+          cardColor = AppTheme.accentRed; // Rouge
           categoryIcon = Icons.business;
           break;
         case ExerciseCategoryType.maitriseAvancee:
-          cardColor = const Color(0xFFAF52DE); // Violet
+          cardColor = AppTheme.accentGreen; // Vert (Violet déjà utilisé)
           categoryIcon = Icons.diamond;
           break;
       }

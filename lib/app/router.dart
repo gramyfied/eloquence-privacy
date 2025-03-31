@@ -17,6 +17,10 @@ import '../presentation/widgets/exercise_selection_modal.dart';
 import '../domain/entities/user.dart';
 import '../domain/entities/exercise.dart';
 import '../domain/entities/exercise_category.dart';
+// Importer les écrans d'exercices spécifiques
+import '../presentation/screens/exercise_session/articulation_exercise_screen.dart';
+import '../presentation/screens/exercise_session/lung_capacity_exercise_screen.dart';
+
 
 /// Crée et configure le router de l'application
 GoRouter createRouter(AuthRepository authRepository) {
@@ -284,9 +288,37 @@ Widget _buildCategoriesScreen(BuildContext context, List<ExerciseCategory> categ
         exercises: exercises,
       );
       
-      // Si un exercice a été sélectionné, naviguer vers l'écran d'exercice
+      // Si un exercice a été sélectionné, naviguer vers l'écran approprié
       if (selectedExercise != null) {
-        context.push(AppRoutes.exercise, extra: selectedExercise);
+        // Vérifier l'ID ou un type d'exercice pour router vers l'écran spécifique
+        if (selectedExercise.id == 'capacite-pulmonaire') {
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (context) => LungCapacityExerciseScreen(
+              exercise: selectedExercise,
+              onExerciseCompleted: (results) {
+                // TODO: Gérer la complétion, ex: naviguer vers les résultats
+                print("Résultats Capacité Pulmonaire: $results");
+                context.pop(); // Revenir à l'écran précédent pour l'instant
+              },
+              onExitPressed: () => Navigator.of(context).pop(),
+            ),
+          ));
+        } else if (selectedExercise.id == 'articulation-base') {
+           Navigator.of(context).push(MaterialPageRoute(
+             builder: (context) => ArticulationExerciseScreen(
+               exercise: selectedExercise,
+               onExerciseCompleted: (results) {
+                 // TODO: Gérer la complétion, ex: naviguer vers les résultats
+                 print("Résultats Articulation: $results");
+                 context.pop(); // Revenir à l'écran précédent pour l'instant
+               },
+               onExitPressed: () => Navigator.of(context).pop(),
+             ),
+           ));
+        } else {
+          // Pour les autres exercices, utiliser la route générique pour l'instant
+          context.push(AppRoutes.exercise, extra: selectedExercise);
+        }
       }
     },
     onBackPressed: () {

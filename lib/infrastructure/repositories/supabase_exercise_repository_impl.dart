@@ -53,8 +53,8 @@ class SupabaseExerciseRepositoryImpl implements ExerciseRepository {
         return ExerciseCategoryType.fondamentaux;
       case 'articulation':
         return ExerciseCategoryType.clarteExpressivite;
-      case 'voix':
-        return ExerciseCategoryType.impactPresence;
+      case 'voix': // Modifier ici pour mapper 'voix' à fondamentaux
+        return ExerciseCategoryType.fondamentaux;
       case 'scenarios':
         return ExerciseCategoryType.applicationProfessionnelle;
       default:
