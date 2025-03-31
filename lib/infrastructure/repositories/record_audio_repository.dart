@@ -13,12 +13,13 @@ import '../../domain/repositories/audio_repository.dart';
 import '../../core/utils/console_logger.dart';
 
 // Constantes pour l'enregistrement
-const int sampleRate = 16000; // Requis par Whisper
-const int numChannels = 1; // Mono requis par Whisper
+const int sampleRate = 16000; // Requis par Azure Speech SDK (et Whisper)
+const int numChannels = 1; // Mono
 const int bitRate = sampleRate * 16 * numChannels; // PCM 16 bits
 
 class RecordAudioRepository implements AudioRepository {
-  final AudioRecorder _recorder = AudioRecorder(); // Utiliser AudioRecorder de record
+  // Rendre _recorder non final pour pouvoir le recréer
+  AudioRecorder _recorder = AudioRecorder(); // Utiliser AudioRecorder de record
   final ja.AudioPlayer _player = ja.AudioPlayer(); // Utiliser just_audio pour la lecture
   String? _currentRecordingPath;
   bool _isRecording = false;
@@ -60,6 +61,10 @@ class RecordAudioRepository implements AudioRepository {
       return;
     }
 
+    // Annuler l'abonnement précédent par sécurité
+    await _amplitudeSubscription?.cancel();
+    _amplitudeSubscription = null;
+
     // Préparer le chemin (s'assurer qu'il se termine par .wav)
     _currentRecordingPath = '${filePath.replaceAll(RegExp(r'\.[^.]+$'), '')}.wav';
     ConsoleLogger.info('Utilisation du chemin: $_currentRecordingPath');
@@ -94,6 +99,13 @@ class RecordAudioRepository implements AudioRepository {
   Future<Stream<Uint8List>> startRecordingStream() async {
     ConsoleLogger.info('startRecordingStream appelé.');
 
+    // Recréer l'instance pour garantir un état propre et éviter l'erreur "Stream has already been listened to"
+    // S'assurer que l'ancienne instance est correctement disposée si nécessaire (dispose est appelé sur le repo)
+    await _recorder.dispose(); // Disposer l'ancienne instance
+    _recorder = AudioRecorder(); // Créer une nouvelle instance
+    ConsoleLogger.info('Nouvelle instance AudioRecorder créée pour le streaming.');
+
+
     if (!await _requestPermissions()) {
       throw Exception('Permission microphone refusée');
     }
@@ -102,6 +114,10 @@ class RecordAudioRepository implements AudioRepository {
       ConsoleLogger.warning('Enregistrement déjà en cours. Arrêt de l\'enregistrement précédent...');
       await stopRecording(); // Arrêter l'enregistrement précédent avant de démarrer un stream
     }
+
+    // Annuler l'abonnement précédent par sécurité
+    await _amplitudeSubscription?.cancel();
+    _amplitudeSubscription = null;
 
     // Configuration pour le streaming (PCM16 brut)
     // Note: Le package 'record' ne permet pas de spécifier directement PCM16 pour le stream.
@@ -122,7 +138,8 @@ class RecordAudioRepository implements AudioRepository {
       ConsoleLogger.success('Streaming d\'enregistrement démarré.');
       _startAmplitudeSubscription(); // Démarrer l'écoute de l'amplitude
       _currentRecordingPath = null; // Pas de chemin de fichier pour le streaming
-      return stream;
+      // Convertir en Broadcast Stream pour permettre plusieurs écoutes si nécessaire
+      return stream.asBroadcastStream();
     } catch (e) {
       ConsoleLogger.error('Erreur CATCHée lors de l\'appel à _recorder.startStream: $e');
       _isRecording = false;
@@ -189,6 +206,31 @@ class RecordAudioRepository implements AudioRepository {
     } catch (e) {
       ConsoleLogger.error('Erreur CATCHée lors de l\'appel à _recorder.stop: $e');
       _isRecording = false;
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> stopRecordingStream() async {
+    ConsoleLogger.info('stopRecordingStream appelé.');
+    await _amplitudeSubscription?.cancel(); // Arrêter l'écoute de l'amplitude
+    _amplitudeSubscription = null; // Réinitialiser
+
+    if (!_isRecording) {
+      ConsoleLogger.warning('Aucun enregistrement de stream en cours.');
+      return;
+    }
+
+    try {
+      ConsoleLogger.info('Appel de _recorder.stop pour le stream...');
+      // L'appel à stop est le même pour le stream et le fichier avec le package 'record'
+      await _recorder.stop();
+      _isRecording = false;
+      _currentRecordingPath = null; // Assurer qu'il n'y a pas de chemin actif
+      ConsoleLogger.success('Streaming d\'enregistrement arrêté.');
+    } catch (e) {
+      ConsoleLogger.error('Erreur CATCHée lors de l\'appel à _recorder.stop pour le stream: $e');
+      _isRecording = false; // Assurer que l'état est correct même en cas d'erreur
       rethrow;
     }
   }

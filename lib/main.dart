@@ -8,6 +8,7 @@ import 'app/app.dart';
 // import 'app/router.dart'; // L'import du router n'est pas nécessaire ici
 import 'services/service_locator.dart'; // Contient setupServiceLocator et serviceLocator
 import 'services/lexique/syllabification_service.dart'; // Importer le service
+import 'services/azure/azure_speech_service.dart'; // Importer AzureSpeechService
 import 'domain/repositories/auth_repository.dart';
 import 'domain/repositories/exercise_repository.dart';
 // Correction des imports pour les repositories Supabase
@@ -59,6 +60,31 @@ void main() async {
 
   // Charger le lexique de syllabification
   await serviceLocator<SyllabificationService>().loadLexicon();
+
+  // Initialiser Azure Speech Service au démarrage
+  try {
+    final azureSpeechService = serviceLocator<AzureSpeechService>();
+    final azureKey = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'];
+    final azureRegion = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'];
+    if (azureKey != null && azureRegion != null) {
+      bool initialized = await azureSpeechService.initialize(
+        subscriptionKey: azureKey,
+        region: azureRegion,
+      );
+      if (initialized) {
+        print('🟢 [MAIN] AzureSpeechService initialisé avec succès.');
+      } else {
+        print('🔴 [MAIN] Échec de l\'initialisation d\'AzureSpeechService.');
+        // Gérer l'échec global si nécessaire (ex: afficher un message persistant)
+      }
+    } else {
+      print('🔴 [MAIN] Clés Azure manquantes dans .env pour AzureSpeechService.');
+      // Gérer l'absence de clés globalement
+    }
+  } catch (e) {
+    print('🔴 [MAIN] Erreur critique lors de l\'initialisation d\'AzureSpeechService: $e');
+    // Gérer l'erreur critique
+  }
 
   // Supprimer le bloc d'initialisation de WhisperService FFI
 

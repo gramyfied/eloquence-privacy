@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart'; // Pour kDebugMode
+// Pour kDebugMode
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart'; // Importer permission_handler
@@ -117,11 +117,19 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
         // Gérer l'absence de clés
       }
 
-      // Définir le texte original
-      _textToRead = widget.exercise.textToRead ?? "Texte d'exercice non défini.";
-      ConsoleLogger.info('Texte original à lire: "$_textToRead"');
+      // Toujours générer une nouvelle phrase pour l'exercice d'articulation
+      ConsoleLogger.info('Génération systématique d\'une nouvelle phrase via OpenAI...');
+      try {
+        // TODO: Passer des sons cibles si l'exercice les définit (ex: widget.exercise.targetSounds)
+        _textToRead = await _openAIFeedbackService.generateArticulationSentence();
+        ConsoleLogger.info('Phrase générée par OpenAI: "$_textToRead"');
+      } catch (e) {
+        ConsoleLogger.error('Erreur lors de la génération de la phrase: $e');
+        _textToRead = "Le soleil sèche six chemises sur six cintres."; // Fallback
+        ConsoleLogger.warning('Utilisation de la phrase fallback: "$_textToRead"');
+      }
 
-      // Correction: Syllabifier mot par mot
+      // Syllabifier la phrase générée (ou fallback)
       List<String> words = _textToRead.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
       List<String> syllabifiedWords = [];
       List<String> allSyllables = [];
@@ -413,13 +421,19 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
            return; // Ne pas continuer si la permission n'est pas accordée
         }
 
-        ConsoleLogger.recording('Démarrage de l\'enregistrement streamé...');
+         ConsoleLogger.recording('Démarrage de l\'enregistrement streamé...');
 
-        // 2. S'assurer que le service Azure est initialisé (normalement fait dans initState)
-        // On pourrait ajouter une vérification ici si nécessaire, mais on suppose qu'il l'est.
+         // 2. Vérifier explicitement que le service Azure est initialisé
+         if (!_azureSpeechService.isInitialized) {
+           ConsoleLogger.error('Tentative d\'enregistrement alors qu\'AzureSpeechService n\'est pas initialisé.');
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text('Service de reconnaissance non prêt. Veuillez patienter.'), backgroundColor: Colors.orange),
+           );
+           return; // Ne pas continuer
+         }
 
-        // 3. Démarrer le stream audio depuis le repository
-        final audioStream = await _audioRepository.startRecordingStream();
+         // 3. Démarrer le stream audio depuis le repository
+         final audioStream = await _audioRepository.startRecordingStream();
 
         // 4. Démarrer la reconnaissance streaming Azure AVEC le texte de référence syllabique
         await _azureSpeechService.startRecognition(
@@ -865,52 +879,55 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
   Widget _buildMainContent() {
     return Container(
       padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Afficher le mot original
-          Text(
-            _textToRead,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w500,
-              color: Colors.white.withOpacity(0.8),
-              height: 1.4,
-            ),
-          ),
-          // Correction: N'afficher le texte syllabifié que s'il est différent de l'original
-          if (_displayText != _textToRead) ...[
-            const SizedBox(height: 16),
-            // Afficher la décomposition syllabique
+      // Wrap the Column with SingleChildScrollView to prevent overflow
+      child: SingleChildScrollView(
+        child: Column(
+          // mainAxisAlignment: MainAxisAlignment.center, // Remove center alignment
+          crossAxisAlignment: CrossAxisAlignment.center, // Center text horizontally
+          children: [
+            // Afficher le mot original
             Text(
-              _displayText, // Contient les syllabes avec tirets
+              _textToRead,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.normal,
-                color: Colors.white,
-                height: 1.5,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w500,
+                color: Colors.white.withOpacity(0.8),
+                height: 1.4,
               ),
             ),
-          ] else ...[
-            // Ajouter un espace même si le texte n'est pas affiché pour garder la mise en page cohérente
-            const SizedBox(height: 16 + 28 * 1.5), // Hauteur approximative du Text + SizedBox
-          ],
-          // Remplacer le SizedBox fixe par un Spacer pour pousser l'icône vers le bas
-          // const SizedBox(height: 32),
-          const Spacer(), // Utiliser Spacer pour occuper l'espace restant
-          Center( // Garder l'icône centrée horizontalement
-            child: Icon(
+            // Correction: N'afficher le texte syllabifié que s'il est différent de l'original
+            if (_displayText != _textToRead) ...[
+              const SizedBox(height: 16),
+              // Afficher la décomposition syllabique
+              Text(
+                _displayText, // Contient les syllabes avec tirets
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.normal,
+                  color: Colors.white,
+                  height: 1.5,
+                ),
+              ),
+            ] else ...[
+              // Ajouter un espace même si le texte n'est pas affiché pour garder la mise en page cohérente
+              const SizedBox(height: 16 + 28 * 1.5), // Hauteur approximative du Text + SizedBox
+            ],
+            // Add space before the icon
+            const SizedBox(height: 32), // Adjust spacing as needed
+            // Icon (no longer needs Spacers or Center around it)
+            Icon(
               _isRecording ? Icons.mic : (_isProcessing ? Icons.hourglass_top : Icons.mic_none),
               size: 80,
               color: _isRecording ? AppTheme.accentRed : (_isProcessing ? Colors.orangeAccent : AppTheme.primaryColor.withOpacity(0.5)),
             ),
-          ),
-          const Spacer(), // Ajouter un autre Spacer pour équilibrer
-        ],
-      ),
-    );
+            // Add some space at the bottom if needed, or let padding handle it
+            const SizedBox(height: 20),
+          ],
+        ), // Closing Column
+      ), // Closing SingleChildScrollView
+    ); // Closing Container
   }
 
   Widget _buildControls() {

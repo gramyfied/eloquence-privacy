@@ -10,9 +10,12 @@ abstract class AudioRepository {
   /// Retourne un Stream auquel s'abonner pour recevoir les chunks audio.
   Future<Stream<Uint8List>> startRecordingStream();
 
-  /// Arrête l'enregistrement en cours (fichier ou stream).
+  /// Arrête l'enregistrement en cours (fichier).
   /// Retourne le chemin du fichier si l'enregistrement était vers un fichier.
-  Future<String?> stopRecording(); // Retourne String? car pas de chemin pour le stream
+  Future<String?> stopRecording(); // Pour l'enregistrement de fichier
+
+  /// Arrête l'enregistrement du stream audio.
+  Future<void> stopRecordingStream(); // Pour l'enregistrement de stream
 
   /// Met en pause l'enregistrement (si supporté par l'implémentation).
   Future<void> pauseRecording();

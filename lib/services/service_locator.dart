@@ -4,18 +4,21 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/repositories/audio_repository.dart'; // Ajouté
 import '../domain/repositories/auth_repository.dart';
 import '../domain/repositories/exercise_repository.dart';
+import '../domain/repositories/speech_recognition_repository.dart'; // Import de l'interface
 // import '../infrastructure/repositories/flutter_sound_repository.dart'; // Remplacé par record_audio_repository
 import '../infrastructure/repositories/record_audio_repository.dart'; // Ajouté
+import '../infrastructure/repositories/azure_speech_recognition_repository.dart'; // Import de l'implémentation
 import '../infrastructure/repositories/supabase_auth_repository.dart';
 import '../infrastructure/repositories/supabase_profile_repository.dart';
 import '../infrastructure/repositories/supabase_statistics_repository.dart';
 import '../infrastructure/repositories/supabase_session_repository.dart';
 import '../infrastructure/repositories/supabase_exercise_repository.dart';
-import 'package:flutter_tts/flutter_tts.dart'; // Ajouté
+// import 'package:flutter_tts/flutter_tts.dart'; // Retiré
 
 // Services
-// import 'azure/azure_tts_service.dart'; // Retiré
+import 'azure/azure_tts_service.dart'; // Ajouté
 import 'azure/azure_speech_service.dart'; // Gardé pour l'instant (si PronunciationEvaluationResult est utilisé ailleurs)
+import 'package:just_audio/just_audio.dart'; // Ajouté pour AudioPlayer
 // Supprimer les imports FFI Whisper
 // import '../infrastructure/native/whisper_bindings.dart';
 // import '../infrastructure/native/whisper_service.dart';
@@ -60,6 +63,12 @@ void setupServiceLocator() {
     () => RecordAudioRepository() // Utiliser la nouvelle implémentation
   );
 
+  // Enregistrer l'implémentation (simulée) de SpeechRecognitionRepository
+  // TODO: Remplacer par la vraie implémentation si nécessaire
+  serviceLocator.registerLazySingleton<SpeechRecognitionRepository>(
+    () => AzureSpeechRecognitionRepository()
+  );
+
   // Azure Services (TTS retiré, SpeechService gardé pour l'instant si PronunciationEvaluationResult est utilisé)
   // Si PronunciationEvaluationResult n'est plus utilisé, on peut supprimer AzureSpeechService complètement.
   // Correction: Appeler le constructeur par défaut. L'initialisation se fait via la méthode `initialize`.
@@ -82,14 +91,22 @@ void setupServiceLocator() {
   //   () => AudioPlayerManager()
   // );
 
-  // Enregistrer FlutterTts
-  serviceLocator.registerLazySingleton<FlutterTts>(() => FlutterTts());
+  // Enregistrer AudioPlayer (nécessaire pour AzureTtsService)
+  // Utiliser registerFactory pour obtenir une nouvelle instance si nécessaire,
+  // ou registerLazySingleton si une seule instance suffit pour toute l'app.
+  serviceLocator.registerFactory<AudioPlayer>(() => AudioPlayer());
 
-  // Mettre à jour ExampleAudioProvider pour utiliser FlutterTts
+  // Enregistrer AzureTtsService (qui utilise AudioPlayer)
+  serviceLocator.registerLazySingleton<AzureTtsService>(
+    () => AzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
+  );
+
+  // Supprimer l'enregistrement de FlutterTts
+  // serviceLocator.registerLazySingleton<FlutterTts>(() => FlutterTts());
+
+  // Mettre à jour ExampleAudioProvider (il récupère AzureTtsService en interne)
   serviceLocator.registerLazySingleton<ExampleAudioProvider>(
-    () => ExampleAudioProvider(
-      flutterTts: serviceLocator<FlutterTts>(), // Injecter FlutterTts
-    )
+    () => ExampleAudioProvider() // N'a plus besoin de dépendances injectées ici
   );
 
   // Evaluation Services (Simplifié pour être offline)

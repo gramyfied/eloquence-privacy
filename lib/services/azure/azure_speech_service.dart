@@ -47,6 +47,10 @@ class AzureSpeechService {
 
   Stream<AzureSpeechEvent>? _recognitionStream;
 
+  // Ajouter un état pour savoir si l'initialisation native a réussi
+  bool _nativeSdkInitialized = false;
+  bool get isInitialized => _nativeSdkInitialized; // Getter public
+
   /// Initialise le SDK Azure Speech natif.
   ///
   /// Doit être appelé avant toute autre opération.
@@ -60,18 +64,19 @@ class AzureSpeechService {
         'subscriptionKey': subscriptionKey,
         'region': region,
       });
+      _nativeSdkInitialized = result ?? false; // Mettre à jour l'état
       if (kDebugMode) {
-        print('AzureSpeechService: Native initialization result: $result');
+        print('AzureSpeechService: Native initialization result: $_nativeSdkInitialized');
       }
-      return result ?? false;
+      return _nativeSdkInitialized;
     } on PlatformException catch (e) {
+      _nativeSdkInitialized = false; // Assurer que l'état est false en cas d'erreur
       if (kDebugMode) {
         print('AzureSpeechService: Failed to initialize native SDK: ${e.message}');
       }
-      // Relancer l'exception ou retourner false selon la stratégie de gestion d'erreur
-      // throw Exception('Failed to initialize Azure Speech: ${e.message}');
       return false;
     } catch (e) {
+      _nativeSdkInitialized = false; // Assurer que l'état est false en cas d'erreur
       if (kDebugMode) {
         print('AzureSpeechService: Unknown error during initialization: $e');
       }
@@ -137,6 +142,14 @@ class AzureSpeechService {
   ///
   /// [audioChunk] doit contenir les données audio brutes (par exemple, PCM 16 bits).
   Future<void> sendAudioChunk(Uint8List audioChunk) async {
+    if (!_nativeSdkInitialized) {
+       if (kDebugMode) {
+         print('AzureSpeechService: Attempted to send audio chunk but service is not initialized.');
+       }
+       // Peut-être lancer une exception ou retourner une erreur ?
+       // throw Exception('AzureSpeechService not initialized.');
+       return;
+    }
     if (audioChunk.isEmpty) {
       if (kDebugMode) {
         print('AzureSpeechService: Attempted to send empty audio chunk.');
@@ -232,20 +245,6 @@ class AzureSpeechService {
       });
     return _recognitionStream!;
   }
-
-  // --- Gestion des permissions (Optionnel, peut être géré ailleurs) ---
-  // static const String _permissionChannelName = 'com.eloquence.app/permissions';
-  // final MethodChannel _permissionChannel = const MethodChannel(_permissionChannelName);
-
-  // Future<String> requestAudioPermission() async {
-  //   try {
-  //     final result = await _permissionChannel.invokeMethod<String>('requestAudioPermission');
-  //     return result ?? 'unknown'; // granted, denied, pending, unknown
-  //   } on PlatformException catch (e) {
-  //     print('Failed to request permission: ${e.message}');
-  //     return 'error';
-  //   }
-  // }
 
   /// Libère les ressources (si nécessaire côté Dart).
   /// Le nettoyage principal se fait côté natif dans cleanUpFlutterEngine/stopListening.
