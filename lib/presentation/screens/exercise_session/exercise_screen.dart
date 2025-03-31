@@ -118,22 +118,6 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
               _fluencyScore = (result.pronunciationResult?['fluencyScore'] as num?)?.toDouble();
               _completenessScore = (result.pronunciationResult?['completenessScore'] as num?)?.toDouble();
             }
-            // Appeler _completeExercise ici si c'est un résultat final et sans erreur
-            if (result.type == AzureSpeechEventType.finalResult && (errorMsg == null || errorMsg.isEmpty)) {
-               // Passer les scores récupérés
-               _completeExercise(_pronunciationScore, _accuracyScore, _fluencyScore, _completenessScore);
-            }
-            // Gérer aussi le cas d'une erreur renvoyée comme un résultat
-            else if (result.type == AzureSpeechEventType.error) {
-               _azureError = result.errorMessage ?? "Erreur Azure inconnue";
-               _recognizedText = '';
-               _pronunciationScore = null;
-               _accuracyScore = null;
-               _fluencyScore = null;
-               _completenessScore = null;
-               // Passer null pour les scores en cas d'erreur
-               _completeExercise(null, null, null, null); // Compléter même en cas d'erreur pour afficher la modale
-            }
           });
         }
       },
@@ -149,8 +133,6 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
              _fluencyScore = null;
              _completenessScore = null;
           });
-          // Appeler _completeExercise ici aussi en cas d'erreur du stream, passer null pour les scores
-          _completeExercise(null, null, null, null);
         }
       },
       onDone: () {
@@ -560,6 +542,8 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       _accuracyScore = null;
       _fluencyScore = null;
       _completenessScore = null;
+      _isExerciseCompleted = false; // Réinitialiser l'état de complétion
+      _showCelebration = false;
     });
 
     try {
@@ -627,11 +611,6 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
      // La logique pour onExerciseCompleted est déclenchée par le stream Azure
      // ou après un délai si nécessaire (à ajuster selon le besoin)
-     // Pour l'instant, on attend le résultat d'Azure via le stream.
-     // On pourrait ajouter un timeout ici si Azure ne répond pas.
-
-     // Simuler un temps de traitement *après* l'arrêt pour la complétion (si nécessaire)
-     // Peut-être que cela devrait être déclenché par la réception du résultat final d'Azure ?
      // Pour l'instant, on attend le résultat d'Azure via le stream.
      // On pourrait ajouter un timeout ici si Azure ne répond pas.
 
@@ -816,3 +795,4 @@ Exercise getSampleExercise() {
     },
   );
 }
+
