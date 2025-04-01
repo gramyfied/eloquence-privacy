@@ -151,9 +151,28 @@ class RecordAudioRepository implements AudioRepository {
     _amplitudeSubscription?.cancel();
     _amplitudeSubscription = _recorder.onAmplitudeChanged(const Duration(milliseconds: 100)).listen(
       (amp) {
-        // Normaliser l'amplitude (record retourne entre -120 et 0 dBFS)
-        double normalized = (amp.current + 120) / 120;
-        _audioLevelController.add(normalized.clamp(0.0, 1.0));
+        // Revenir à une plage dB plus large (-60 dBFS à 0 dBFS)
+        const double minDb = -60.0;
+        const double maxDb = 0.0;
+        double currentDb = amp.current;
+
+        // Appliquer la normalisation linéaire sur cette plage
+        double normalized;
+        if (currentDb < minDb) {
+          normalized = 0.0;
+        } else if (currentDb >= maxDb) {
+          normalized = 1.0;
+        } else {
+          normalized = (currentDb - minDb) / (maxDb - minDb);
+        }
+
+        // Appliquer une courbe de puissance cubique pour réduire davantage la sensibilité aux bas niveaux
+        // final double finalNormalized = normalized * normalized * normalized; // Changé de carré à cube
+        // --- MODIFICATION V21: Utiliser la normalisation linéaire directe pour tester ---
+        final double finalNormalized = normalized;
+
+        // Envoyer la valeur normalisée et ajustée (toujours entre 0.0 et 1.0)
+        _audioLevelController.add(finalNormalized);
       },
       onError: (e) {
         ConsoleLogger.error('Erreur stream amplitude: $e');

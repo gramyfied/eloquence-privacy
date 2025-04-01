@@ -18,13 +18,16 @@ class SupabaseExerciseRepositoryImpl implements ExerciseRepository {
           .select('*')
           .order('created_at', ascending: false);
 
+      // Correction: Utiliser 'state' si nécessaire, 'description' n'existe pas.
+      // 'icon_path' n'existe pas non plus dans le schéma vu.
       return collectionsData.map<ExerciseCategory>((data) {
         return ExerciseCategory(
           id: data['id'],
           name: data['name'],
-          description: data['description'] ?? '',
-          type: _mapCollectionTypeToCategory(data['type'] ?? 'articulation'),
-          iconPath: data['icon_path'],
+          // description: data['description'] ?? '', // Colonne inexistante
+          description: '', // Mettre une description vide par défaut ou lire une autre colonne si pertinent
+          type: _mapCollectionTypeToCategory(data['type'] ?? 'fondamentaux'), // Utiliser fondamentaux comme défaut plus sûr
+          // iconPath: data['icon_path'], // Colonne inexistante
         );
       }).toList();
     } catch (e) {
@@ -65,30 +68,39 @@ class SupabaseExerciseRepositoryImpl implements ExerciseRepository {
   @override
   Future<List<Exercise>> getExercisesByCategory(String categoryId) async {
     try {
+      // Correction: Filtrer par la colonne 'category' (texte) au lieu de 'collections.id'
+      // Correction: Lire 'description' comme 'objective', 'difficulty' comme 'difficulty', 'category' comme 'category type'
+      // Correction: Pas de jointure nécessaire si on filtre par 'category' texte.
+      // Il faudra reconstruire l'objet Category basé sur le type texte.
+      final categoryType = await _getCategoryTypeById(categoryId); // Besoin d'une fonction pour obtenir le type depuis l'ID
+      if (categoryType == null) return []; // Si la catégorie n'est pas trouvée
+
       final exercisesData = await _supabaseClient
           .from('exercises')
-          .select('*, collections!inner(*)')
-          .eq('collections.id', categoryId)
+          .select('*') // Sélectionner toutes les colonnes de 'exercises'
+          .eq('category', categoryType) // Filtrer par le type de catégorie (texte)
           .order('created_at', ascending: false);
 
       return exercisesData.map<Exercise>((data) {
-        final categoryData = data['collections'];
-        
+        // Reconstruire l'objet Category minimal basé sur le type
+        final categoryTypeEnum = _mapCollectionTypeToCategory(data['category'] ?? 'fondamentaux');
+        final categoryName = _categoryTypeToName(categoryTypeEnum); // Fonction utilitaire à créer
+
         return Exercise(
           id: data['id'],
           title: data['title'],
-          objective: data['objective'] ?? '',
-          instructions: data['instructions'] ?? '',
-          textToRead: data['text_to_read'],
-          difficulty: _mapDifficultyLevel(data['difficulty_level'] ?? 'moyen'),
+          objective: data['description'] ?? '', // Utiliser 'description' comme 'objective'
+          instructions: data['prompt'] ?? '', // Utiliser 'prompt' comme 'instructions' ? Ou laisser vide ?
+          textToRead: data['training_text'], // Utiliser 'training_text'
+          difficulty: _mapDifficultyLevel(data['difficulty'] ?? 'moyen'), // Utiliser 'difficulty'
           category: ExerciseCategory(
-            id: categoryData['id'],
-            name: categoryData['name'],
-            description: categoryData['description'] ?? '',
-            type: _mapCollectionTypeToCategory(categoryData['type'] ?? 'articulation'),
-            iconPath: categoryData['icon_path'],
+            id: categoryId, // Garder l'ID passé en argument
+            name: categoryName, // Nom reconstruit
+            description: '', // Description non disponible directement
+            type: categoryTypeEnum,
+            // iconPath: null, // Non disponible
           ),
-          evaluationParameters: data['evaluation_parameters'] ?? {
+          evaluationParameters: /* data['evaluation_parameters'] ?? */ { // evaluation_parameters n'existe pas dans le schéma vu
             'clarity': 0.4,
             'pronunciation': 0.4,
             'rhythm': 0.2,
@@ -116,29 +128,34 @@ class SupabaseExerciseRepositoryImpl implements ExerciseRepository {
   @override
   Future<Exercise> getExerciseById(String exerciseId) async {
     try {
+      // Correction: Lire depuis 'exercises' uniquement, reconstruire Category
       final exerciseData = await _supabaseClient
           .from('exercises')
-          .select('*, collections(*)')
+          .select('*') // Sélectionner toutes les colonnes de 'exercises'
           .eq('id', exerciseId)
           .single();
 
-      final categoryData = exerciseData['collections'];
-      
+      // Reconstruire l'objet Category minimal basé sur le type
+      final categoryTypeString = exerciseData['category'] as String?; // Cast explicite
+      final categoryTypeEnum = _mapCollectionTypeToCategory(categoryTypeString ?? 'fondamentaux');
+      final categoryName = _categoryTypeToName(categoryTypeEnum); // Fonction utilitaire
+      final categoryId = await _getCategoryIdByType(categoryTypeString); // Passer la variable typée
+
       return Exercise(
         id: exerciseData['id'],
         title: exerciseData['title'],
-        objective: exerciseData['objective'] ?? '',
-        instructions: exerciseData['instructions'] ?? '',
-        textToRead: exerciseData['text_to_read'],
-        difficulty: _mapDifficultyLevel(exerciseData['difficulty_level'] ?? 'moyen'),
+        objective: exerciseData['description'] ?? '', // Utiliser 'description'
+        instructions: exerciseData['prompt'] ?? '', // Utiliser 'prompt' ?
+        textToRead: exerciseData['training_text'], // Utiliser 'training_text'
+        difficulty: _mapDifficultyLevel(exerciseData['difficulty'] ?? 'moyen'), // Utiliser 'difficulty'
         category: ExerciseCategory(
-          id: categoryData['id'],
-          name: categoryData['name'],
-          description: categoryData['description'] ?? '',
-          type: _mapCollectionTypeToCategory(categoryData['type'] ?? 'articulation'),
-          iconPath: categoryData['icon_path'],
+          id: categoryId ?? 'unknown', // ID de catégorie trouvé ou inconnu
+          name: categoryName,
+          description: '',
+          type: categoryTypeEnum,
+          // iconPath: null,
         ),
-        evaluationParameters: exerciseData['evaluation_parameters'] ?? {
+        evaluationParameters: /* exerciseData['evaluation_parameters'] ?? */ { // Colonne inexistante
           'clarity': 0.4,
           'pronunciation': 0.4,
           'rhythm': 0.2,
@@ -184,59 +201,69 @@ class SupabaseExerciseRepositoryImpl implements ExerciseRepository {
   }
 
   @override
+  // Correction: Utiliser la colonne 'difficulty', pas de jointure, reconstruire Category
   Future<List<Exercise>> getExercisesByDifficulty(ExerciseDifficulty difficulty) async {
     try {
-      final difficultyLevel = difficulty.toString().split('.').last;
+      final difficultyLevelString = _difficultyToString(difficulty); // Fonction utilitaire inverse
       final exercisesData = await _supabaseClient
           .from('exercises')
-          .select('*, collections(*)')
-          .eq('difficulty_level', difficultyLevel)
+          .select('*') // Sélectionner toutes les colonnes de 'exercises'
+          .eq('difficulty', difficultyLevelString) // Utiliser la colonne 'difficulty'
           .order('created_at', ascending: false);
 
-      return exercisesData.map<Exercise>((data) {
-        final categoryData = data['collections'];
-        
+      // Utiliser Future.wait pour gérer l'appel asynchrone dans map
+      final exerciseFutures = exercisesData.map<Future<Exercise>>((data) async {
+         // Reconstruire l'objet Category minimal basé sur le type
+        final categoryTypeString = data['category'] as String?; // Cast explicite
+        final categoryTypeEnum = _mapCollectionTypeToCategory(categoryTypeString ?? 'fondamentaux');
+        final categoryName = _categoryTypeToName(categoryTypeEnum); // Fonction utilitaire
+        final categoryId = await _getCategoryIdByType(categoryTypeString); // await est maintenant dans une fonction async
+
         return Exercise(
           id: data['id'],
           title: data['title'],
-          objective: data['objective'] ?? '',
-          instructions: data['instructions'] ?? '',
-          textToRead: data['text_to_read'],
-          difficulty: _mapDifficultyLevel(data['difficulty_level'] ?? 'moyen'),
+          objective: data['description'] ?? '', // Utiliser 'description'
+          instructions: data['prompt'] ?? '', // Utiliser 'prompt' ?
+          textToRead: data['training_text'], // Utiliser 'training_text'
+          difficulty: _mapDifficultyLevel(data['difficulty'] ?? 'moyen'), // Utiliser 'difficulty'
           category: ExerciseCategory(
-            id: categoryData['id'],
-            name: categoryData['name'],
-            description: categoryData['description'] ?? '',
-            type: _mapCollectionTypeToCategory(categoryData['type'] ?? 'articulation'),
-            iconPath: categoryData['icon_path'],
+            id: categoryId ?? 'unknown', // ID de catégorie trouvé ou inconnu
+            name: categoryName,
+            description: '',
+            type: categoryTypeEnum,
+            // iconPath: null,
           ),
-          evaluationParameters: data['evaluation_parameters'] ?? {
+          evaluationParameters: /* data['evaluation_parameters'] ?? */ { // Colonne inexistante
             'clarity': 0.4,
             'pronunciation': 0.4,
             'rhythm': 0.2,
           },
         );
-      }).toList();
+      }).toList(); // Crée une List<Future<Exercise>>
+
+      // Attendre que toutes les futures soient résolues
+      return await Future.wait(exerciseFutures);
     } catch (e) {
       throw Exception('Erreur lors de la récupération des exercices par difficulté : $e');
     }
   }
 
   @override
+  // Correction: Utiliser les colonnes 'description', 'difficulty', 'category', 'prompt', 'training_text'
   Future<void> saveExercise(Exercise exercise) async {
     try {
       await _supabaseClient.from('exercises').upsert({
-        'id': exercise.id,
+        'id': exercise.id, // Assurez-vous que l'ID est fourni pour upsert
         'title': exercise.title,
-        'objective': exercise.objective,
-        'instructions': exercise.instructions,
-        'text_to_read': exercise.textToRead,
-        'difficulty_level': exercise.difficulty.toString().split('.').last,
-        'collection_id': exercise.category.id,
-        'evaluation_parameters': exercise.evaluationParameters,
+        'description': exercise.objective, // Mapper objective vers description
+        'prompt': exercise.instructions, // Mapper instructions vers prompt ?
+        'training_text': exercise.textToRead, // Mapper textToRead vers training_text
+        'difficulty': _difficultyToString(exercise.difficulty), // Mapper difficulty enum vers string
+        'category': _categoryTypeToString(exercise.category.type), // Mapper category type enum vers string
+        // 'evaluation_parameters': exercise.evaluationParameters, // Colonne inexistante
         'user_id': SupabaseService.client.auth.currentUser?.id,
-        'updated_at': DateTime.now().toIso8601String(),
-      });
+        'updated_at': DateTime.now().toIso8601String(), // Géré par Supabase? Vérifier trigger
+      }, onConflict: 'id'); // Spécifier la colonne de conflit pour upsert
     } catch (e) {
       throw Exception('Erreur lors de la sauvegarde de l\'exercice : $e');
     }
@@ -259,4 +286,95 @@ class SupabaseExerciseRepositoryImpl implements ExerciseRepository {
       throw Exception('Erreur lors de la sauvegarde de l\'exercice généré : $e');
     }
   }
+
+  // --- Fonctions utilitaires ajoutées ---
+
+  // Récupère le type (string) d'une catégorie via son ID
+  Future<String?> _getCategoryTypeById(String categoryId) async {
+    try {
+      final data = await _supabaseClient
+          .from('collections')
+          .select('type')
+          .eq('id', categoryId)
+          .maybeSingle();
+      // Utilisation de print pour le débogage simple, remplacez par un logger si nécessaire
+      if (data == null) {
+        print('Aucune catégorie trouvée pour ID: $categoryId');
+      }
+      return data?['type'] as String?;
+    } catch (e) {
+      print('Erreur _getCategoryTypeById: $e');
+      return null;
+    }
+  }
+
+  // Récupère l'ID (uuid) d'une catégorie via son type (string)
+  Future<String?> _getCategoryIdByType(String? type) async {
+    if (type == null) return null;
+    try {
+      final data = await _supabaseClient
+          .from('collections')
+          .select('id')
+          .eq('type', type)
+          .maybeSingle(); // Suppose qu'un type est unique
+      if (data == null) {
+         print('Aucune catégorie trouvée pour type: $type');
+      }
+      return data?['id'] as String?;
+    } catch (e) {
+      print('Erreur _getCategoryIdByType: $e');
+      return null;
+    }
+  }
+
+  // Convertit un ExerciseCategoryType en nom lisible
+  String _categoryTypeToName(ExerciseCategoryType type) {
+    switch (type) {
+      case ExerciseCategoryType.fondamentaux:
+        return 'Fondamentaux';
+      case ExerciseCategoryType.impactPresence:
+        return 'Impact et Présence';
+      case ExerciseCategoryType.clarteExpressivite:
+        return 'Clarté et Expressivité';
+      case ExerciseCategoryType.applicationProfessionnelle:
+        return 'Application Professionnelle';
+      case ExerciseCategoryType.maitriseAvancee:
+        return 'Maîtrise Avancée';
+      // default: // Pas nécessaire si tous les cas sont couverts
+      //   return 'Inconnu';
+    }
+  }
+
+  // Convertit un ExerciseDifficulty en string pour la DB
+  String _difficultyToString(ExerciseDifficulty difficulty) {
+    switch (difficulty) {
+      case ExerciseDifficulty.facile:
+        return 'facile';
+      case ExerciseDifficulty.moyen:
+        return 'moyen';
+      case ExerciseDifficulty.difficile:
+        return 'difficile';
+      // default: // Pas nécessaire si tous les cas sont couverts
+      //   return 'moyen';
+    }
+  }
+
+  // Convertit un ExerciseCategoryType en string pour la DB
+  String _categoryTypeToString(ExerciseCategoryType type) {
+    switch (type) {
+      case ExerciseCategoryType.fondamentaux:
+        return 'fondamentaux';
+      case ExerciseCategoryType.impactPresence:
+        return 'impact_presence';
+      case ExerciseCategoryType.clarteExpressivite:
+        return 'clarte_expressivite';
+      case ExerciseCategoryType.applicationProfessionnelle:
+        return 'application_professionnelle';
+      case ExerciseCategoryType.maitriseAvancee:
+        return 'maitrise_avancee';
+      // default: // Pas nécessaire si tous les cas sont couverts
+      //   return 'fondamentaux'; // Ou une autre valeur par défaut
+    }
+  }
+  // --- Fin des fonctions utilitaires ajoutées ---
 }

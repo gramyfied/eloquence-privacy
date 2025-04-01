@@ -20,7 +20,10 @@ import '../domain/entities/exercise_category.dart';
 // Importer les écrans d'exercices spécifiques
 import '../presentation/screens/exercise_session/articulation_exercise_screen.dart';
 import '../presentation/screens/exercise_session/lung_capacity_exercise_screen.dart';
-import '../presentation/screens/exercise_session/breathing_exercise_screen.dart'; // AJOUT: Import manquant
+import '../presentation/screens/exercise_session/breathing_exercise_screen.dart';
+import '../presentation/screens/exercise_session/volume_control_exercise_screen.dart';
+import '../presentation/screens/exercise_session/resonance_placement_exercise_screen.dart';
+import '../presentation/screens/exercise_session/effortless_projection_exercise_screen.dart'; // AJOUT: Import pour projection
 
 
 /// Crée et configure le router de l'application
@@ -33,7 +36,7 @@ GoRouter createRouter(AuthRepository authRepository) {
         path: AppRoutes.auth,
         builder: (context, state) => const AuthScreen(),
       ),
-      
+
       // Home Screen
       GoRoute(
         path: AppRoutes.home,
@@ -59,16 +62,16 @@ GoRouter createRouter(AuthRepository authRepository) {
           );
         },
       ),
-      
+
       // Exercise Categories Screen
       GoRoute(
         path: AppRoutes.exerciseCategories,
         builder: (context, state) {
           print("Tentative de récupération des catégories d'exercice...");
-          
+
           // Utiliser le repository pour récupérer les catégories
           final exerciseRepository = serviceLocator<ExerciseRepository>();
-          
+
           return FutureBuilder<List<ExerciseCategory>>(
             future: exerciseRepository.getCategories(),
             builder: (context, snapshot) {
@@ -79,23 +82,23 @@ GoRouter createRouter(AuthRepository authRepository) {
                   ),
                 );
               }
-              
+
               if (snapshot.hasError) {
                 print("Erreur lors de la récupération des catégories: ${snapshot.error}");
                 // En cas d'erreur, utiliser les catégories par défaut
                 final categories = getSampleCategories();
                 return _buildCategoriesScreen(context, categories);
               }
-              
+
               final categories = snapshot.data ?? getSampleCategories();
               print("Catégories récupérées: ${categories.length}");
-              
+
               return _buildCategoriesScreen(context, categories);
             },
           );
         },
       ),
-      
+
       // Exercise Screen
       GoRoute(
         path: AppRoutes.exercise,
@@ -120,7 +123,7 @@ GoRouter createRouter(AuthRepository authRepository) {
           );
         },
       ),
-      
+
       // Exercise Result Screen
       GoRoute(
         path: AppRoutes.exerciseResult,
@@ -128,7 +131,7 @@ GoRouter createRouter(AuthRepository authRepository) {
           final data = state.extra as Map<String, dynamic>;
           final exercise = data['exercise'] as Exercise;
           final results = data['results'] as Map<String, dynamic>;
-          
+
           return ExerciseResultScreen(
             exercise: exercise,
             results: results,
@@ -141,14 +144,14 @@ GoRouter createRouter(AuthRepository authRepository) {
           );
         },
       ),
-      
+
       // Statistics Screen
       GoRoute(
         path: AppRoutes.statistics,
         builder: (context, state) {
-          final user = state.extra as User? ?? 
+          final user = state.extra as User? ??
             User(id: '123', name: 'Utilisateur', email: 'user@example.com');
-          
+
           return StatisticsScreen(
             user: user,
             onBackPressed: () {
@@ -157,7 +160,7 @@ GoRouter createRouter(AuthRepository authRepository) {
           );
         },
       ),
-      
+
       // Profile Screen
       GoRoute(
         path: AppRoutes.profile,
@@ -179,7 +182,7 @@ GoRouter createRouter(AuthRepository authRepository) {
                 name: name,
                 avatarUrl: avatarUrl ?? user?.avatarUrl,
               );
-              
+
               // Afficher un message de succès
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -187,21 +190,21 @@ GoRouter createRouter(AuthRepository authRepository) {
                   backgroundColor: Colors.green,
                 ),
               );
-              
+
               // Naviguer vers la page d'accueil avec l'utilisateur mis à jour
               context.go(AppRoutes.home, extra: updatedUser);
             },
           );
         },
       ),
-      
+
       // History Screen
       GoRoute(
         path: AppRoutes.history,
         builder: (context, state) {
-          final user = state.extra as User? ?? 
+          final user = state.extra as User? ??
             User(id: '123', name: 'Utilisateur', email: 'user@example.com');
-          
+
           return SessionHistoryScreen(
             user: user,
             onBackPressed: () {
@@ -210,7 +213,7 @@ GoRouter createRouter(AuthRepository authRepository) {
           );
         },
       ),
-      
+
       // Debug Screen
       GoRoute(
         path: AppRoutes.debug,
@@ -218,6 +221,128 @@ GoRouter createRouter(AuthRepository authRepository) {
           return const DebugScreen();
         },
       ),
+
+      // --- Routes spécifiques aux exercices ---
+
+      // Capacité Pulmonaire
+      GoRoute(
+        path: AppRoutes.exerciseLungCapacity,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          // TODO: Récupérer l'exercice complet via exerciseId en utilisant ExerciseRepository
+          // Pour l'instant, on utilise un placeholder ou on suppose qu'il est passé via extra si nécessaire
+          // Si l'exercice n'est pas trouvé, afficher une erreur ou rediriger
+          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Capacité Pulmonaire', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
+
+          return LungCapacityExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              print("Résultats Capacité Pulmonaire: $results");
+              // Naviguer vers l'écran de résultats avec go_router
+              context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+
+      // Articulation
+      GoRoute(
+        path: AppRoutes.exerciseArticulation,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          // TODO: Récupérer l'exercice complet via exerciseId
+          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Articulation', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
+
+          return ArticulationExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              print("Résultats Articulation: $results");
+              context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+
+      // Respiration
+      GoRoute(
+        path: AppRoutes.exerciseBreathing,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          // TODO: Récupérer l'exercice complet via exerciseId
+          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Respiration', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
+
+          return BreathingExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              print("Résultats Respiration Diaphragmatique: $results");
+              // La modale est gérée dans l'écran, on pop simplement ici ou on navigue vers les résultats si nécessaire
+              // context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+               context.pop(); // Ou context.go(AppRoutes.home); ou autre selon le flux désiré
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+
+      // Contrôle du Volume
+      GoRoute(
+        path: AppRoutes.exerciseVolumeControl,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          // TODO: Récupérer l'exercice complet via exerciseId
+          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Contrôle Volume', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
+
+          return VolumeControlExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              print("Résultats Contrôle Volume: $results");
+              context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+
+      // Résonance
+      GoRoute(
+        path: AppRoutes.exerciseResonance,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          // TODO: Récupérer l'exercice complet via exerciseId
+          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Résonance', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
+
+          return ResonancePlacementExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              print("Résultats Résonance & Placement: $results");
+              context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+
+      // Projection
+      GoRoute(
+        path: AppRoutes.exerciseProjection,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          // TODO: Récupérer l'exercice complet via exerciseId
+          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Projection', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
+
+          return EffortlessProjectionExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              print("Résultats Projection Sans Forçage: $results");
+              context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+
     ],
     errorBuilder: (context, state) => Scaffold(
       body: Center(
@@ -270,11 +395,11 @@ Widget _buildCategoriesScreen(BuildContext context, List<ExerciseCategory> categ
     categories: categories,
     onCategorySelected: (category) async {
       print("Catégorie sélectionnée: ${category.name} (${category.id})");
-      
+
       // Utiliser le repository pour récupérer les exercices de cette catégorie
       final exerciseRepository = serviceLocator<ExerciseRepository>();
       List<Exercise> exercises;
-      
+
       try {
         exercises = await exerciseRepository.getExercisesByCategory(category.id);
       } catch (e) {
@@ -282,57 +407,51 @@ Widget _buildCategoriesScreen(BuildContext context, List<ExerciseCategory> categ
         // En cas d'erreur, utiliser les exercices par défaut
         exercises = _getDefaultExercisesForCategory(category);
       }
-      
+
       // Afficher la modale de sélection d'exercice
       final selectedExercise = await showExerciseSelectionModal(
         context: context,
         exercises: exercises,
       );
-      
-      // Si un exercice a été sélectionné, naviguer vers l'écran approprié
+
+      // Si un exercice a été sélectionné, naviguer vers l'écran approprié en utilisant go_router
       if (selectedExercise != null) {
-        // Vérifier l'ID ou un type d'exercice pour router vers l'écran spécifique
-        if (selectedExercise.id == 'capacite-pulmonaire') {
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (context) => LungCapacityExerciseScreen(
-              exercise: selectedExercise,
-              onExerciseCompleted: (results) {
-                // TODO: Gérer la complétion, ex: naviguer vers les résultats
-                print("Résultats Capacité Pulmonaire: $results");
-                context.pop(); // Revenir à l'écran précédent pour l'instant
-              },
-              onExitPressed: () => Navigator.of(context).pop(),
-            ),
-          ));
-        } else if (selectedExercise.id == 'articulation-base') {
-           Navigator.of(context).push(MaterialPageRoute(
-             builder: (context) => ArticulationExerciseScreen(
-               exercise: selectedExercise,
-               onExerciseCompleted: (results) {
-                 // TODO: Gérer la complétion, ex: naviguer vers les résultats
-                 print("Résultats Articulation: $results");
-                 context.pop(); // Revenir à l'écran précédent pour l'instant
-               },
-               onExitPressed: () => Navigator.of(context).pop(),
-             ),
-           ));
-        } else if (selectedExercise.id == 'respiration-diaphragmatique') { // AJOUT: Cas spécifique pour la respiration
-           Navigator.of(context).push(MaterialPageRoute(
-             builder: (context) => BreathingExerciseScreen(
-               exercise: selectedExercise,
-               onExerciseCompleted: (results) {
-                 // Simplement revenir en arrière, la modale de félicitations est gérée dans BreathingExerciseScreen
-                 print("Résultats Respiration Diaphragmatique: $results");
-                 context.pop();
-               },
-               onExitPressed: () => Navigator.of(context).pop(),
-             ),
-           ));
+        final exerciseId = selectedExercise.id;
+        String targetRoute;
+
+        // Déterminer la route cible en fonction de l'ID de l'exercice
+        switch (exerciseId) {
+          case 'capacite-pulmonaire':
+            targetRoute = AppRoutes.exerciseLungCapacity.replaceFirst(':exerciseId', exerciseId);
+            break;
+          case 'articulation-base':
+            targetRoute = AppRoutes.exerciseArticulation.replaceFirst(':exerciseId', exerciseId);
+            break;
+          case 'respiration-diaphragmatique':
+            targetRoute = AppRoutes.exerciseBreathing.replaceFirst(':exerciseId', exerciseId);
+            break;
+          case 'controle-volume':
+            targetRoute = AppRoutes.exerciseVolumeControl.replaceFirst(':exerciseId', exerciseId);
+            break;
+          case 'resonance-placement':
+            targetRoute = AppRoutes.exerciseResonance.replaceFirst(':exerciseId', exerciseId);
+            break;
+          case 'projection-sans-force':
+            targetRoute = AppRoutes.exerciseProjection.replaceFirst(':exerciseId', exerciseId);
+            break;
+          default:
+            // Pour les autres exercices, utiliser la route générique pour l'instant
+            // TODO: Ajouter des cas pour d'autres écrans spécifiques si nécessaire
+            print("Navigation vers écran générique pour exercice: $exerciseId");
+            targetRoute = AppRoutes.exercise; // La route générique attend l'exercice dans 'extra'
+            context.push(targetRoute, extra: selectedExercise);
+            return; // Sortir car on a déjà navigué
         }
-        else {
-          // Pour les autres exercices, utiliser la route générique pour l'instant
-          context.push(AppRoutes.exercise, extra: selectedExercise);
-        }
+
+        print("Navigation vers $targetRoute pour exercice: $exerciseId");
+        // Passer l'exercice complet via 'extra' pour éviter de le recharger dans chaque route builder pour l'instant
+        // TODO: Idéalement, passer seulement l'ID et charger l'exercice dans le builder de la route spécifique
+        context.push(targetRoute, extra: selectedExercise);
       }
     },
     onBackPressed: () {

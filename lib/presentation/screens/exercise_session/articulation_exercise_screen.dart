@@ -760,7 +760,7 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
     final sessionData = {
       'user_id': userId,
       'exercise_id': widget.exercise.id, // Assurez-vous que Exercise a un 'id'
-      'category': widget.exercise.category, // Assurez-vous que Exercise a 'category'
+      'category': widget.exercise.category.id, // Correction: Enregistrer l'ID de la catégorie
       'scenario': widget.exercise.title, // Utiliser le titre comme scénario
       'duration': durationSeconds,
       'difficulty': difficultyInt,

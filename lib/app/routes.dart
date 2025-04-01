@@ -10,4 +10,13 @@ class AppRoutes {
   static const String profile = '/profile';
   static const String history = '/history';
   static const String debug = '/debug';
+
+  // Routes spécifiques aux exercices
+  static const String exerciseLungCapacity = '/exercise/lung-capacity/:exerciseId';
+  static const String exerciseArticulation = '/exercise/articulation/:exerciseId';
+  static const String exerciseBreathing = '/exercise/breathing/:exerciseId';
+  static const String exerciseVolumeControl = '/exercise/volume-control/:exerciseId';
+  static const String exerciseResonance = '/exercise/resonance/:exerciseId';
+  static const String exerciseProjection = '/exercise/projection/:exerciseId';
+  // Ajoutez d'autres routes spécifiques ici si nécessaire
 }

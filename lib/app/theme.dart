@@ -13,6 +13,9 @@ class AppTheme {
   static const Color textPrimary = Colors.white;
   static const Color textSecondary = Color(0xFFA0AEC0);
 
+  // Couleurs spécifiques aux catégories (ajouter au besoin)
+  static const Color impactPresenceColor = Color(0xFF50E3C2); // Vert/Turquoise pour Impact & Présence
+
   // Espacements standards
   static const double spacing1 = 4.0;
   static const double spacing2 = 8.0;
