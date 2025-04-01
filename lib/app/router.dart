@@ -346,12 +346,39 @@ List<Exercise> _getDefaultExercisesForCategory(ExerciseCategory category) {
   switch (category.type) {
     case ExerciseCategoryType.fondamentaux:
       return [
+        // Exercise( // Commenté car l'ID codé en dur pose problème lors de l'enregistrement de session si utilisé en fallback.
+        //   id: 'respiration-diaphragmatique',
+        //   title: 'Respiration Diaphragmatique',
+        //   objective: 'Développez la technique fondamentale de respiration pour soutenir la voix',
+        //   instructions: 'Placez une main sur votre ventre et inspirez profondément en gonflant le ventre, puis expirez lentement.',
+        //   textToRead: 'La respiration diaphragmatique est la base d\'une voix stable et puissante.',
+        //   difficulty: ExerciseDifficulty.facile,
+        //   category: category,
+        //   evaluationParameters: {
+        //     'breath_control': 0.6,
+        //     'rhythm': 0.2,
+        //     'voice_stability': 0.2,
+        //   },
+        // ),
+        // Exercise( // Commenté car l'ID codé en dur pose problème lors de l'enregistrement de session si utilisé en fallback.
+        //   id: 'capacite-pulmonaire',
+        //   title: 'Capacité Pulmonaire Progressive',
+        //   objective: 'Développez votre endurance vocale et votre contrôle respiratoire',
+        //   instructions: 'Inspirez profondément, puis lisez le texte en essayant d\'aller le plus loin possible avec une seule respiration.',
+        //   textToRead: 'La capacité à gérer efficacement son souffle est essentielle pour maintenir une voix forte et stable pendant de longues périodes de parole.',
+        //   difficulty: ExerciseDifficulty.moyen,
+        //   category: category,
+        //   evaluationParameters: {
+        //     'breath_control': 0.7,
+        //     'endurance': 0.3,
+        //   },
+        // ),
         Exercise(
-          id: 'respiration-diaphragmatique',
-          title: 'Respiration Diaphragmatique',
-          objective: 'Développez la technique fondamentale de respiration pour soutenir la voix',
-          instructions: 'Placez une main sur votre ventre et inspirez profondément en gonflant le ventre, puis expirez lentement.',
-          textToRead: 'La respiration diaphragmatique est la base d\'une voix stable et puissante.',
+          id: 'articulation-base',
+          title: 'Articulation de Base',
+          objective: 'Clarté fondamentale de prononciation pour être bien compris',
+          instructions: 'Lisez le texte en exagérant légèrement l\'articulation de chaque syllabe.',
+          textToRead: 'Pour être parfaitement compris, il est essentiel d\'articuler clairement chaque syllabe.',
           difficulty: ExerciseDifficulty.facile,
           category: category,
           evaluationParameters: {
