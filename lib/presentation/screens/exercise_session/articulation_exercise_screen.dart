@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart'; // Importer permission_handler
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Importer dotenv
+import 'package:supabase_flutter/supabase_flutter.dart'; // AJOUT: Importer Supabase
 import '../../../app/theme.dart';
 import '../../../core/utils/console_logger.dart';
 import '../../../domain/entities/exercise.dart';
@@ -72,6 +73,11 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
   // Stream Subscriptions
   StreamSubscription? _audioStreamSubscription;
   StreamSubscription? _recognitionResultSubscription;
+
+  // Ajout pour le temps minimum d'enregistrement
+  DateTime? _recordingStartTime; // Heure de début de l'enregistrement
+  final Duration _minRecordingDuration = const Duration(seconds: 1); // Durée minimale (1 seconde)
+  DateTime? _exerciseStartTime; // AJOUT: Heure de début de l'exercice pour la durée
 
   @override
   void initState() {
@@ -435,6 +441,10 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
          // 3. Démarrer le stream audio depuis le repository
          final audioStream = await _audioRepository.startRecordingStream();
 
+         // Enregistrer l'heure de début
+         _recordingStartTime = DateTime.now();
+         _exerciseStartTime = DateTime.now(); // AJOUT: Enregistrer début exercice
+
         // 4. Démarrer la reconnaissance streaming Azure AVEC le texte de référence syllabique
         await _azureSpeechService.startRecognition(
           referenceText: _referenceTextForAzure, // Passer le texte référence
@@ -485,10 +495,26 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
           });
         }
       }
-    } else {
-      // Arrêter l'enregistrement et la reconnaissance
-      await _stopRecordingAndRecognition();
-     }
+     } else {
+       // Arrêter l'enregistrement et la reconnaissance
+
+       // --> AJOUTER LA VÉRIFICATION ICI <--
+       if (_recordingStartTime != null &&
+           DateTime.now().difference(_recordingStartTime!) < _minRecordingDuration) {
+         ConsoleLogger.warning('Tentative d\'arrêt trop rapide. Ignoré.');
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(
+             content: Text('Maintenez le bouton pour enregistrer (${_minRecordingDuration.inSeconds}s min).'),
+             duration: const Duration(seconds: 2),
+             backgroundColor: Colors.orangeAccent,
+           ),
+         );
+         return; // Ne pas arrêter si trop court
+       }
+       // --> FIN DE L'AJOUT <--
+
+       await _stopRecordingAndRecognition();
+      }
   }
 
   /// Vérifie et demande la permission microphone si nécessaire.
@@ -511,13 +537,14 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
   }
 
   /// Méthode pour arrêter proprement l'enregistrement et la reconnaissance Azure
-  Future<void> _stopRecordingAndRecognition() async {
-      ConsoleLogger.recording('Arrêt de l\'enregistrement streamé...');
-      setState(() {
-        _isRecording = false;
-        _isProcessing = true; // Indiquer qu'on attend le résultat final d'Azure
-      });
-      try {
+   Future<void> _stopRecordingAndRecognition() async {
+       ConsoleLogger.recording('Arrêt de l\'enregistrement streamé...');
+       setState(() {
+         _isRecording = false;
+         _isProcessing = true; // Indiquer qu'on attend le résultat final d'Azure
+         _recordingStartTime = null; // <-- Réinitialiser ici
+       });
+       try {
         // Annuler l'abonnement au stream audio local
         await _audioStreamSubscription?.cancel();
         _audioStreamSubscription = null;
@@ -702,9 +729,70 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
        finalResults['commentaires'] = _openAiFeedback;
      }
 
+     // AJOUT: Enregistrer les résultats dans Supabase
+     _saveSessionToSupabase(finalResults);
 
      _showCompletionDialog(finalResults);
   }
+
+  /// AJOUT: Fonction pour enregistrer la session dans Supabase
+  Future<void> _saveSessionToSupabase(Map<String, dynamic> results) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      ConsoleLogger.error('[Supabase] Utilisateur non connecté. Impossible d\'enregistrer la session.');
+      return;
+    }
+
+    final durationSeconds = _exerciseStartTime != null
+        ? DateTime.now().difference(_exerciseStartTime!).inSeconds
+        : 0;
+
+    // Convertir l'enum Difficulty en int (ajuster si nécessaire)
+    int difficultyInt;
+    switch (widget.exercise.difficulty) {
+      case ExerciseDifficulty.facile: difficultyInt = 1; break;
+      case ExerciseDifficulty.moyen: difficultyInt = 2; break;
+      case ExerciseDifficulty.difficile: difficultyInt = 3; break;
+      default: difficultyInt = 0; // Ou une autre valeur par défaut
+    }
+
+    // Préparer les données pour l'insertion
+    final sessionData = {
+      'user_id': userId,
+      'exercise_id': widget.exercise.id, // Assurez-vous que Exercise a un 'id'
+      'category': widget.exercise.category, // Assurez-vous que Exercise a 'category'
+      'scenario': widget.exercise.title, // Utiliser le titre comme scénario
+      'duration': durationSeconds,
+      'difficulty': difficultyInt,
+      'score': (results['score'] as num?)?.toInt() ?? 0, // Score global (Accuracy?)
+      'pronunciation_score': _evaluationResult?.syllableClarity, // Utilise PronunciationScore
+      'accuracy_score': _evaluationResult?.score, // Utilise AccuracyScore
+      'fluency_score': (_evaluationResult?.details?['FluencyScore'] as num?)?.toDouble(),
+      'completeness_score': (_evaluationResult?.details?['CompletenessScore'] as num?)?.toDouble(),
+      'prosody_score': (_evaluationResult?.details?['ProsodyScore'] as num?)?.toDouble(),
+      'transcription': results['texte_reconnu'],
+      'feedback': results['commentaires'], // Feedback final (OpenAI ou Azure)
+      'articulation_subcategory': null, // Laisser null pour l'instant
+      // 'audio_url': null, // Pas d'URL d'audio pour le moment
+      // created_at et updated_at sont gérés par Supabase
+    };
+
+    // Filtrer les valeurs nulles pour éviter les erreurs d'insertion si la colonne n'accepte pas NULL
+    sessionData.removeWhere((key, value) => value == null);
+
+    ConsoleLogger.info('[Supabase] Tentative d\'enregistrement de la session...');
+    try {
+      await Supabase.instance.client.from('sessions').insert(sessionData);
+      ConsoleLogger.success('[Supabase] Session enregistrée avec succès.');
+      // Optionnel: Mettre à jour les statistiques utilisateur ici ou via une fonction Supabase
+      // await _updateUserStatistics(userId, results);
+    } catch (e) {
+      ConsoleLogger.error('[Supabase] Erreur lors de l\'enregistrement de la session: $e');
+      // Gérer l'erreur (ex: afficher un message à l'utilisateur ?)
+    }
+  }
+  // FIN AJOUT
+
 
 
   /// Affiche la boîte de dialogue de fin d'exercice

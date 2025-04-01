@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math; // Ajout pour Random
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // AJOUT: Importer Supabase
 import '../../../app/theme.dart';
 import '../../../core/utils/console_logger.dart';
 import '../../../domain/entities/exercise.dart';
@@ -46,6 +47,7 @@ class _LungCapacityExerciseScreenState extends State<LungCapacityExerciseScreen>
   String _suggestedVowel = 'ah'; // Voyelle suggérée pour l'expiration
   final List<String> _vowels = const ['ah', 'é', 'i', 'o', 'ou', 'u']; // Liste des voyelles
   // String? _recordingFilePath; // Supprimé, plus besoin avec le streaming
+  DateTime? _exerciseStartTime; // AJOUT: Heure de début de l'exercice pour la durée
 
   // TODO: Définir le résultat de l'évaluation
   // LungCapacityEvaluationResult? _evaluationResult;
@@ -126,13 +128,16 @@ class _LungCapacityExerciseScreenState extends State<LungCapacityExerciseScreen>
          });
 
          setState(() {
-           _isMeasuring = true;
-           _isExerciseCompleted = false; // Permettre de réessayer
-           // _evaluationResult = null;
-           if (!_isExerciseStarted) _isExerciseStarted = true;
-         });
+            _isMeasuring = true;
+            _isExerciseCompleted = false; // Permettre de réessayer
+            // _evaluationResult = null;
+            if (!_isExerciseStarted) {
+               _isExerciseStarted = true;
+               _exerciseStartTime = DateTime.now(); // AJOUT: Enregistrer début exercice
+            }
+          });
 
-       } catch (e) {
+        } catch (e) {
          ConsoleLogger.error('Erreur lors du démarrage de la mesure/enregistrement: $e');
          if(mounted) {
            ScaffoldMessenger.of(context).showSnackBar(
@@ -195,12 +200,106 @@ class _LungCapacityExerciseScreenState extends State<LungCapacityExerciseScreen>
       // _evaluationResult = ...
       _isProcessing = false; // Fin du traitement
       _isExerciseCompleted = true;
-      _showCelebration = success;
-    });
+       _showCelebration = success;
+     });
 
-    _showCompletionDialog(evaluationResult);
-    ConsoleLogger.evaluation('Évaluation terminée. Feedback: $feedback');
+     // AJOUT: Enregistrer les résultats dans Supabase
+     _saveSessionToSupabase(evaluationResult);
+
+     _showCompletionDialog(evaluationResult);
+     ConsoleLogger.evaluation('Évaluation terminée. Feedback: $feedback');
+   }
+
+  /// Vérifie si une chaîne est un UUID valide
+  bool _isValidUuid(String uuid) {
+    final uuidRegex = RegExp(
+        r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+    return uuidRegex.hasMatch(uuid);
   }
+
+  /// AJOUT: Fonction pour enregistrer la session dans Supabase (adaptée)
+  Future<void> _saveSessionToSupabase(Map<String, dynamic> results) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      ConsoleLogger.error('[Supabase] Utilisateur non connecté. Impossible d\'enregistrer la session.');
+      return;
+    }
+
+    final durationSeconds = _exerciseStartTime != null
+        ? DateTime.now().difference(_exerciseStartTime!).inSeconds
+        : 0;
+
+    // Convertir l'enum Difficulty en int (ajuster si nécessaire)
+    int difficultyInt;
+    switch (widget.exercise.difficulty) {
+      case ExerciseDifficulty.facile: difficultyInt = 1; break;
+      case ExerciseDifficulty.moyen: difficultyInt = 2; break;
+      case ExerciseDifficulty.difficile: difficultyInt = 3; break;
+      default: difficultyInt = 0; // Ou une autre valeur par défaut
+    }
+
+    // Préparer les données pour l'insertion - spécifique à cet exercice
+    String? exerciseIdToSend = widget.exercise.id;
+    bool isDefinitelyInvalid = false;
+
+    if (exerciseIdToSend == 'capacite-pulmonaire') {
+        isDefinitelyInvalid = true;
+        ConsoleLogger.warning('[Supabase] Exercise ID is the known invalid string "capacite-pulmonaire".');
+    } else if (!_isValidUuid(exerciseIdToSend)) {
+        isDefinitelyInvalid = true;
+        ConsoleLogger.warning('[Supabase] Exercise ID "${exerciseIdToSend}" is not a valid UUID.');
+    }
+
+    if (isDefinitelyInvalid) {
+        exerciseIdToSend = null;
+        ConsoleLogger.warning('[Supabase] Setting exercise_id to null for session recording.');
+    }
+
+    // Rétablir les données complètes pour l'insertion
+    final sessionData = {
+      'user_id': userId,
+      'exercise_id': exerciseIdToSend, // Utiliser la variable vérifiée/nettoyée
+      'category': widget.exercise.category.name, // Utiliser le nom de la catégorie (String)
+      'scenario': widget.exercise.title,
+      'duration': durationSeconds, // Durée totale de l'interaction
+      'difficulty': difficultyInt,
+      'score': (results['score'] as num?)?.toInt() ?? 0, // Score basé sur la durée
+      // Scores Azure non applicables ici
+      'pronunciation_score': null,
+      'accuracy_score': null, // Ou peut-être utiliser le score basé durée ? Laisser null pour l'instant.
+      'fluency_score': results['duree_realisee'], // Utiliser la durée réalisée comme indicateur de "fluidité" ?
+      'completeness_score': null,
+      'prosody_score': null,
+      'transcription': 'Voyelle: $_suggestedVowel, Durée: ${results['duree_realisee']?.toStringAsFixed(1)}s', // Info contextuelle
+      'feedback': results['commentaires'],
+      'articulation_subcategory': null,
+      // 'audio_url': null,
+    };
+
+    // Si exerciseIdToSend est null (car invalide), le retirer complètement de la map
+    // avant de filtrer les autres nulls.
+    if (exerciseIdToSend == null) {
+      sessionData.remove('exercise_id');
+    }
+
+    // Filtrer les autres valeurs nulles
+    sessionData.removeWhere((key, value) => value == null);
+
+    ConsoleLogger.info('[Supabase] Tentative d\'enregistrement de la session (Capacité Pulmonaire) avec data: ${sessionData.toString()}');
+    // Logique de log précédente supprimée car intégrée dans la vérification ci-dessus.
+    try {
+      // Utiliser upsert avec ignoreDuplicates pour potentiellement éviter l'erreur 42P10
+      await Supabase.instance.client.from('sessions').upsert(
+        sessionData,
+        ignoreDuplicates: true, // Équivaut à ON CONFLICT DO NOTHING sur la clé primaire
+      );
+      ConsoleLogger.success('[Supabase] Session (Capacité Pulmonaire) enregistrée avec succès (via upsert).');
+      // TODO: Mettre à jour les statistiques utilisateur
+    } catch (e) {
+      ConsoleLogger.error('[Supabase] Erreur lors de l\'enregistrement de la session (Capacité Pulmonaire): $e');
+    }
+  }
+  // FIN AJOUT
 
 
   /// Affiche la boîte de dialogue de fin d'exercice (adaptée)
@@ -215,14 +314,15 @@ class _LungCapacityExerciseScreenState extends State<LungCapacityExerciseScreen>
            return Stack(
              children: [
                if (success)
-                 CelebrationEffect(
-                   intensity: 0.6, // Moins intense peut-être
-                   primaryColor: AppTheme.secondaryColor, // Utiliser secondaryColor
-                   secondaryColor: AppTheme.accentGreen,
-                   durationSeconds: 3,
-                   onComplete: () {
-                     if (mounted) {
-                       Navigator.of(context).pop();
+                 ClipRect( // Ajouter ClipRect pour éviter le dépassement
+                   child: CelebrationEffect(
+                     intensity: 0.6, // Moins intense peut-être
+                     primaryColor: AppTheme.secondaryColor, // Utiliser secondaryColor
+                    secondaryColor: AppTheme.accentGreen,
+                    durationSeconds: 6, // Augmentation de la durée
+                    onComplete: () {
+                      if (mounted) {
+                        Navigator.of(context).pop();
                        Future.delayed(const Duration(milliseconds: 100), () {
                          if (mounted) {
                            widget.onExerciseCompleted(results);
@@ -231,6 +331,7 @@ class _LungCapacityExerciseScreenState extends State<LungCapacityExerciseScreen>
                      }
                    },
                  ),
+               ),
                Center(
                  child: AlertDialog(
                    backgroundColor: AppTheme.darkSurface,

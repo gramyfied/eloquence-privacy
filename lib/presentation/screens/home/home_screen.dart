@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide User; // MODIFICATION: Masquer User de Supabase
 import '../../../app/theme.dart';
+import '../../../core/utils/console_logger.dart'; // AJOUT: Pour les logs
 import '../../../domain/entities/user.dart';
+import '../../../infrastructure/repositories/supabase_statistics_repository.dart'; // AJOUT: Importer le repo
+import '../../../services/service_locator.dart'; // AJOUT: Pour GetIt
 import '../../widgets/microphone_button.dart';
 import '../../widgets/stat_card.dart';
 
-class HomeScreen extends StatelessWidget {
+// CONVERSION EN STATEFULWIDGET
+class HomeScreen extends StatefulWidget {
   final User user;
   final VoidCallback onNewSessionPressed;
   final VoidCallback onStatsPressed;
@@ -23,6 +28,61 @@ class HomeScreen extends StatelessWidget {
   });
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  bool _isLoadingStats = true;
+  Map<String, dynamic>? _userStats;
+  final SupabaseStatisticsRepository _statsRepository = serviceLocator<SupabaseStatisticsRepository>();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHomeStats();
+  }
+
+  Future<void> _loadHomeStats() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingStats = true;
+    });
+    try {
+      final stats = await _statsRepository.getUserStatistics(widget.user.id);
+      if (mounted) {
+        setState(() {
+          _userStats = stats;
+          _isLoadingStats = false;
+        });
+      }
+    } catch (e) {
+      ConsoleLogger.error('[HomeScreen] Erreur chargement stats: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingStats = false;
+          // Optionnel: Afficher un message d'erreur
+        });
+      }
+    }
+  }
+
+  // Fonction pour recalculer la moyenne (similaire à StatisticsScreen)
+  double _calculateAverageScore() {
+    if (_userStats == null) return 0;
+    final avgPronunciation = _userStats!['average_pronunciation'] ?? 0;
+    final avgAccuracy = _userStats!['average_accuracy'] ?? 0;
+    final avgFluency = _userStats!['average_fluency'] ?? 0;
+    // Ajouter d'autres scores si pertinents pour la moyenne globale affichée ici
+    double sum = 0;
+    int count = 0;
+    if (avgPronunciation != null) { sum += avgPronunciation; count++; }
+    if (avgAccuracy != null) { sum += avgAccuracy; count++; }
+    if (avgFluency != null) { sum += avgFluency; count++; }
+    return count > 0 ? sum / count : 0;
+  }
+
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.darkBackground,
@@ -33,7 +93,7 @@ class HomeScreen extends StatelessWidget {
             // --- Header (Fixe en haut) ---
             Padding(
               padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0, bottom: 24.0), // Ajout padding bottom
-              child: _buildHeader(),
+              child: _buildHeader(), // Header utilise widget.user
             ),
 
             // --- Zone de contenu scrollable ---
@@ -66,7 +126,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader() { // Cette méthode utilise widget.user, pas besoin de la changer
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -82,7 +142,7 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              user.name ?? 'Utilisateur',
+              widget.user.name ?? 'Utilisateur', // Utiliser widget.user
               style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -93,9 +153,9 @@ class HomeScreen extends StatelessWidget {
         ),
         Row(
           children: [
-            if (onDebugPressed != null)
+            if (widget.onDebugPressed != null) // Utiliser widget.onDebugPressed
               GestureDetector(
-                onTap: onDebugPressed,
+                onTap: widget.onDebugPressed, // Utiliser widget.onDebugPressed
                 child: Container(
                   width: 40,
                   height: 40,
@@ -112,14 +172,14 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
             GestureDetector(
-              onTap: onProfilePressed,
+              onTap: widget.onProfilePressed, // Utiliser widget.onProfilePressed
               child: CircleAvatar(
                 radius: 24,
                 backgroundColor: AppTheme.primaryColor,
-                backgroundImage: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
-                    ? NetworkImage(user.avatarUrl!) as ImageProvider
+                backgroundImage: widget.user.avatarUrl != null && widget.user.avatarUrl!.isNotEmpty // Utiliser widget.user
+                    ? NetworkImage(widget.user.avatarUrl!) as ImageProvider // Utiliser widget.user
                     : null,
-                child: user.avatarUrl == null || user.avatarUrl!.isEmpty
+                child: widget.user.avatarUrl == null || widget.user.avatarUrl!.isEmpty // Utiliser widget.user
                     ? const Icon(
                         Icons.person,
                         color: Colors.white,
@@ -134,9 +194,9 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildNewSessionCard() {
+  Widget _buildNewSessionCard() { // Utilise widget.onNewSessionPressed
     return GestureDetector(
-      onTap: onNewSessionPressed,
+      onTap: widget.onNewSessionPressed,
       child: Container(
         width: double.infinity,
         height: 150,
@@ -240,7 +300,7 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             GestureDetector(
-              onTap: onStatsPressed,
+              onTap: widget.onStatsPressed, // Utiliser widget.onStatsPressed
               child: const Text(
                 'Voir tout',
                 style: TextStyle(
@@ -252,55 +312,57 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 16),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              SizedBox(
-                width: 100, // Largeur réduite
-                child: const StatCard(
-                  title: 'Score moyen',
-                  value: '48%',
-                  icon: Icons.insert_chart_outlined,
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF6A44F2), Color(0xFF8A74FF)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+        _isLoadingStats
+          ? const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator(strokeWidth: 2)))
+          : SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 100, // Largeur réduite
+                  child: StatCard(
+                    title: 'Score moyen',
+                    value: '${_calculateAverageScore().toStringAsFixed(0)}%', // Utiliser les données chargées
+                    icon: Icons.insert_chart_outlined,
+                    gradient: const LinearGradient( // Garder le gradient
+                      colors: [Color(0xFF6A44F2), Color(0xFF8A74FF)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10), // Espacement réduit
-              SizedBox(
-                width: 100, // Largeur réduite
-                child: StatCard(
-                  title: 'Sessions',
-                  value: '50',
-                  icon: Icons.calendar_today,
-                  gradient: LinearGradient(
-                    colors: [Colors.blue[700]!, Colors.blue[400]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                const SizedBox(width: 10), // Espacement réduit
+                SizedBox(
+                  width: 100, // Largeur réduite
+                  child: StatCard(
+                    title: 'Sessions',
+                    value: '${_userStats?['total_sessions'] ?? 0}', // Utiliser les données chargées
+                    icon: Icons.calendar_today,
+                    gradient: LinearGradient( // Garder le gradient
+                      colors: [Colors.blue[700]!, Colors.blue[400]!],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10), // Espacement réduit
-              SizedBox(
-                width: 100, // Largeur réduite
-                child: StatCard(
-                  title: 'Défis',
-                  value: '2',
-                  icon: Icons.emoji_events_outlined,
-                  gradient: LinearGradient(
-                    colors: [Colors.amber[700]!, Colors.amber[400]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                const SizedBox(width: 10), // Espacement réduit
+                SizedBox(
+                  width: 100, // Largeur réduite
+                  child: StatCard( // Garder les défis codés en dur pour l'instant
+                    title: 'Défis',
+                    value: '2',
+                    icon: Icons.emoji_events_outlined,
+                    gradient: LinearGradient(
+                      colors: [Colors.amber[700]!, Colors.amber[400]!],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                   ),
                 ),
-              ),
-              // Ajouter d'autres StatCard si nécessaire
-            ],
+                // Ajouter d'autres StatCard si nécessaire
+              ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -394,28 +456,24 @@ class HomeScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildNavItem(Icons.home, true),
+          _buildNavItem(Icons.home, true), // L'icône active est gérée par la logique de navigation parente
           InkWell(
-            onTap: () {
-              onStatsPressed();
-            },
+            onTap: widget.onStatsPressed, // Utiliser widget.onStatsPressed
             child: _buildNavItem(Icons.bar_chart, false),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4.0),
             child: MicrophoneButton(
               size: 48,
-              onPressed: onNewSessionPressed,
+              onPressed: widget.onNewSessionPressed, // Utiliser widget.onNewSessionPressed
             ),
           ),
           InkWell(
-            onTap: () {
-              onHistoryPressed();
-            },
+            onTap: widget.onHistoryPressed, // Utiliser widget.onHistoryPressed
             child: _buildNavItem(Icons.history, false),
           ),
           InkWell(
-            onTap: onProfilePressed,
+            onTap: widget.onProfilePressed, // Utiliser widget.onProfilePressed
             child: _buildNavItem(Icons.settings, false),
           ),
         ],

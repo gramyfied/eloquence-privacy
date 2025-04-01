@@ -61,13 +61,13 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
           categoryColor = Colors.grey;
         }
         
-        return SessionHistoryItem(
-          date: DateTime.parse(session['created_at'] as String),
-          category: category,
-          duration: Duration(minutes: session['duration'] as int? ?? 0),
-          score: session['score'] as int? ?? 0,
-          categoryColor: categoryColor,
-        );
+      return SessionHistoryItem(
+        date: DateTime.parse(session['created_at'] as String),
+        category: category,
+        duration: Duration(seconds: session['duration'] as int? ?? 0), // CORRECTION: Utiliser secondes
+        score: session['score'] as int? ?? 0,
+        categoryColor: categoryColor,
+      );
       }).toList();
       
       setState(() {
@@ -499,7 +499,12 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   }
 
   String _formatDuration(Duration duration) {
-    return "${duration.inMinutes} min";
+    // CORRECTION: Afficher secondes si moins d'une minute, sinon minutes
+    if (duration.inSeconds < 60) {
+      return "${duration.inSeconds} sec";
+    } else {
+      return "${duration.inMinutes} min";
+    }
   }
 }
 

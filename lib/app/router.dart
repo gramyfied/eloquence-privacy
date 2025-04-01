@@ -20,6 +20,7 @@ import '../domain/entities/exercise_category.dart';
 // Importer les écrans d'exercices spécifiques
 import '../presentation/screens/exercise_session/articulation_exercise_screen.dart';
 import '../presentation/screens/exercise_session/lung_capacity_exercise_screen.dart';
+import '../presentation/screens/exercise_session/breathing_exercise_screen.dart'; // AJOUT: Import manquant
 
 
 /// Crée et configure le router de l'application
@@ -315,7 +316,20 @@ Widget _buildCategoriesScreen(BuildContext context, List<ExerciseCategory> categ
                onExitPressed: () => Navigator.of(context).pop(),
              ),
            ));
-        } else {
+        } else if (selectedExercise.id == 'respiration-diaphragmatique') { // AJOUT: Cas spécifique pour la respiration
+           Navigator.of(context).push(MaterialPageRoute(
+             builder: (context) => BreathingExerciseScreen(
+               exercise: selectedExercise,
+               onExerciseCompleted: (results) {
+                 // Simplement revenir en arrière, la modale de félicitations est gérée dans BreathingExerciseScreen
+                 print("Résultats Respiration Diaphragmatique: $results");
+                 context.pop();
+               },
+               onExitPressed: () => Navigator.of(context).pop(),
+             ),
+           ));
+        }
+        else {
           // Pour les autres exercices, utiliser la route générique pour l'instant
           context.push(AppRoutes.exercise, extra: selectedExercise);
         }
@@ -346,19 +360,19 @@ List<Exercise> _getDefaultExercisesForCategory(ExerciseCategory category) {
             'voice_stability': 0.2,
           },
         ),
-        Exercise(
-          id: 'capacite-pulmonaire',
-          title: 'Capacité Pulmonaire Progressive',
-          objective: 'Développez votre endurance vocale et votre contrôle respiratoire',
-          instructions: 'Inspirez profondément, puis lisez le texte en essayant d\'aller le plus loin possible avec une seule respiration.',
-          textToRead: 'La capacité à gérer efficacement son souffle est essentielle pour maintenir une voix forte et stable pendant de longues périodes de parole.',
-          difficulty: ExerciseDifficulty.moyen,
-          category: category,
-          evaluationParameters: {
-            'breath_control': 0.7,
-            'endurance': 0.3,
-          },
-        ),
+        // Exercise( // Commenté car l'ID codé en dur pose problème lors de l'enregistrement de session si utilisé en fallback.
+        //   id: 'capacite-pulmonaire',
+        //   title: 'Capacité Pulmonaire Progressive',
+        //   objective: 'Développez votre endurance vocale et votre contrôle respiratoire',
+        //   instructions: 'Inspirez profondément, puis lisez le texte en essayant d\'aller le plus loin possible avec une seule respiration.',
+        //   textToRead: 'La capacité à gérer efficacement son souffle est essentielle pour maintenir une voix forte et stable pendant de longues périodes de parole.',
+        //   difficulty: ExerciseDifficulty.moyen,
+        //   category: category,
+        //   evaluationParameters: {
+        //     'breath_control': 0.7,
+        //     'endurance': 0.3,
+        //   },
+        // ),
         Exercise(
           id: 'articulation-base',
           title: 'Articulation de Base',
