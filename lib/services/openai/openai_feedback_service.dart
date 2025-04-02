@@ -379,4 +379,153 @@ Exemple de format attendu: "La communication efficace... repose sur l'écoute ac
       return "Le pouvoir d'une pause... bien placée... ne peut être sous-estimé. Elle attire l'attention... et donne du poids... à vos mots les plus importants.";
     }
   }
+
+  /// Génère une liste de mots avec leur décomposition syllabique pour l'exercice de précision syllabique.
+  Future<List<Map<String, dynamic>>> generateSyllabicWords({
+    required String exerciseLevel,
+    int wordCount = 5, // Nombre de mots à générer par défaut
+    String language = 'fr-FR',
+  }) async {
+    ConsoleLogger.info('🤖 [OPENAI] Génération de mots et syllabes...');
+    ConsoleLogger.info('🤖 [OPENAI] - Niveau: $exerciseLevel');
+    ConsoleLogger.info('🤖 [OPENAI] - Nombre de mots: $wordCount');
+
+    // Construire le prompt
+    String prompt = '''
+Génère une liste de $wordCount mots en français ($language) adaptés pour un exercice de précision syllabique de niveau "$exerciseLevel".
+Pour chaque mot, fournis sa décomposition syllabique précise, basée sur la prononciation standard. Utilise un tiret (-) comme séparateur de syllabes.
+Assure-toi que les mots choisis sont pertinents pour un contexte professionnel et que leur complexité correspond au niveau demandé (ex: mots plus longs/complexes pour niveau Difficile).
+
+Format de réponse attendu (strictement JSON):
+[
+  {"word": "mot1", "syllables": ["syl1", "syl2"]},
+  {"word": "mot2", "syllables": ["sylA", "sylB", "sylC"]},
+  ...
+]
+
+Ne fournis que le JSON, sans aucune introduction, explication ou formatage supplémentaire.
+''';
+
+    // Vérifier la configuration Azure OpenAI
+    if (apiKey.isEmpty || endpoint.isEmpty || deploymentName.isEmpty) {
+      ConsoleLogger.warning('🤖 [AZURE OPENAI] Informations Azure OpenAI manquantes. Utilisation de mots par défaut.');
+      // Retourner une liste par défaut en cas d'échec de configuration
+      return [
+        {"word": "collaboration", "syllables": ["col", "la", "bo", "ra", "tion"]},
+        {"word": "stratégique", "syllables": ["stra", "té", "gique"]},
+        {"word": "optimisation", "syllables": ["op", "ti", "mi", "sa", "tion"]},
+        {"word": "communication", "syllables": ["co", "mu", "ni", "ca", "tion"]},
+        {"word": "présentation", "syllables": ["pré", "sen", "ta", "tion"]},
+      ];
+    }
+
+    // Appeler l'API Azure OpenAI
+    try {
+      ConsoleLogger.info('Appel de l\'API Azure OpenAI pour génération de mots syllabiques');
+      final url = Uri.parse('$endpoint/openai/deployments/$deploymentName/chat/completions?api-version=$apiVersion');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': apiKey,
+        },
+        body: jsonEncode({
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'Tu es un expert en phonétique et linguistique française, capable de générer des mots pertinents et de les décomposer précisément en syllabes. Tu réponds uniquement en format JSON.',
+            },
+            {
+              'role': 'user',
+              'content': prompt,
+            },
+          ],
+          'temperature': 0.6, // Moins de créativité pour la syllabification
+          'max_tokens': 300, // Assez pour ~5 mots complexes et leurs syllabes
+          'response_format': {'type': 'json_object'}, // Demander explicitement du JSON si l'API le supporte
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseBody = utf8.decode(response.bodyBytes);
+        // Essayer de parser la réponse JSON
+        try {
+          ConsoleLogger.info('🤖 [OPENAI] Tentative de décodage du corps de la réponse...');
+          final decodedBody = jsonDecode(responseBody);
+          ConsoleLogger.info('🤖 [OPENAI] Corps de la réponse décodé avec succès.');
+
+          // Extraire le contenu du message de l'assistant
+          ConsoleLogger.info('🤖 [OPENAI] Tentative d\'extraction du contenu du message...');
+          final String? content = decodedBody?['choices']?[0]?['message']?['content']?.toString();
+
+          if (content == null || content.isEmpty) {
+            ConsoleLogger.error('🤖 [OPENAI] Contenu du message vide ou manquant.');
+            throw Exception('Contenu du message vide ou manquant dans la réponse OpenAI.');
+          }
+          ConsoleLogger.info('🤖 [OPENAI] Contenu extrait: "$content"');
+
+          // Le contenu lui-même est la chaîne JSON d'un objet contenant la liste
+          // Nettoyer les éventuels ```json ... ``` autour
+          ConsoleLogger.info('🤖 [OPENAI] Nettoyage du contenu...');
+          final cleanedContent = content.replaceAll(RegExp(r'^```json\s*|\s*```$'), '').trim();
+          ConsoleLogger.info('🤖 [OPENAI] Contenu nettoyé: "$cleanedContent"');
+
+          ConsoleLogger.info('🤖 [OPENAI] Tentative de décodage du contenu nettoyé comme Map...');
+          final Map<String, dynamic> jsonObject = jsonDecode(cleanedContent); // Décoder comme Map
+          ConsoleLogger.info('🤖 [OPENAI] Contenu décodé comme Map avec succès.');
+
+          // Extraire la liste de la clé "words" (ou une clé similaire si le modèle varie)
+          ConsoleLogger.info('🤖 [OPENAI] Tentative d\'extraction de la liste depuis la clé "words"...');
+          final List<dynamic>? wordsList = jsonObject['words'] as List?; // Chercher la clé 'words'
+
+          if (wordsList != null) {
+             ConsoleLogger.info('🤖 [OPENAI] Liste "words" extraite avec succès (${wordsList.length} éléments).');
+                // Valider la structure de chaque élément dans la liste extraite
+                final List<Map<String, dynamic>> resultList = [];
+                for (var item in wordsList) {
+              if (item is Map && item.containsKey('word') && item.containsKey('syllables') && item['syllables'] is List) {
+                 // Convertir les syllabes en List<String> par sécurité
+                 final List<String> syllables = List<String>.from(item['syllables'].map((s) => s.toString()));
+                 if (syllables.isNotEmpty) { // S'assurer qu'il y a des syllabes
+                    resultList.add({'word': item['word'].toString(), 'syllables': syllables});
+                 } else {
+                    ConsoleLogger.warning('Mot ignoré car syllabes vides: ${item['word']}');
+                 }
+              } else {
+                 ConsoleLogger.warning('Format d\'item JSON invalide ignoré: $item');
+              }
+            }
+
+            if (resultList.isNotEmpty) {
+               ConsoleLogger.success('🤖 [OPENAI] Mots et syllabes générés et parsés avec succès: ${resultList.length} mots.');
+               return resultList;
+            } else {
+               ConsoleLogger.error('🤖 [OPENAI] La liste JSON générée est vide ou ne contient que des items invalides.');
+               throw Exception('La liste JSON générée est vide ou ne contient que des items invalides.');
+            }
+              } else {
+                 ConsoleLogger.error('🤖 [OPENAI] Clé "words" manquante ou n\'est pas une liste dans le JSON retourné.');
+                throw Exception('Clé "words" manquante ou n\'est pas une liste dans le JSON retourné.');
+              }
+            } catch (e) { // Attraper spécifiquement l'erreur de parsing du *contenu*
+          ConsoleLogger.error('🤖 [OPENAI] Erreur parsing JSON de la réponse: $e');
+          ConsoleLogger.error('🤖 [OPENAI] Réponse brute: $responseBody');
+          throw Exception('Erreur parsing JSON: $e');
+        }
+      } else {
+        ConsoleLogger.error('🤖 [OPENAI] Erreur API lors de la génération de mots: ${response.statusCode}, ${response.body}');
+        throw Exception('Erreur API OpenAI: ${response.statusCode}');
+      }
+    } catch (e) {
+      ConsoleLogger.error('🤖 [OPENAI] Erreur lors de la génération de mots: $e');
+      // Retourner une liste par défaut en cas d'erreur
+      return [
+        {"word": "collaboration", "syllables": ["col", "la", "bo", "ra", "tion"]},
+        {"word": "stratégique", "syllables": ["stra", "té", "gique"]},
+        {"word": "optimisation", "syllables": ["op", "ti", "mi", "sa", "tion"]},
+      ];
+    }
+  }
+
 }

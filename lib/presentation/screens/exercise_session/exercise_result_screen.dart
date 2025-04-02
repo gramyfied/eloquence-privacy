@@ -3,8 +3,11 @@ import 'package:flutter/services.dart';
 import '../../../app/theme.dart';
 import '../../../domain/entities/exercise.dart';
 import '../../widgets/stat_card.dart';
+import '../../widgets/visual_effects/celebration_effect.dart'; // Importer pour les confettis
+import '../../../services/audio/example_audio_provider.dart'; // Importer pour TTS
+import '../../../services/service_locator.dart'; // Importer pour serviceLocator
 
-class ExerciseResultScreen extends StatelessWidget {
+class ExerciseResultScreen extends StatefulWidget { // Convertir en StatefulWidget pour gérer le TTS
   final Exercise exercise;
   final Map<String, dynamic> results;
   final VoidCallback onHomePressed;
@@ -19,14 +22,37 @@ class ExerciseResultScreen extends StatelessWidget {
   });
 
   @override
+  _ExerciseResultScreenState createState() => _ExerciseResultScreenState();
+}
+
+class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
+  late ExampleAudioProvider _exampleAudioProvider; // Pour le TTS
+
+  @override
+  void initState() {
+    super.initState();
+    _exampleAudioProvider = serviceLocator<ExampleAudioProvider>();
+  }
+
+  @override
   Widget build(BuildContext context) {
     // Extraire les scores principaux depuis les résultats
-    final overallScore = (results['score'] as num?)?.toInt() ?? 85;
-    final accuracyScore = (results['précision'] as num?)?.toInt() ?? 90;
-    final fluencyScore = (results['fluidité'] as num?)?.toInt() ?? 80;
-    final expressivityScore = (results['expressivité'] as num?)?.toInt() ?? 75;
-    final feedback = results['commentaires'] as String? ?? 
-        'Bonne performance! Continuez à pratiquer pour améliorer votre fluidité et votre expressivité.';
+    final overallScore = (widget.results['score'] as num?)?.toDouble() ?? 0.0; // Utiliser double
+    final feedback = widget.results['commentaires'] as String? ??
+        'Analyse terminée.';
+    final details = widget.results['details'] as Map<String, dynamic>?;
+    final success = overallScore > 70 && widget.results['erreur'] == null;
+
+    // Extraire les scores détaillés si disponibles (pour Rythme et Pauses)
+    final placementScore = (details?['placement_score'] as num?)?.toDouble();
+    final durationScore = (details?['duration_score'] as num?)?.toDouble();
+    final averageWpm = (details?['average_wpm'] as num?)?.toDouble();
+
+    // Extraire les scores génériques si présents (pour d'autres exercices)
+    final accuracyScore = (widget.results['accuracyScore'] as num?)?.toDouble();
+    final fluencyScore = (widget.results['fluencyScore'] as num?)?.toDouble();
+    final completenessScore = (widget.results['completenessScore'] as num?)?.toDouble();
+
 
     return Scaffold(
       backgroundColor: AppTheme.darkBackground,
@@ -40,56 +66,80 @@ class ExerciseResultScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.close),
-            onPressed: onHomePressed,
+            onPressed: widget.onHomePressed, // Utiliser widget.
           ),
         ],
       ),
-      body: Column(
+      body: Stack( // Utiliser Stack pour superposer les confettis
         children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  _buildSuccessBanner(overallScore),
-                  const SizedBox(height: 24),
-                  _buildScoreSection(
-                    overallScore,
-                    accuracyScore,
-                    fluencyScore,
-                    expressivityScore,
+          // Contenu principal
+          Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      _buildSuccessBanner(overallScore, success), // Passer success
+                      const SizedBox(height: 24),
+                      _buildScoreSection(
+                        overallScore,
+                        placementScore, // Passer les scores détaillés
+                        durationScore,
+                        averageWpm,
+                        accuracyScore, // Passer aussi les scores génériques
+                        fluencyScore,
+                        completenessScore,
+                      ),
+                      const SizedBox(height: 32),
+                      _buildFeedbackSection(feedback),
+                      const SizedBox(height: 32),
+                      _buildExerciseDetails(),
+                    ],
                   ),
-                  const SizedBox(height: 32),
-                  _buildFeedbackSection(feedback),
-                  const SizedBox(height: 32),
-                  _buildExerciseDetails(),
-                ],
+                ),
               ),
-            ),
+              _buildBottomButtons(),
+            ],
           ),
-          _buildBottomButtons(),
+              // Effet Confettis (superposé et ignorant les pointeurs)
+              if (success)
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: IgnorePointer( // Empêche les confettis de bloquer les interactions
+                    child: CelebrationEffect(
+                      intensity: 0.6,
+                      primaryColor: AppTheme.primaryColor,
+                    secondaryColor: AppTheme.accentGreen,
+                    durationSeconds: 5,
+                    onComplete: () {
+                      print('[ExerciseResultScreen] Celebration animation completed.');
+                      },
+                    ),
+                  ),
+                ),
         ],
       ),
     );
   }
 
-  Widget _buildSuccessBanner(int score) {
-    String message = 'Félicitations!';
+  Widget _buildSuccessBanner(double score, bool success) { // Accepter score double et success bool
+    String message = success ? 'Félicitations!' : 'Exercice Terminé';
     String submessage = '';
-    Color bannerColor = AppTheme.accentGreen;
-    
-    if (score >= 90) {
-      submessage = 'Performance exceptionnelle!';
-    } else if (score >= 75) {
-      submessage = 'Très bonne performance!';
-    } else if (score >= 60) {
-      submessage = 'Bonne performance!';
-      bannerColor = AppTheme.accentYellow;
+    Color bannerColor = success ? AppTheme.accentGreen : AppTheme.accentYellow; // Jaune si pas succès mais terminé
+
+    if (success) {
+      if (score >= 90) {
+        submessage = 'Performance exceptionnelle!';
+      } else if (score >= 75) {
+        submessage = 'Très bonne performance!';
+      } else {
+         submessage = 'Objectif atteint !'; // Pour les scores entre 70 et 75
+      }
     } else {
-      message = 'Exercice terminé';
-      submessage = 'Continuez à vous entraîner';
-      bannerColor = AppTheme.accentRed;
+       submessage = 'Continuez à vous entraîner';
+       bannerColor = AppTheme.accentRed; // Rouge si score < 70
     }
 
     return Container(
@@ -142,11 +192,60 @@ class ExerciseResultScreen extends StatelessWidget {
   }
 
   Widget _buildScoreSection(
-    int overallScore,
-    int accuracyScore,
-    int fluencyScore,
-    int expressivityScore,
+    double overallScore,
+    double? placementScore, // Scores spécifiques Rythme/Pauses
+    double? durationScore,
+    double? averageWpm,
+    double? accuracyScore, // Scores génériques
+    double? fluencyScore,
+    double? completenessScore,
   ) {
+    // Construire la liste des cartes de stats en fonction des scores disponibles
+    List<Widget> statCards = [];
+
+    // Carte Score Global (toujours présente)
+    statCards.add(
+      Expanded(
+        flex: 2, // Prend plus de place
+        child: StatCard(
+          title: 'Score global',
+          value: '${overallScore.toStringAsFixed(0)}%', // Afficher sans décimale
+          icon: Icons.star,
+          gradient: AppTheme.primaryGradient,
+          height: 110, // Plus haute
+        ),
+      ),
+    );
+
+    // Cartes pour Rythme et Pauses (Utilisation de AppTheme.primaryGradient)
+    if (placementScore != null) {
+      statCards.add(const SizedBox(width: 12));
+      statCards.add(Expanded(child: StatCard(title: 'Placement Pauses', value: '${(placementScore * 100).toStringAsFixed(0)}%', icon: Icons.location_on, gradient: AppTheme.primaryGradient)));
+    }
+    if (durationScore != null) {
+      statCards.add(const SizedBox(width: 12));
+      statCards.add(Expanded(child: StatCard(title: 'Durée Pauses', value: '${(durationScore * 100).toStringAsFixed(0)}%', icon: Icons.timer, gradient: AppTheme.primaryGradient)));
+    }
+    if (averageWpm != null) {
+      statCards.add(const SizedBox(width: 12));
+      statCards.add(Expanded(child: StatCard(title: 'Rythme', value: '${averageWpm.toStringAsFixed(0)} MPM', icon: Icons.speed, gradient: AppTheme.primaryGradient)));
+    }
+
+    // Cartes pour scores génériques (si les spécifiques ne sont pas là) (Utilisation de AppTheme.primaryGradient)
+    if (accuracyScore != null && placementScore == null) { // Afficher seulement si pas déjà couvert par placement
+       statCards.add(const SizedBox(width: 12));
+       statCards.add(Expanded(child: StatCard(title: 'Précision', value: '${accuracyScore.toStringAsFixed(0)}%', icon: Icons.gps_fixed, gradient: AppTheme.primaryGradient)));
+    }
+     if (fluencyScore != null && durationScore == null && averageWpm == null) { // Afficher seulement si pas déjà couvert
+       statCards.add(const SizedBox(width: 12));
+       statCards.add(Expanded(child: StatCard(title: 'Fluidité', value: '${fluencyScore.toStringAsFixed(0)}%', icon: Icons.waves, gradient: AppTheme.primaryGradient)));
+    }
+     if (completenessScore != null) {
+       statCards.add(const SizedBox(width: 12));
+       statCards.add(Expanded(child: StatCard(title: 'Complétude', value: '${completenessScore.toStringAsFixed(0)}%', icon: Icons.check_box, gradient: AppTheme.primaryGradient)));
+    }
+
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -159,63 +258,25 @@ class ExerciseResultScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              flex: 2,
-              child: StatCard(
-                title: 'Score global',
-                value: '$overallScore%',
-                icon: Icons.star,
-                gradient: AppTheme.primaryGradient,
-                height: 110,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: StatCard(
-                title: 'Précision',
-                value: '$accuracyScore%',
-                icon: Icons.gps_fixed,
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF4ECDC4), Color(0xFF6EDFD9)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: StatCard(
-                title: 'Fluidité',
-                value: '$fluencyScore%',
-                icon: Icons.waves,
-                gradient: LinearGradient(
-                  colors: [Colors.blue[700]!, Colors.blue[400]!],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: StatCard(
-                title: 'Expressivité',
-                value: '$expressivityScore%',
-                icon: Icons.theater_comedy,
-                gradient: LinearGradient(
-                  colors: [Colors.deepPurple[700]!, Colors.deepPurple[400]!],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-            ),
-          ],
-        ),
+        // Afficher la première ligne (Score Global)
+        Row(children: [statCards.first]), // Garder le score global sur sa propre ligne
+        // Afficher les autres scores dans un Wrap pour éviter l'overflow
+        if (statCards.length > 1) ...[
+           const SizedBox(height: 16),
+           Wrap(
+             spacing: 12.0, // Espace horizontal entre les cartes
+             runSpacing: 12.0, // Espace vertical entre les lignes
+             children: statCards.sublist(1).map((widget) {
+               // Donner une largeur fixe ou contrainte aux cartes pour le Wrap
+               // Ici, on utilise une FractionallySizedBox pour qu'elles prennent environ 1/3 de la largeur
+               // Moins l'espacement. Ajustez si nécessaire.
+               return FractionallySizedBox(
+                 widthFactor: 0.3, // Ajuster ce facteur si besoin
+                 child: widget,
+               );
+             }).toList(),
+           ),
+        ]
       ],
     );
   }
@@ -231,26 +292,42 @@ class ExerciseResultScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(
-                Icons.lightbulb,
+              const Icon(
+                Icons.lightbulb_outline_rounded, // Icône différente
                 color: AppTheme.accentYellow,
+                size: 24,
               ),
-              SizedBox(width: 8),
-              Text(
-                'Conseils personnalisés',
+              const SizedBox(width: 12),
+              const Text(
+                'Feedback du Coach IA',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                 ),
               ),
+              const Spacer(), // Pousse le bouton TTS à droite
+              // Bouton TTS
+              if (feedback.isNotEmpty)
+                 IconButton(
+                   icon: const Icon(Icons.volume_up_rounded, color: AppTheme.primaryColor),
+                   tooltip: 'Lire le feedback',
+                   onPressed: () {
+                     _exampleAudioProvider.playExampleFor(feedback);
+                   },
+                 ),
             ],
           ),
           const SizedBox(height: 12),
+          // Log pour déboguer l'absence du bouton TTS
+          Builder(builder: (context) {
+            print('[ExerciseResultScreen] TTS Button Check: feedback.isNotEmpty=${feedback.isNotEmpty}, _exampleAudioProvider != null=${_exampleAudioProvider != null}');
+            return const SizedBox.shrink(); // Widget vide juste pour le log
+          }),
           Text(
-            feedback,
+            feedback.isNotEmpty ? feedback : 'Aucun commentaire spécifique.', // Message par défaut si vide
             style: TextStyle(
               fontSize: 15,
               color: Colors.white.withOpacity(0.9),
@@ -274,7 +351,7 @@ class ExerciseResultScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Exercice: ${exercise.title}',
+            'Exercice: ${widget.exercise.title}', // Utiliser widget.
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -283,7 +360,7 @@ class ExerciseResultScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Catégorie: ${exercise.category.name}',
+            'Catégorie: ${widget.exercise.category.name}', // Utiliser widget.
             style: TextStyle(
               fontSize: 15,
               color: Colors.white.withOpacity(0.8),
@@ -291,7 +368,7 @@ class ExerciseResultScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Difficulté: ${_getDifficultyText(exercise.difficulty)}',
+            'Difficulté: ${_getDifficultyText(widget.exercise.difficulty)}', // Utiliser widget.
             style: TextStyle(
               fontSize: 15,
               color: Colors.white.withOpacity(0.8),
@@ -322,7 +399,7 @@ class ExerciseResultScreen extends StatelessWidget {
         children: [
           Expanded(
             child: OutlinedButton(
-              onPressed: onHomePressed,
+              onPressed: widget.onHomePressed, // Utiliser widget.
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -337,7 +414,7 @@ class ExerciseResultScreen extends StatelessWidget {
           const SizedBox(width: 16),
           Expanded(
             child: ElevatedButton(
-              onPressed: onTryAgainPressed,
+              onPressed: widget.onTryAgainPressed, // Utiliser widget.
               style: ElevatedButton.styleFrom(
                 foregroundColor: Colors.white,
                 backgroundColor: AppTheme.primaryColor,

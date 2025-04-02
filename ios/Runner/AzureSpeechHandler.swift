@@ -108,7 +108,15 @@ class AzureSpeechHandler: NSObject, FlutterStreamHandler, FlutterPlugin {
 
         do {
             speechConfig = try SPXSpeechConfiguration(subscription: subscriptionKey, region: region)
-            // Configurer la langue si nécessaire, ex: speechConfig?.speechRecognitionLanguage = "fr-FR"
+            // Configurer la langue (optionnel, dépend de la config par défaut du service)
+            // speechConfig?.speechRecognitionLanguage = "fr-FR"
+
+            // *** AJOUT: Configurer les timeouts de silence ***
+            // Timeout après la fin de la parole (ex: 1 seconde de silence)
+            try speechConfig?.setPropertyTo("1000", by: SPXPropertyId.speechService_SegmentationSilenceTimeoutMs)
+            // Timeout au début si aucun son n'est détecté (ex: 5 secondes)
+            try speechConfig?.setPropertyTo("5000", by: SPXPropertyId.speechService_InitialSilenceTimeoutMs)
+            print("\(logTag): Silence timeouts configured (Initial: 5000ms, End: 1000ms).")
             // Note: Le format de sortie sera défini dans startRecognitionInternal si nécessaire
 
             pushStream = SPXPushAudioInputStream() // Créer le stream poussé

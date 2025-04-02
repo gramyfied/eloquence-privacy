@@ -744,111 +744,147 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
   /// Affiche la boîte de dialogue de fin d'exercice
   void _showCompletionDialog(Map<String, dynamic> results) {
-     print('[ExerciseScreen] Affichage de la modale de complétion.');
-     final score = results['score'] as double? ?? 0.0;
-     final success = score > 70 && results['erreur'] == null;
+    print('[ExerciseScreen] Affichage de la modale de complétion.');
+    final score = results['score'] as double? ?? 0.0;
+    final success = score > 70 && results['erreur'] == null;
+    final commentaires = results['commentaires'] as String? ?? '';
+    final details = results['details'] as Map<String, dynamic>?; // Pour les scores spécifiques
 
-     if (mounted) {
-       showDialog(
-         context: context,
-         barrierDismissible: false,
-         builder: (context) {
-           return Stack(
-             children: [
-               if (success)
-                 CelebrationEffect(
-                   intensity: 0.8,
-                   primaryColor: AppTheme.primaryColor,
-                   secondaryColor: AppTheme.accentGreen,
-                   durationSeconds: 3,
-                   onComplete: () {
-                     print('[ExerciseScreen] Animation de célébration terminée');
-                     if (mounted) {
-                       Navigator.of(context).pop(); // Fermer la dialog
-                       Future.delayed(const Duration(milliseconds: 100), () {
-                         if (mounted) {
-                           print('[ExerciseScreen] Appel de onExerciseCompleted (callback parent)');
-                           widget.onExerciseCompleted(); // Appeler le callback parent
-                         }
-                       });
-                     }
-                   },
-                 ),
-               Center(
-                 child: AlertDialog(
-                   backgroundColor: AppTheme.darkSurface,
-                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                   title: Row(
-                     children: [
-                       Icon(success ? Icons.check_circle : Icons.info_outline, color: success ? AppTheme.accentGreen : Colors.orangeAccent, size: 32),
-                       const SizedBox(width: 16),
-                       Text(success ? 'Exercice terminé !' : 'Résultats', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                     ],
-                   ),
-                   content: SingleChildScrollView( // Pour éviter le dépassement si beaucoup de scores
-                     child: Column(
-                       mainAxisSize: MainAxisSize.min,
-                       crossAxisAlignment: CrossAxisAlignment.start,
-                       children: [
-                         Text('Score Prononciation: ${score.toStringAsFixed(1)}%', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: success ? AppTheme.accentGreen : Colors.orangeAccent)),
-                         const SizedBox(height: 12),
-                         if (widget.exercise.textToRead != null) ...[
-                           Text('Attendu: "${widget.exercise.textToRead}"', style: const TextStyle(fontSize: 14, color: Colors.white70)),
-                           const SizedBox(height: 8),
-                         ],
-                         Text('Reconnu: "${results['texte_reconnu']}"', style: const TextStyle(fontSize: 14, color: Colors.white)),
-                         const SizedBox(height: 8),
-                         // Afficher les autres scores s'ils existent
-                         if (results['accuracyScore'] != null)
-                           Text('Précision: ${results['accuracyScore'].toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
-                         if (results['fluencyScore'] != null)
-                           Text('Fluidité: ${results['fluencyScore'].toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
-                         if (results['completenessScore'] != null)
-                           Text('Complétude: ${results['completenessScore'].toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+    // Extraire les scores détaillés si disponibles
+    final placementScore = (details?['placement_score'] as num?)?.toDouble();
+    final durationScore = (details?['duration_score'] as num?)?.toDouble();
+    final averageWpm = (details?['average_wpm'] as num?)?.toDouble();
 
-                         if (results['erreur'] != null) ...[
-                           const SizedBox(height: 8),
-                           Text('Erreur: ${results['erreur']}', style: const TextStyle(fontSize: 14, color: AppTheme.accentRed)),
-                         ]
-                       ],
-                     ),
-                   ),
-                   actions: [
-                     TextButton(
-                       onPressed: () {
-                         Navigator.of(context).pop();
-                         widget.onBackPressed(); // Utiliser onBackPressed pour quitter
-                       },
-                       child: const Text('Quitter', style: TextStyle(color: Colors.white70)),
-                     ),
-                     ElevatedButton(
-                       style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
-                       onPressed: () {
-                         Navigator.of(context).pop();
-                         setState(() {
-                           _isExerciseCompleted = false;
-                           _showCelebration = false;
-                           _isRecording = false;
-                           // _isAzureProcessing n'existe pas dans cet écran, on le supprime
-                           // _isAzureProcessing = false;
-                           _recognizedText = '';
-                           _azureError = '';
-                           _pronunciationScore = null;
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false, // Empêcher la fermeture en cliquant à l'extérieur
+        builder: (context) {
+          return Stack(
+            children: [
+              // Afficher la célébration en arrière-plan si succès
+              if (success)
+                CelebrationEffect(
+                  intensity: 0.6, // Ajuster l'intensité si besoin
+                  primaryColor: AppTheme.primaryColor,
+                  secondaryColor: AppTheme.accentGreen,
+                  durationSeconds: 4, // Durée de l'animation
+                  onComplete: () {
+                    print('[ExerciseScreen] Animation de célébration terminée.');
+                    // Ne pas fermer la modale automatiquement ici, laisser l'utilisateur le faire
+                  },
+                ),
+              Center(
+                child: AlertDialog(
+                  backgroundColor: AppTheme.darkSurface,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.borderRadius3)),
+                  titlePadding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 10.0),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 10.0),
+                  actionsPadding: const EdgeInsets.all(16.0),
+                  title: Row(
+                    children: [
+                      Icon(success ? Icons.check_circle_outline : Icons.info_outline, color: success ? AppTheme.accentGreen : Colors.orangeAccent, size: 28),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text(success ? 'Exercice Réussi !' : 'Résultats', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 20))),
+                    ],
+                  ),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Score Global
+                        Text('Score Global: ${score.toStringAsFixed(0)}%', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: success ? AppTheme.accentGreen : Colors.orangeAccent)),
+                        const SizedBox(height: 16),
+
+                        // Scores Détaillés (si disponibles)
+                        if (placementScore != null)
+                          Text('Placement Pauses: ${(placementScore * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+                        if (durationScore != null)
+                          Text('Durée Pauses: ${(durationScore * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+                        if (averageWpm != null)
+                          Text('Rythme: ${averageWpm.toStringAsFixed(0)} mots/min', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+
+                        // Ajouter les scores génériques si présents (pour d'autres types d'exercices)
+                        if (results['accuracyScore'] != null && placementScore == null) // Éviter redondance
+                          Text('Précision: ${results['accuracyScore'].toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+                        if (results['fluencyScore'] != null && durationScore == null) // Éviter redondance
+                          Text('Fluidité: ${results['fluencyScore'].toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+                        if (results['completenessScore'] != null)
+                          Text('Complétude: ${results['completenessScore'].toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+
+                        const SizedBox(height: 16),
+
+                        // Feedback OpenAI avec bouton TTS
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                commentaires.isNotEmpty ? commentaires : 'Analyse terminée.',
+                                style: const TextStyle(fontSize: 15, color: Colors.white),
+                              ),
+                            ),
+                            if (commentaires.isNotEmpty && _exampleAudioProvider != null)
+                              IconButton(
+                                icon: const Icon(Icons.volume_up_rounded, color: AppTheme.primaryColor),
+                                tooltip: 'Lire le feedback',
+                                onPressed: () {
+                                  _exampleAudioProvider!.playExampleFor(commentaires);
+                                },
+                              ),
+                          ],
+                        ),
+
+                        // Afficher l'erreur si présente
+                        if (results['erreur'] != null) ...[
+                          const SizedBox(height: 12),
+                          Text('Erreur: ${results['erreur']}', style: const TextStyle(fontSize: 14, color: AppTheme.accentRed)),
+                        ]
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop(); // Fermer la modale
+                        widget.onBackPressed(); // Retour à l'écran précédent
+                      },
+                      child: const Text('Terminer', style: TextStyle(color: Colors.white70)),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+                      onPressed: () {
+                        Navigator.of(context).pop(); // Fermer la modale
+                        // Réinitialiser l'état pour permettre de réessayer
+                        setState(() {
+                          _isExerciseCompleted = false;
+                          _showCelebration = false;
+                          _isRecording = false;
+                          _recognizedText = '';
+                          _azureError = '';
+                          _pronunciationScore = null; // Score générique
                            _accuracyScore = null;
                            _fluencyScore = null;
                            _completenessScore = null;
-                           _latestAudioAnalysisResult = null; // Reset audio analysis result too
+                           // Supprimer les lignes suivantes car ces variables n'existent pas ici
+                           // _analysisResult = null;
+                           _latestAudioAnalysisResult = null;
+                           // _accumulatedRecognizedText = '';
+                           // _accumulatedWords = [];
                          });
-                       },
-                       child: const Text('Réessayer', style: TextStyle(color: Colors.white)),
-                     ),
-                   ],
-                 ),
-               ),
-             ],
-           );
-         },
-       );
+                         // Optionnel: relancer l'initialisation si nécessaire
+                        // _initializeExercise();
+                      },
+                      child: const Text('Réessayer', style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      );
     }
   }
 } // Fin de la classe _ExerciseScreenState

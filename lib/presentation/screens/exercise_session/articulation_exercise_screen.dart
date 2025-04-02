@@ -50,10 +50,8 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
   bool _isPlayingExample = false;
   bool _showCelebration = false;
 
-  String _textToRead = ''; // Texte original à lire
-  String _displayText = ''; // Texte à afficher (syllabes formatées)
-  List<String> _syllables = []; // Liste des syllabes
-  String _referenceTextForAzure = ''; // Texte formaté pour Azure (ex: "pro fes sion nel")
+  String _textToRead = ''; // Texte original à lire (généré par OpenAI)
+  String _referenceTextForAzure = ''; // Texte à envoyer à Azure (sera _textToRead)
   String _lastRecognizedText = ''; // Texte complet reconnu par Azure
   String _openAiFeedback = ''; // Feedback généré par OpenAI
   // String? _currentRecordingFilePath; // Plus nécessaire si on utilise le streaming directement
@@ -135,41 +133,9 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
         ConsoleLogger.warning('Utilisation de la phrase fallback: "$_textToRead"');
       }
 
-      // Syllabifier la phrase générée (ou fallback)
-      List<String> words = _textToRead.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
-      List<String> syllabifiedWords = [];
-      List<String> allSyllables = [];
-      bool syllabificationFoundForAll = true;
-
-      for (String word in words) {
-        // Normaliser le mot (minuscules, suppression ponctuation simple) pour la recherche
-        // Garder la version locale (HEAD) de la résolution de conflit
-        String normalizedWord = word.toLowerCase().replaceAll(RegExp(r'[,\.!?]'), '');
-        String? wordSyllabification = _syllabificationService.getSyllabification(normalizedWord);
-
-        if (wordSyllabification != null && wordSyllabification.isNotEmpty) {
-          syllabifiedWords.add(wordSyllabification); // Garder les tirets pour l'affichage
-          // Ajouter les syllabes individuelles à la liste globale
-          allSyllables.addAll(wordSyllabification.split(RegExp(r'\s*-\s*')).map((s) => s.trim()).where((s) => s.isNotEmpty));
-        } else {
-          syllabifiedWords.add(word); // Ajouter le mot original si non trouvé
-          allSyllables.add(word); // Considérer le mot comme une seule syllabe
-          syllabificationFoundForAll = false;
-          ConsoleLogger.warning('Syllabification non trouvée pour le mot: "$word" (normalisé: "$normalizedWord")');
-        }
-      }
-
-      _displayText = syllabifiedWords.join(' '); // Joindre les mots syllabifiés (ou non) pour l'affichage
-      _syllables = allSyllables; // Liste de toutes les syllabes (ou mots)
-      _referenceTextForAzure = _syllables.join(' '); // Joindre toutes les syllabes/mots avec espace pour Azure
-
-      if (syllabificationFoundForAll) {
-        ConsoleLogger.info('Texte syllabifié (affichage): "$_displayText"');
-      } else {
-        ConsoleLogger.warning('Syllabification partielle. Affichage: "$_displayText"');
-      }
-      ConsoleLogger.info('Syllabes/Mots pour Azure: $_syllables');
-      ConsoleLogger.info('Texte référence Azure: "$_referenceTextForAzure"');
+      // Ne plus syllabifier. Utiliser le texte généré directement.
+      _referenceTextForAzure = _textToRead;
+      ConsoleLogger.info('Texte référence Azure (identique à affichage): "$_referenceTextForAzure"');
 
       // S'abonner aux résultats de reconnaissance
       _subscribeToRecognitionResults();
@@ -380,35 +346,7 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
     }
   }
 
-  /// Joue la séquence des syllabes avec pauses
-  Future<void> _playSyllableSequenceAudio() async {
-    if (_isRecording || _isProcessing || _syllables.isEmpty || _isPlayingExample) return;
-    try {
-      ConsoleLogger.info('Lecture de la séquence syllabique: ${_syllables.join(" - ")}');
-      setState(() { _isPlayingExample = true; });
-
-      for (int i = 0; i < _syllables.length; i++) {
-        if (!mounted || !_isPlayingExample) break; // Arrêter si l'état change
-        final syllable = _syllables[i];
-        ConsoleLogger.info('Lecture syllabe: "$syllable"');
-        await _exampleAudioProvider.playExampleFor(syllable);
-        // Attendre la fin de la lecture de la syllabe
-        await _exampleAudioProvider.isPlayingStream.firstWhere((playing) => !playing);
-
-        // Ajouter une pause après chaque syllabe sauf la dernière
-        if (i < _syllables.length - 1) {
-          await Future.delayed(const Duration(milliseconds: 400)); // Pause de 400ms entre syllabes
-        }
-      }
-
-      if (mounted) setState(() { _isPlayingExample = false; });
-      ConsoleLogger.info('Fin de la lecture de la séquence syllabique');
-
-    } catch (e) {
-      ConsoleLogger.error('Erreur lors de la lecture de la séquence syllabique: $e');
-      if (mounted) setState(() { _isPlayingExample = false; });
-    }
-  }
+  // Supprimer _playSyllableSequenceAudio car _syllables n'existe plus
 
 
   /// Démarre ou arrête l'enregistrement et le streaming vers Azure
@@ -842,7 +780,7 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
                      children: [
                        Text('Score: ${results['score'].toInt()}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: success ? AppTheme.accentGreen : Colors.orangeAccent)),
                        const SizedBox(height: 12),
-                       Text('Attendu: "$_textToRead" (${_syllables.join(" - ")})', style: TextStyle(fontSize: 14, color: Colors.white70)),
+                       Text('Attendu: "$_textToRead"', style: TextStyle(fontSize: 14, color: Colors.white70)), // Supprimer l'affichage des syllabes
                        const SizedBox(height: 8),
                        Text('Reconnu: "${results['texte_reconnu']}"', style: TextStyle(fontSize: 14, color: Colors.white)),
                        // Afficher le feedback (OpenAI si dispo, sinon Azure/local)
@@ -984,26 +922,11 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
                 height: 1.4,
               ),
             ),
-            // Correction: N'afficher le texte syllabifié que s'il est différent de l'original
-            if (_displayText != _textToRead) ...[
-              const SizedBox(height: 16),
-              // Afficher la décomposition syllabique
-              Text(
-                _displayText, // Contient les syllabes avec tirets
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.normal,
-                  color: Colors.white,
-                  height: 1.5,
-                ),
-              ),
-            ] else ...[
-              // Ajouter un espace même si le texte n'est pas affiché pour garder la mise en page cohérente
-              const SizedBox(height: 16 + 28 * 1.5), // Hauteur approximative du Text + SizedBox
-            ],
+            // Ne plus afficher _displayText
+            // Ajouter un espace pour compenser la hauteur supprimée
+            const SizedBox(height: 16 + 28 * 1.5),
             // Add space before the icon
-            const SizedBox(height: 32), // Adjust spacing as needed
+            const SizedBox(height: 32),
             // Icon (no longer needs Spacers or Center around it)
             Icon(
               _isRecording ? Icons.mic : (_isProcessing ? Icons.hourglass_top : Icons.mic_none),
@@ -1054,27 +977,7 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
             recordingColor: AppTheme.accentRed,
             onPressed: canRecord ? () { _toggleRecording(); } : () {},
           ),
-          // Bouton pour jouer la séquence syllabique
-          ElevatedButton.icon(
-            onPressed: _isPlayingExample || _isRecording || _isProcessing || _syllables.length <= 1 ? null : _playSyllableSequenceAudio,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.darkSurface.withOpacity(0.8),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppTheme.borderRadius2),
-              ),
-            ),
-            icon: Icon(
-              _isPlayingExample ? Icons.stop_circle_outlined : Icons.segment, // Icône différente
-              color: Colors.tealAccent[100],
-            ),
-            label: Text(
-              'Syllabes', // Label changé
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
-              ),
-            ),
-          ),
+          // Supprimer le bouton Syllabes
         ],
       ),
     );

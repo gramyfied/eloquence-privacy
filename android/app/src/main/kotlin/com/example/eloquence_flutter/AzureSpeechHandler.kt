@@ -216,9 +216,16 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
      private fun initializeAzureConfig(subscriptionKey: String, region: String) {
         try {
             // Pas besoin de releaseRecognizerResources ici, seulement la config
-            speechConfig?.close()
+            speechConfig?.close() // Fermer l'ancienne config si elle existe
             speechConfig = SpeechConfig.fromSubscription(subscriptionKey, region)
-            speechConfig?.speechRecognitionLanguage = "fr-FR"
+            speechConfig?.speechRecognitionLanguage = "fr-FR" // Définir la langue
+
+            // *** AJOUT: Configurer les timeouts de silence ***
+            // Timeout après la fin de la parole (ex: 1 seconde de silence)
+            speechConfig?.setProperty(PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "1000")
+            // Timeout au début si aucun son n'est détecté (ex: 5 secondes)
+            speechConfig?.setProperty(PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, "5000")
+            Log.i(logTag, "Silence timeouts configured (Initial: 5000ms, End: 1000ms).")
 
             Log.i(logTag, "Azure Speech Config created/updated successfully for region: $region")
             sendEvent("status", mapOf("message" to "Azure Config Initialized"))

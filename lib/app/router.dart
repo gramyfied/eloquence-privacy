@@ -18,12 +18,14 @@ import '../domain/entities/user.dart';
 import '../domain/entities/exercise.dart';
 import '../domain/entities/exercise_category.dart';
 // Importer les écrans d'exercices spécifiques
+import '../presentation/screens/exercise_session/rhythm_and_pauses_exercise_screen.dart'; // Ajout import
 import '../presentation/screens/exercise_session/articulation_exercise_screen.dart';
 import '../presentation/screens/exercise_session/lung_capacity_exercise_screen.dart';
 import '../presentation/screens/exercise_session/breathing_exercise_screen.dart';
 import '../presentation/screens/exercise_session/volume_control_exercise_screen.dart';
 import '../presentation/screens/exercise_session/resonance_placement_exercise_screen.dart';
 import '../presentation/screens/exercise_session/effortless_projection_exercise_screen.dart'; // AJOUT: Import pour projection
+import '../presentation/screens/exercise_session/syllabic_precision_exercise_screen.dart'; // AJOUT: Import pour précision syllabique
 
 
 /// Crée et configure le router de l'application
@@ -110,15 +112,10 @@ GoRouter createRouter(AuthRepository authRepository) {
               context.pop();
             },
             onExerciseCompleted: () {
-              // Créer des résultats factices
-              final results = {
-                'score': 85,
-                'précision': 90,
-                'fluidité': 80,
-                'expressivité': 75,
-                'commentaires': 'Bonne performance! Continuez à pratiquer pour améliorer votre fluidité et votre expressivité.',
-              };
-              context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+              // Ce callback ne devrait JAMAIS être appelé pour les exercices spécifiques
+              // qui ont leur propre écran et callback.
+              print("ERREUR: onExerciseCompleted de la route générique /exercise a été appelé !");
+              // Optionnel : Naviguer vers une page d'erreur ou juste ne rien faire.
             },
           );
         },
@@ -343,6 +340,41 @@ GoRouter createRouter(AuthRepository authRepository) {
         },
       ),
 
+      // Rythme et Pauses (Route spécifique pour gérer correctement les résultats)
+      GoRoute(
+        path: AppRoutes.exerciseRhythmPauses, // Assurez-vous que cette constante existe dans AppRoutes
+         builder: (context, state) {
+           final exercise = state.extra as Exercise? ?? Exercise(id: 'rythme-pauses', title: 'Rythme et Pauses', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'impact-presence', name: 'Impact et Présence', description: '', type: ExerciseCategoryType.impactPresence, iconPath: ''), evaluationParameters: {});
+
+           return RhythmAndPausesExerciseScreen(
+             exercise: exercise,
+             onExerciseCompleted: (results) {
+               print("[Router] Résultats Rythme/Pauses reçus: $results");
+               // Passer les VRAIS résultats à l'écran de résultats
+               context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+             },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+
+      // Précision Syllabique (Nouvelle route)
+      GoRoute(
+        path: AppRoutes.exerciseSyllabicPrecision,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          // TODO: Récupérer l'exercice complet via exerciseId
+          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Précision Syllabique', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'clarity-expressivity', name: 'Clarté et Expressivité', description: '', type: ExerciseCategoryType.clarteExpressivite, iconPath: ''), evaluationParameters: {});
+
+          // Note: SyllabicPrecisionExerciseScreen gère sa propre logique de fin (appel à _nextWord ou pop)
+          // Il n'a pas besoin de onExerciseCompleted ici.
+          return SyllabicPrecisionExerciseScreen(
+             exercise: exercise, // Passer l'exercice récupéré
+          );
+        },
+      ),
+
+
     ],
     errorBuilder: (context, state) => Scaffold(
       body: Center(
@@ -439,9 +471,14 @@ Widget _buildCategoriesScreen(BuildContext context, List<ExerciseCategory> categ
           case 'projection-sans-force':
             targetRoute = AppRoutes.exerciseProjection.replaceFirst(':exerciseId', exerciseId);
             break;
+          case 'rythme-pauses': // Ajouter le cas pour la route spécifique
+             targetRoute = AppRoutes.exerciseRhythmPauses;
+             break;
+          case 'precision-syllabique': // Ajouter le cas pour la nouvelle route
+             targetRoute = AppRoutes.exerciseSyllabicPrecision.replaceFirst(':exerciseId', exerciseId);
+             break;
           default:
             // Pour les autres exercices, utiliser la route générique pour l'instant
-            // TODO: Ajouter des cas pour d'autres écrans spécifiques si nécessaire
             print("Navigation vers écran générique pour exercice: $exerciseId");
             targetRoute = AppRoutes.exercise; // La route générique attend l'exercice dans 'extra'
             context.push(targetRoute, extra: selectedExercise);

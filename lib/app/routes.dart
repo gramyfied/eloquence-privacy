@@ -18,5 +18,7 @@ class AppRoutes {
   static const String exerciseVolumeControl = '/exercise/volume-control/:exerciseId';
   static const String exerciseResonance = '/exercise/resonance/:exerciseId';
   static const String exerciseProjection = '/exercise/projection/:exerciseId';
+  static const String exerciseRhythmPauses = '/exercise/rhythm-pauses'; // Nouvelle route
+  static const String exerciseSyllabicPrecision = '/exercise/syllabic-precision/:exerciseId'; // Nouvelle route
   // Ajoutez d'autres routes spécifiques ici si nécessaire
 }

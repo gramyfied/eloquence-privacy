@@ -9,6 +9,7 @@ import 'app/app.dart';
 import 'services/service_locator.dart'; // Contient setupServiceLocator et serviceLocator
 import 'services/lexique/syllabification_service.dart'; // Importer le service
 import 'services/azure/azure_speech_service.dart'; // Importer AzureSpeechService
+import 'services/azure/azure_tts_service.dart'; // Importer AzureTtsService
 import 'domain/repositories/auth_repository.dart';
 import 'domain/repositories/exercise_repository.dart';
 // Correction des imports pour les repositories Supabase
@@ -84,6 +85,28 @@ void main() async {
   } catch (e) {
     print('🔴 [MAIN] Erreur critique lors de l\'initialisation d\'AzureSpeechService: $e');
     // Gérer l'erreur critique
+  }
+
+  // Initialiser Azure TTS Service au démarrage
+  try {
+    final azureTtsService = serviceLocator<AzureTtsService>();
+    final azureKey = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'];
+    final azureRegion = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'];
+    if (azureKey != null && azureRegion != null) {
+      bool initialized = await azureTtsService.initialize(
+        subscriptionKey: azureKey,
+        region: azureRegion,
+      );
+      if (initialized) {
+        print('🟢 [MAIN] AzureTtsService initialisé avec succès.');
+      } else {
+        print('🔴 [MAIN] Échec de l\'initialisation d\'AzureTtsService.');
+      }
+    } else {
+      print('🔴 [MAIN] Clés Azure manquantes dans .env pour AzureTtsService.');
+    }
+  } catch (e) {
+    print('🔴 [MAIN] Erreur critique lors de l\'initialisation d\'AzureTtsService: $e');
   }
 
   // Supprimer le bloc d'initialisation de WhisperService FFI
