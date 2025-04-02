@@ -18,10 +18,11 @@ import '../../widgets/visual_effects/info_modal.dart'; // Importer InfoModal
 import '../exercises/exercise_categories_screen.dart'; // Utilisé dans getSampleExercise
 import 'breathing_exercise_screen.dart';
 import 'articulation_exercise_screen.dart';
-// Importer LungCapacityExerciseScreen pour le switch/case
-import 'lung_capacity_exercise_screen.dart';
+import 'lung_capacity_exercise_screen.dart'; // Importer LungCapacityExerciseScreen
+import 'rhythm_and_pauses_exercise_screen.dart'; // Importer le nouvel écran
 import '../../widgets/visual_effects/celebration_effect.dart'; // Importer CelebrationEffect
 import '../../../services/audio/example_audio_provider.dart'; // Importer ExampleAudioProvider
+import 'package:audio_signal_processor/audio_signal_processor.dart'; // Assurez-vous que cet import est présent
 
 class ExerciseScreen extends StatefulWidget {
   final Exercise exercise;
@@ -63,6 +64,10 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   // Stream Subscriptions
   StreamSubscription? _audioSubscription;
   StreamSubscription? _recognitionSubscription;
+  StreamSubscription<AudioAnalysisResult>? _audioAnalysisSubscription; // Subscription for the new plugin
+
+  // State for audio analysis results
+  AudioAnalysisResult? _latestAudioAnalysisResult;
 
   // États pour la fin d'exercice
   bool _isExerciseCompleted = false;
@@ -86,9 +91,42 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     // S'abonner au flux de reconnaissance d'Azure
     _subscribeToRecognitionStream();
 
+    // Initialiser et s'abonner au plugin d'analyse audio
+    _initializeAndSubscribeAudioProcessor();
+
     // S'abonner au flux audio pour envoyer les chunks (sera activé dans _toggleRecording)
     // _subscribeToAudioStream(); // Ne pas s'abonner ici, mais au démarrage de l'enregistrement
   }
+
+  // --- Initialize and Subscribe to Audio Signal Processor ---
+  Future<void> _initializeAndSubscribeAudioProcessor() async {
+    try {
+      await AudioSignalProcessor.initialize();
+      print('[ExerciseScreen] AudioSignalProcessor initialized.');
+      _audioAnalysisSubscription = AudioSignalProcessor.analysisResultStream.listen(
+        (result) {
+          if (mounted) {
+            // print('[ExerciseScreen] Received Audio Analysis Result: F0=${result.f0}, Jitter=${result.jitter}, Shimmer=${result.shimmer}');
+            setState(() {
+              _latestAudioAnalysisResult = result;
+            });
+          }
+        },
+        onError: (error) {
+          print('[ExerciseScreen] Audio Analysis Stream Error: $error');
+          // Handle error appropriately, maybe show a message to the user
+        },
+        onDone: () {
+          print('[ExerciseScreen] Audio Analysis Stream Done.');
+        },
+      );
+    } catch (e) {
+      print('[ExerciseScreen] Failed to initialize AudioSignalProcessor: $e');
+      // Handle initialization error
+    }
+  }
+  // --- End Audio Signal Processor Init ---
+
 
   void _subscribeToRecognitionStream() {
     _recognitionSubscription?.cancel(); // Annuler l'abonnement précédent s'il existe
@@ -154,9 +192,15 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
      _audioSubscription = audioStream.listen(
        (data) {
          // Envoyer les chunks audio à Azure uniquement si l'enregistrement est actif
-         if (_isRecording && _azureSpeechService != null && _azureSpeechService!.isInitialized) {
-           // print('[ExerciseScreen] Sending audio chunk to Azure. Size: ${data.length}'); // Peut être très verbeux
-           _azureSpeechService!.sendAudioChunk(data);
+         // Envoyer les chunks audio à Azure ET au nouveau plugin
+         if (_isRecording) {
+           if (_azureSpeechService != null && _azureSpeechService!.isInitialized) {
+             // print('[ExerciseScreen] Sending audio chunk to Azure. Size: ${data.length}');
+             _azureSpeechService!.sendAudioChunk(data);
+           }
+           // Envoyer aussi au plugin d'analyse de signal (pour Android principalement)
+           // print('[ExerciseScreen] Sending audio chunk to AudioSignalProcessor. Size: ${data.length}');
+           AudioSignalProcessor.processAudioChunk(data);
          }
        },
        onError: (error) {
@@ -179,9 +223,11 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
   @override
   void dispose() {
-    print('[ExerciseScreen dispose] Cancelling subscriptions.');
+    print('[ExerciseScreen dispose] Cancelling subscriptions and disposing processor.');
     _audioSubscription?.cancel();
     _recognitionSubscription?.cancel();
+    _audioAnalysisSubscription?.cancel(); // Cancel the audio analysis subscription
+    AudioSignalProcessor.dispose(); // Dispose the plugin resources
     // Ne pas appeler stopRecording ici car cela pourrait interférer si l'écran est détruit pendant l'enregistrement
     // Assurez-vous que stopRecognition est appelé dans _toggleRecording ou via un bouton explicite
     super.dispose();
@@ -235,9 +281,24 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
            },
            onExitPressed: widget.onBackPressed,
          );
-      
-      // Pour tous les autres exercices, utiliser l'écran générique
+
+      // Ajouter le cas pour Rythme et Pauses Stratégiques
+      case 'rythme-pauses': // <<< CORRECTION DE L'ID
+         return RhythmAndPausesExerciseScreen(
+           exercise: widget.exercise,
+           onExerciseCompleted: (results) {
+             // TODO: Gérer les résultats spécifiques de cet exercice si nécessaire
+             print("[ExerciseScreen build] RhythmAndPausesExercise completed. Results: $results");
+             widget.onExerciseCompleted(); // Appeler le callback parent
+           },
+           onExitPressed: widget.onBackPressed,
+         );
+
+      // Pour tous les autres exercices, utiliser l'écran générique (ou un écran par défaut)
       default:
+        // Optionnel: Afficher un message indiquant que l'exercice n'est pas implémenté
+        // ou retourner un écran générique comme avant.
+        print("[ExerciseScreen build] ATTENTION: Exercice ID '${widget.exercise.id}' non géré explicitement. Affichage générique.");
         return Scaffold(
           backgroundColor: AppTheme.darkBackground,
           appBar: AppBar(
@@ -487,6 +548,16 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
               ],
             ),
           ),
+        // Afficher les résultats de l'analyse audio (F0, Jitter, Shimmer)
+        if (_latestAudioAnalysisResult != null && _isRecording) // Show only while recording for real-time feedback
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Text(
+              'F0: ${_latestAudioAnalysisResult!.f0.toStringAsFixed(1)} Hz | Jitter: ${_latestAudioAnalysisResult!.jitter.toStringAsFixed(2)}% | Shimmer: ${_latestAudioAnalysisResult!.shimmer.toStringAsFixed(2)}%',
+              style: TextStyle(fontSize: 14, color: Colors.lightBlueAccent),
+              textAlign: TextAlign.center,
+            ),
+          ),
       ],
     );
   }
@@ -554,10 +625,13 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
         referenceText: widget.exercise.textToRead, // Passer le texte de référence si disponible
       );
 
+      // Démarrer l'analyse du plugin audio
+      await AudioSignalProcessor.startAnalysis();
+
       // Démarrer l'enregistrement du flux audio et récupérer le stream
       final audioStream = await _audioRepository!.startRecordingStream();
 
-      // S'abonner au flux audio retourné MAINTENANT
+      // S'abonner au flux audio retourné MAINTENANT (enverra les chunks à Azure et au plugin)
       _subscribeToAudioStream(audioStream);
 
       // Notifier le parent
@@ -592,6 +666,10 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
      await _audioRepository?.stopRecordingStream(); // Appel de la nouvelle méthode
      _audioSubscription?.cancel(); // Se désabonner explicitement aussi (bonne pratique)
      print('[ExerciseScreen] Audio stream stopped and unsubscribed.');
+
+     // Arrêter l'analyse du plugin audio
+     await AudioSignalProcessor.stopAnalysis();
+     print('[ExerciseScreen] AudioSignalProcessor stopAnalysis called.');
 
      // Ensuite, signaler à Azure d'arrêter la reconnaissance
      await _azureSpeechService?.stopRecognition();
@@ -759,6 +837,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                            _accuracyScore = null;
                            _fluencyScore = null;
                            _completenessScore = null;
+                           _latestAudioAnalysisResult = null; // Reset audio analysis result too
                          });
                        },
                        child: const Text('Réessayer', style: TextStyle(color: Colors.white)),
@@ -795,4 +874,3 @@ Exercise getSampleExercise() {
     },
   );
 }
-

@@ -42,7 +42,7 @@ class NativeUtils {
       }
 
       // Copier le modèle depuis les assets
-      ConsoleLogger.info('[NativeUtils] Copie du modèle "${modelAssetName}" depuis les assets vers $destinationPath...');
+      ConsoleLogger.info('[NativeUtils] Copie du modèle "$modelAssetName" depuis les assets vers $destinationPath...');
       final assetPath = '$assetPathPrefix$modelAssetName';
       final byteData = await rootBundle.load(assetPath);
       final buffer = byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes);
@@ -53,7 +53,7 @@ class NativeUtils {
       return destinationPath;
 
     } catch (e) {
-      ConsoleLogger.error('[NativeUtils] Erreur lors de la récupération/copie du modèle "${modelAssetName}": $e');
+      ConsoleLogger.error('[NativeUtils] Erreur lors de la récupération/copie du modèle "$modelAssetName": $e');
       // Relancer l'exception pour que l'appelant puisse la gérer
       rethrow;
     }

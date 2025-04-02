@@ -44,7 +44,7 @@ class _ResonancePlacementExerciseScreenState extends State<ResonancePlacementExe
   bool _isProcessing = false; // Pour indiquer l'évaluation en cours
   bool _isExerciseStarted = false;
   bool _isExerciseCompleted = false;
-  bool _isPlayingDemo = false; // Si on joue une démo audio
+  final bool _isPlayingDemo = false; // Si on joue une démo audio
   bool _showCelebration = false;
 
   // TODO: Définir la structure des activités (ex: type de son, zone cible)
@@ -55,9 +55,9 @@ class _ResonancePlacementExerciseScreenState extends State<ResonancePlacementExe
   // Variables pour l'analyse spectrale
   // TODO: Définir la structure pour stocker les données spectrales
   dynamic _currentSpectrumData; // Données spectrales en temps réel
-  List<dynamic> _recordedSpectrumData = []; // Stocker les données pendant l'enregistrement
+  final List<dynamic> _recordedSpectrumData = []; // Stocker les données pendant l'enregistrement
   // Stocker les résultats par activité/zone
-  Map<ResonanceZone, Map<String, dynamic>> _activityResults = {};
+  final Map<ResonanceZone, Map<String, dynamic>> _activityResults = {};
 
   String _instructionText = ''; // Texte d'instruction (ex: "Maintenez un son 'MMMM'")
   String _feedbackText = ''; // Feedback affiché à l'utilisateur

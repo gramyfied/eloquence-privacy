@@ -6,7 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../app/theme.dart';
 import '../../../core/utils/console_logger.dart'; // AJOUT
 import '../../../domain/entities/exercise.dart';
-import '../../../domain/entities/exercise_category.dart'; // AJOUT pour mapping difficulté
+// AJOUT pour mapping difficulté
 import '../../widgets/visual_effects/breathing_animation.dart';
 import '../../widgets/visual_effects/info_modal.dart';
 // Réimporter CelebrationEffect
@@ -153,7 +153,7 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen> with 
     }
     String? exerciseIdToSend = widget.exercise.id;
     if (!_isValidUuid(exerciseIdToSend)) {
-      ConsoleLogger.warning('[Supabase] Exercise ID "${exerciseIdToSend}" is not a valid UUID. Setting to null.');
+      ConsoleLogger.warning('[Supabase] Exercise ID "$exerciseIdToSend" is not a valid UUID. Setting to null.');
       exerciseIdToSend = null;
     }
     int difficultyInt;

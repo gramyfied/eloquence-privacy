@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert'; // Importer pour jsonDecode
 
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart'; // Pour kDebugMode
@@ -192,17 +193,48 @@ class AzureSpeechService {
                 case 'partial':
                   return AzureSpeechEvent.partial(safePayload['text'] as String? ?? '');
                 case 'final':
-                  // Correction: Extraire depuis safePayload
-                  final Map<String, dynamic>? pronunciationData = safePayload['pronunciationResult'] as Map<String, dynamic>?;
-                  // Le pronunciationData est déjà une Map<String, dynamic>? grâce à _safelyConvertMap sur safeEvent['payload']
-                  if (kDebugMode && pronunciationData != null) {
-                     // Optionnel: Logguer une partie du résultat pour vérification
-                     print('AzureSpeechService: Received pronunciation assessment data (Score: ${pronunciationData['AccuracyScore']})');
+                  // Extraire la valeur brute de pronunciationResult
+                  final dynamic rawPronunciationResult = safePayload['pronunciationResult'];
+                  Map<String, dynamic>? pronunciationData;
+
+                  // Vérifier si c'est une chaîne JSON et la décoder
+                  if (rawPronunciationResult is String) {
+                    try {
+                      // Utiliser _safelyConvertMap après jsonDecode pour garantir Map<String, dynamic>
+                      pronunciationData = _safelyConvertMap(jsonDecode(rawPronunciationResult) as Map?);
+                      if (kDebugMode) {
+                        print('AzureSpeechService: Successfully parsed pronunciationResult JSON string.');
+                      }
+                    } catch (e) {
+                      if (kDebugMode) {
+                        print('AzureSpeechService: Failed to parse pronunciationResult JSON string: $e');
+                      }
+                      // Retourner une erreur spécifique ou continuer sans les données de prononciation
+                      return AzureSpeechEvent.error('PARSE_PRONUNCIATION_ERROR', 'Failed to parse pronunciationResult: $e');
+                    }
+                  } else if (rawPronunciationResult is Map) {
+                    // Si c'est déjà une Map (au cas où le natif serait corrigé plus tard), la convertir
+                    pronunciationData = _safelyConvertMap(rawPronunciationResult);
+                     if (kDebugMode) {
+                        print('AzureSpeechService: pronunciationResult was already a Map.');
+                      }
+                  } else if (rawPronunciationResult != null) {
+                     if (kDebugMode) {
+                        print('AzureSpeechService: pronunciationResult is of unexpected type: ${rawPronunciationResult.runtimeType}');
+                      }
+                     return AzureSpeechEvent.error('INVALID_PRONUNCIATION_TYPE', 'Unexpected type for pronunciationResult: ${rawPronunciationResult.runtimeType}');
                   }
-                  // Appeler le constructeur mis à jour
+
+                  // Logguer si les données sont présentes (version simplifiée)
+                  if (kDebugMode && pronunciationData != null) {
+                    final score = pronunciationData['NBest']?[0]?['PronunciationAssessment']?['AccuracyScore'];
+                    print('AzureSpeechService: Received final event with pronunciation assessment (Score: $score)');
+                  }
+
+                  // Appeler le constructeur avec les données potentiellement parsées
                   return AzureSpeechEvent.finalResult(
                     safePayload['text'] as String? ?? '',
-                    pronunciationData, // Passer les données déjà converties (ou null)
+                    pronunciationData, // Passer les données parsées (ou null)
                   );
                 case 'error':
                   return AzureSpeechEvent.error(
@@ -303,8 +335,16 @@ class AzureSpeechEvent {
       case AzureSpeechEventType.partial:
         return 'AzureSpeechEvent(type: partial, text: "$text")';
       case AzureSpeechEventType.finalResult:
-        // Inclure une indication si le résultat de prononciation est présent
-        final prString = pronunciationResult != null ? ', pronunciationResult: ${pronunciationResult!.keys.contains("AccuracyScore") ? pronunciationResult!["AccuracyScore"] : "{...}"}' : '';
+        // Accéder au score imbriqué pour l'affichage, avec vérifications null
+        dynamic score = null;
+        if (pronunciationResult != null &&
+            pronunciationResult!['NBest'] is List &&
+            (pronunciationResult!['NBest'] as List).isNotEmpty &&
+            pronunciationResult!['NBest'][0] is Map &&
+            pronunciationResult!['NBest'][0]['PronunciationAssessment'] is Map) {
+          score = pronunciationResult!['NBest'][0]['PronunciationAssessment']['AccuracyScore'];
+        }
+        final prString = pronunciationResult != null ? ', pronunciationResult: {Score: $score, ...}' : '';
         return 'AzureSpeechEvent(type: final, text: "$text"$prString)';
       case AzureSpeechEventType.error:
         return 'AzureSpeechEvent(type: error, code: $errorCode, message: "$errorMessage")';

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+// Ajout de l'import pour sqrt
 import 'dart:typed_data';
 
 import 'package:record/record.dart'; // Remplacé flutter_sound par record
@@ -26,6 +27,8 @@ class RecordAudioRepository implements AudioRepository {
 
   final StreamController<double> _audioLevelController = StreamController<double>.broadcast();
   StreamSubscription? _amplitudeSubscription;
+  final List<double> _lastVolumes = []; // Pour le lissage
+  static const int _smoothingWindowSize = 5; // Taille de la fenêtre de lissage (Augmentée de 3 à 5)
 
   @override
   bool get isRecording => _isRecording;
@@ -152,7 +155,8 @@ class RecordAudioRepository implements AudioRepository {
     _amplitudeSubscription = _recorder.onAmplitudeChanged(const Duration(milliseconds: 100)).listen(
       (amp) {
         // Revenir à une plage dB plus large (-60 dBFS à 0 dBFS)
-        const double minDb = -60.0;
+        // --- AJUSTEMENT V35: Essai à -28.5dB ---
+        const double minDb = -28.5; // Était -27.5 (pas assez sensible), avant -30.0 (trop sensible)
         const double maxDb = 0.0;
         double currentDb = amp.current;
 
@@ -169,10 +173,35 @@ class RecordAudioRepository implements AudioRepository {
         // Appliquer une courbe de puissance cubique pour réduire davantage la sensibilité aux bas niveaux
         // final double finalNormalized = normalized * normalized * normalized; // Changé de carré à cube
         // --- MODIFICATION V21: Utiliser la normalisation linéaire directe pour tester ---
+        // final double finalNormalized = normalized;
+
+        // --- NOUVELLE MODIFICATION: Appliquer une courbe (racine carrée) pour mieux correspondre à la perception ---
+        // La racine carrée augmente la sensibilité aux niveaux inférieurs par rapport à la normalisation linéaire.
+        // Cela devrait rendre les niveaux moyen/fort plus faciles à atteindre.
+        // final double finalNormalized = sqrt(normalized); // Trop sensible selon feedback
+
+        // --- NOUVEL AJUSTEMENT: Essayer une courbe carrée (moins sensible en bas que sqrt, plus que linéaire) ---
+        // final double finalNormalized = normalized * normalized;
+
+        // --- AUTRE AJUSTEMENT: Essayer une racine cubique (entre linéaire et racine carrée) ---
+        // final double finalNormalized = pow(normalized, 1/3).toDouble(); // Toujours trop sensible
+
+        // --- RETOUR À LA NORMALISATION LINÉAIRE (mais avec minDb ajusté) ---
         final double finalNormalized = normalized;
 
-        // Envoyer la valeur normalisée et ajustée (toujours entre 0.0 et 1.0)
-        _audioLevelController.add(finalNormalized);
+        // --- AJOUT LISSAGE (Moyenne mobile) ---
+        _lastVolumes.add(finalNormalized.clamp(0.0, 1.0));
+        if (_lastVolumes.length > _smoothingWindowSize) {
+          _lastVolumes.removeAt(0); // Garder seulement les N dernières valeurs
+        }
+
+        double smoothedVolume = 0.0;
+        if (_lastVolumes.isNotEmpty) {
+          smoothedVolume = _lastVolumes.reduce((a, b) => a + b) / _lastVolumes.length;
+        }
+
+        // Envoyer la valeur LISSÉE et ajustée (toujours entre 0.0 et 1.0)
+        _audioLevelController.add(smoothedVolume);
       },
       onError: (e) {
         ConsoleLogger.error('Erreur stream amplitude: $e');

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' hide User; // MODIFICATION: Masquer User de Supabase
+// MODIFICATION: Masquer User de Supabase
 import '../../../app/theme.dart';
 import '../../../core/utils/console_logger.dart'; // AJOUT: Pour les logs
 import '../../../domain/entities/user.dart';

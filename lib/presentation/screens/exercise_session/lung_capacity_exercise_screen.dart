@@ -247,7 +247,7 @@ class _LungCapacityExerciseScreenState extends State<LungCapacityExerciseScreen>
         ConsoleLogger.warning('[Supabase] Exercise ID is the known invalid string "capacite-pulmonaire".');
     } else if (!_isValidUuid(exerciseIdToSend)) {
         isDefinitelyInvalid = true;
-        ConsoleLogger.warning('[Supabase] Exercise ID "${exerciseIdToSend}" is not a valid UUID.');
+        ConsoleLogger.warning('[Supabase] Exercise ID "$exerciseIdToSend" is not a valid UUID.');
     }
 
     if (isDefinitelyInvalid) {

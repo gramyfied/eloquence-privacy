@@ -55,7 +55,10 @@ class AzureSpeechHandler: NSObject, FlutterStreamHandler, FlutterPlugin {
                     result(true) // Succès
 
                 case "startRecognition":
-                    try self.startRecognitionInternal()
+                    // *** MODIFICATION 1: Extraire referenceText ***
+                    let args = call.arguments as? [String: Any]
+                    let referenceText = args?["referenceText"] as? String
+                    try self.startRecognitionInternal(referenceText: referenceText) // Passer referenceText
                     result(true)
 
                 case "stopRecognition":
@@ -106,7 +109,7 @@ class AzureSpeechHandler: NSObject, FlutterStreamHandler, FlutterPlugin {
         do {
             speechConfig = try SPXSpeechConfiguration(subscription: subscriptionKey, region: region)
             // Configurer la langue si nécessaire, ex: speechConfig?.speechRecognitionLanguage = "fr-FR"
-            // speechConfig?.setPropertyTo("detailed", by: SPXPropertyId.speechServiceResponse_OutputFormat) // Pour plus de détails
+            // Note: Le format de sortie sera défini dans startRecognitionInternal si nécessaire
 
             pushStream = SPXPushAudioInputStream() // Créer le stream poussé
             audioConfig = SPXAudioConfiguration(streamInput: pushStream!) // Configurer l'audio depuis le stream
@@ -142,7 +145,26 @@ class AzureSpeechHandler: NSObject, FlutterStreamHandler, FlutterPlugin {
             switch result.reason {
             case .recognizedSpeech:
                 print("\(self.logTag): Recognized: \(result.text ?? "")")
-                self.sendEvent(eventType: "final", data: ["text": result.text ?? ""])
+                // *** MODIFICATION 3: Extraire le JSON de l'évaluation ***
+                var payload: [String: Any?] = ["text": result.text ?? ""]
+                // Essayer d'extraire le JSON de l'évaluation de prononciation des propriétés
+                if let jsonResult = result.properties?.getPropertyById(SPXPropertyId.speechServiceResponse_JsonResult) {
+                    print("\(self.logTag): Pronunciation Assessment JSON found.")
+                    // Essayer de parser le JSON
+                    if let jsonData = jsonResult.data(using: .utf8),
+                       let jsonObject = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any] {
+                        payload["pronunciationResult"] = jsonObject // Ajouter le JSON parsé au payload
+                        print("\(self.logTag): Pronunciation Assessment JSON parsed successfully.")
+                    } else {
+                        print("\(self.logTag): Warning: Failed to parse Pronunciation Assessment JSON.")
+                        payload["pronunciationResult"] = nil // Ou envoyer le JSON brut comme string ?
+                    }
+                } else {
+                    print("\(self.logTag): Pronunciation Assessment JSON not found in properties.")
+                     payload["pronunciationResult"] = nil
+                }
+                self.sendEvent(eventType: "final", data: payload)
+
             case .noMatch:
                 print("\(self.logTag): No speech could be recognized.")
                 self.sendEvent(eventType: "status", data: ["message": "No speech recognized"])
@@ -181,16 +203,61 @@ class AzureSpeechHandler: NSObject, FlutterStreamHandler, FlutterPlugin {
         }
     }
 
-    private func startRecognitionInternal() throws {
-        guard let recognizer = speechRecognizer else {
-            print("\(logTag): startRecognition called before initialization.")
-            sendEvent(eventType: "error", data: ["code": "NOT_INITIALIZED", "message": "Recognizer not initialized"])
-            throw AzureSpeechError.notInitialized
+    // *** MODIFICATION 2: Mettre à jour startRecognitionInternal ***
+    private func startRecognitionInternal(referenceText: String?) throws {
+         guard let recognizer = speechRecognizer, let config = speechConfig else {
+             print("\(logTag): startRecognition called before initialization.")
+             sendEvent(eventType: "error", data: ["code": "NOT_INITIALIZED", "message": "Recognizer not initialized"])
+             throw AzureSpeechError.notInitialized
+         }
+
+        // Configurer l'évaluation de la prononciation si referenceText est fourni
+        if let refText = referenceText, !refText.isEmpty {
+            print("\(logTag): Configuring Pronunciation Assessment for: \"\(refText)\"")
+            do {
+                // Créer la configuration d'évaluation
+                // Documentation: https://learn.microsoft.com/en-us/objectivec/cognitive-services/speech/spxpronunciationassessmentconfiguration
+                let pronunciationConfig = try SPXPronunciationAssessmentConfiguration(
+                    referenceText: refText,
+                    gradingSystem: .hundredMark, // Ou .fivePoint si préféré
+                    granularity: .phoneme, // Phoneme est nécessaire pour les scores, Word active le timing par défaut mais on le force
+                    enableMiscue: true // Activer la détection des erreurs (insertion/omission)
+                )
+
+                // *** Activer explicitement les timestamps au niveau du mot ***
+                // Documentation Propriétés: https://learn.microsoft.com/en-us/objectivec/cognitive-services/speech/spxpropertyid
+                // Nécessite le format de sortie détaillé pour obtenir le JSON complet
+                 try config.setPropertyTo("Detailed", by: SPXPropertyId.speechServiceResponse_OutputFormat)
+                 // Demander explicitement les timestamps au niveau mot (même si Word granularity est supposé le faire)
+                 // Note: La doc suggère que Granularity=Word fait cela, mais soyons explicites.
+                 try pronunciationConfig.setPropertyTo("Word", by: SPXPropertyId.pronunciationAssessment_Granularity) // Assure que le JSON contient les détails par mot
+                 try pronunciationConfig.setPropertyTo("true", by: SPXPropertyId.speechServiceResponse_RequestWordLevelTimestamps) // Demande les timestamps
+                 // Optionnel: Demander le JSON complet dans le résultat (peut être utile pour le débogage)
+                 // try pronunciationConfig.setPropertyTo("true", by: SPXPropertyId.pronunciationAssessment_JsonResultEnabled)
+
+
+                // Appliquer la configuration au recognizer
+                try pronunciationConfig.apply(to: recognizer)
+                print("\(logTag): Pronunciation Assessment Config applied.")
+
+            } catch let error {
+                print("\(logTag): Failed to create or apply Pronunciation Assessment Config: \(error.localizedDescription)")
+                sendEvent(eventType: "error", data: ["code": "PRON_CONFIG_ERROR", "message": "Failed to apply pronunciation config: \(error.localizedDescription)"])
+                // Optionnel: Lancer une erreur ou continuer sans évaluation ?
+                // throw AzureSpeechError.recognitionFailed("Pronunciation config error: \(error.localizedDescription)")
+            }
+        } else {
+             print("\(logTag): Starting recognition without Pronunciation Assessment.")
+             // S'assurer que le format de sortie est simple si pas d'évaluation
+             try? config.setPropertyTo("Simple", by: SPXPropertyId.speechServiceResponse_OutputFormat)
         }
+
+
         print("\(logTag): Starting continuous recognition...")
         // Utiliser startContinuousRecognition() pour une reconnaissance continue
         try recognizer.startContinuousRecognition()
     }
+
 
     private func stopRecognitionInternal() throws {
         guard let recognizer = speechRecognizer else {

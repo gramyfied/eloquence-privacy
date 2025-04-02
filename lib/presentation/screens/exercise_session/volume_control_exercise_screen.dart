@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:math'; // Importer pour sqrt et pow
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../app/theme.dart';
@@ -57,15 +56,15 @@ class _VolumeControlExerciseScreenState extends State<VolumeControlExerciseScree
 
   // Variables pour l'analyse de volume
   double _currentVolumeNormalized = 0.0; // Volume actuel normalisé (0-1)
-  // Ajustements V22: Élargir plage Moyen
+  // Ajustements V40: Élargir la plage 'Moyen' pour faciliter le maintien
   final Map<VolumeLevel, Map<String, double>> _volumeThresholds = {
-    VolumeLevel.doux: {'min': 0.25, 'max': 0.45}, // 25% - 45% (Largeur 20%)
-    VolumeLevel.moyen: {'min': 0.45, 'max': 0.80}, // 45% - 80% (Largeur 35%)
-    VolumeLevel.fort: {'min': 0.80, 'max': 1.0},  // 80% - 100% (Largeur 20%)
+    VolumeLevel.doux: {'min': 0.25, 'max': 0.50}, // 25% - 50% (Largeur 25%) - Inchangé
+    VolumeLevel.moyen: {'min': 0.50, 'max': 0.70}, // 50% - 70% (Largeur 20%) - Anciennement 0.50-0.65
+    VolumeLevel.fort: {'min': 0.70, 'max': 1.0},  // 70% - 100% (Largeur 30%) - Anciennement 0.65-1.0
   };
-  List<double> _recordedVolumes = []; // Stocker les volumes pendant l'enregistrement
+  final List<double> _recordedVolumes = []; // Stocker les volumes pendant l'enregistrement
   // Stocker les résultats par niveau
-  Map<VolumeLevel, Map<String, dynamic>> _levelResults = {};
+  final Map<VolumeLevel, Map<String, dynamic>> _levelResults = {};
 
   String _instructionText = ''; // Texte d'instruction (ex: "Parlez DOUCEMENT")
   String _feedbackText = ''; // Feedback affiché à l'utilisateur

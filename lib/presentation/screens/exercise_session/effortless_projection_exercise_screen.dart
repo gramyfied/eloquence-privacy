@@ -46,7 +46,7 @@ class _EffortlessProjectionExerciseScreenState extends State<EffortlessProjectio
   bool _isProcessing = false;
   bool _isExerciseStarted = false;
   bool _isExerciseCompleted = false;
-  bool _isPlayingDemo = false;
+  final bool _isPlayingDemo = false;
   bool _showCelebration = false;
 
   // Séquence d'activités (simplifiée pour l'instant)
@@ -67,11 +67,11 @@ class _EffortlessProjectionExerciseScreenState extends State<EffortlessProjectio
   final double _targetVolumeMax = 0.8; // Cible volume 80%
   final double _maxAllowedTension = 0.3; // Tension max acceptable (simulée)
 
-  List<double> _recordedVolumes = [];
-  List<double> _recordedTensions = []; // Pour stocker les tensions simulées
+  final List<double> _recordedVolumes = [];
+  final List<double> _recordedTensions = []; // Pour stocker les tensions simulées
 
   // Stocker les résultats par activité
-  Map<ProjectionActivityType, Map<String, dynamic>> _activityResults = {};
+  final Map<ProjectionActivityType, Map<String, dynamic>> _activityResults = {};
 
   String _instructionText = '';
   String _feedbackText = '';
