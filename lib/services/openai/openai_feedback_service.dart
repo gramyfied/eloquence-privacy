@@ -294,4 +294,89 @@ Contraintes:
       return "Le soleil sèche six chemises sur six cintres.";
     }
   }
+
+  /// Génère un texte pour un exercice de rythme et pauses
+  Future<String> generateRhythmExerciseText({
+    required String exerciseLevel, // Niveau de difficulté pour adapter le texte
+    int minWords = 20,
+    int maxWords = 40,
+    String language = 'fr-FR',
+  }) async {
+    ConsoleLogger.info('🤖 [OPENAI] Génération de texte pour Rythme et Pauses...');
+    ConsoleLogger.info('🤖 [OPENAI] - Niveau: $exerciseLevel');
+    ConsoleLogger.info('🤖 [OPENAI] - Longueur: $minWords-$maxWords mots');
+
+    // Construire le prompt pour la génération de texte
+    String prompt = '''
+Génère un court texte en français ($language) adapté pour un exercice de rythme et de pauses vocales, niveau $exerciseLevel.
+Objectif: Pratiquer l'utilisation stratégique des silences pour améliorer l'impact et la clarté du discours.
+Contraintes:
+- Longueur: entre $minWords et $maxWords mots.
+- Doit être grammaticalement correct et naturel pour un locuteur adulte.
+- **Crucial: Insère des marqueurs de pause "..." à 3 ou 4 endroits stratégiquement importants dans le texte où une pause améliorerait la compréhension ou l'emphase.** Les pauses doivent être placées logiquement, par exemple entre des idées ou avant/après des mots clés.
+- Le texte doit avoir un sens cohérent.
+
+Ne fournis que le texte généré avec les marqueurs "...", sans aucune introduction, explication ou guillemets.
+Exemple de format attendu: "La communication efficace... repose sur l'écoute active... et la clarté d'expression... pour transmettre son message."
+''';
+
+    // Vérifier si les informations Azure OpenAI sont vides
+    if (apiKey.isEmpty || endpoint.isEmpty || deploymentName.isEmpty) {
+      ConsoleLogger.warning('🤖 [AZURE OPENAI] Informations Azure OpenAI manquantes. Utilisation d\'un texte par défaut.');
+      return "Le pouvoir d'une pause... bien placée... ne peut être sous-estimé. Elle attire l'attention... et donne du poids... à vos mots les plus importants.";
+    }
+
+    // Appeler l'API Azure OpenAI
+    try {
+      ConsoleLogger.info('Appel de l\'API Azure OpenAI pour génération de texte Rythme/Pauses');
+      final url = Uri.parse('$endpoint/openai/deployments/$deploymentName/chat/completions?api-version=$apiVersion');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': apiKey,
+        },
+        body: jsonEncode({
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'Tu es un générateur de contenu spécialisé dans la création de textes pour des exercices de coaching vocal en français, en particulier pour travailler le rythme et les pauses.',
+            },
+            {
+              'role': 'user',
+              'content': prompt,
+            },
+          ],
+          'temperature': 0.7,
+          'max_tokens': 150, // Un peu plus pour le texte
+          'top_p': 1.0,
+          'frequency_penalty': 0.1,
+          'presence_penalty': 0.1,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseBody = utf8.decode(response.bodyBytes);
+        final data = jsonDecode(responseBody);
+        String text = data['choices'][0]['message']['content'].trim();
+        // Nettoyer le texte (enlever guillemets potentiels)
+        text = text.replaceAll(RegExp(r'^"|"$'), '');
+        // S'assurer qu'il y a bien des marqueurs '...' (sinon fallback)
+        if (!text.contains('...')) {
+           ConsoleLogger.warning('🤖 [OPENAI] Texte généré ne contient pas de marqueurs "...". Utilisation du texte par défaut.');
+           text = "Le pouvoir d'une pause... bien placée... ne peut être sous-estimé. Elle attire l'attention... et donne du poids... à vos mots les plus importants.";
+        }
+        ConsoleLogger.success('🤖 [OPENAI] Texte Rythme/Pauses généré: "$text"');
+        return text;
+      } else {
+        ConsoleLogger.error('🤖 [OPENAI] Erreur API lors de la génération de texte Rythme/Pauses: ${response.statusCode}, ${response.body}');
+        throw Exception('Erreur API OpenAI: ${response.statusCode}');
+      }
+    } catch (e) {
+      ConsoleLogger.error('🤖 [OPENAI] Erreur lors de la génération de texte Rythme/Pauses: $e');
+      // Retourner un texte par défaut en cas d'erreur
+      return "Le pouvoir d'une pause... bien placée... ne peut être sous-estimé. Elle attire l'attention... et donne du poids... à vos mots les plus importants.";
+    }
+  }
 }

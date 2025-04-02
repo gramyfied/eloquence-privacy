@@ -26,7 +26,7 @@ class MarkedPause {
   final PauseType type;
   final String marker;
   final int length;
-  int? precedingWordIndex; // Index approximatif du mot *précédant* le marqueur (calculé)
+  int? precedingWordIndex; // Rétabli - Index approximatif du mot précédant
 
   MarkedPause({
     required this.index,
@@ -173,13 +173,19 @@ class _RhythmAndPausesExerciseScreenState
 
       if (!_azureSpeechService.isInitialized) {
         ConsoleLogger.warning('AzureSpeechService non initialisé.');
-        throw Exception('Azure Speech Service non initialisé.');
+         throw Exception('Azure Speech Service non initialisé.');
       }
 
-      _textToRead = _loadExerciseTextAndPauses(); // Charge et parse les marqueurs '...'
+      // Générer le texte via OpenAI au lieu d'utiliser le texte par défaut
+      _textToRead = await _openAIFeedbackService.generateRhythmExerciseText(
+        exerciseLevel: _difficultyToString(widget.exercise.difficulty),
+        // Vous pouvez ajuster min/max words ici si nécessaire
+      );
+      // Charger et parser les pauses du texte généré
+      _loadExerciseTextAndPauses(_textToRead);
       _subscribeToRecognitionStream();
 
-      ConsoleLogger.info('Exercice initialisé.');
+      ConsoleLogger.info('Exercice initialisé avec texte généré.');
     } catch (e) {
       ConsoleLogger.error('Erreur initialisation Rythme/Pauses: $e');
       if(mounted) {
@@ -236,8 +242,7 @@ class _RhythmAndPausesExerciseScreenState
             }
             // Stocker le dernier événement final reçu (peut être utile pour le texte)
             // _finalAzureResultFromStream = event;
-            // Le completer a été supprimé, donc plus de vérification ici.
-            break;
+            break; // Completer supprimé
           case AzureSpeechEventType.error:
             ConsoleLogger.error('[RhythmScreen] Erreur Azure: ${event.errorCode} - ${event.errorMessage}');
             if (mounted) {
@@ -245,15 +250,13 @@ class _RhythmAndPausesExerciseScreenState
                 _isProcessing = false; // Arrêter le traitement en cas d'erreur
                 _azureError = 'Erreur Azure: ${event.errorMessage} (${event.errorCode})';
               });
-              // Le completer a été supprimé, donc plus de complétion d'erreur ici.
-              // if (_finalResultCompleter != null && !_finalResultCompleter!.isCompleted) { ... }
+              // Completer supprimé
             }
             break;
           case AzureSpeechEventType.status:
              ConsoleLogger.info('[RhythmScreen] Statut Azure: ${event.statusMessage}');
              if (event.statusMessage?.contains('Session stopped') ?? false) {
-                // Le completer a été supprimé, donc plus de complétion ici.
-                // if (mounted && _isProcessing && (_finalResultCompleter != null && !_finalResultCompleter!.isCompleted)) { ... }
+                // Completer supprimé
              }
              break;
         }
@@ -265,20 +268,20 @@ class _RhythmAndPausesExerciseScreenState
             _isProcessing = false;
             _azureError = 'Erreur Stream Azure: $error';
           });
-           // Le completer a été supprimé.
-           // if (_finalResultCompleter != null && !_finalResultCompleter!.isCompleted) { ... }
+           // Completer supprimé
         }
       },
       onDone: () {
         ConsoleLogger.info('[RhythmScreen] Stream Azure terminé.');
-         // Le completer a été supprimé.
-         // if (mounted && _isProcessing && (_finalResultCompleter != null && !_finalResultCompleter!.isCompleted)) { ... }
+         // Completer supprimé
       }
     );
   }
 
-  String _loadExerciseTextAndPauses() {
-    String rawText = widget.exercise.textToRead ?? "Le pouvoir d'une pause... bien placée... ne peut être sous-estimé. Elle attire l'attention... et donne du poids... à vos mots les plus importants.";
+  // Modifiée pour prendre le texte en argument au lieu de le charger depuis widget.exercise
+  void _loadExerciseTextAndPauses(String generatedText) {
+    // Utiliser le texte généré passé en argument
+    String rawText = generatedText;
 
     final List<MarkedPause> pauses = [];
     // Regex pour trouver "..." (échapper les points)
@@ -297,6 +300,7 @@ class _RhythmAndPausesExerciseScreenState
        // Considérer "..." comme une pause moyenne par défaut
        const type = PauseType.medium;
 
+       // Rétablir le calcul de precedingWordIndex
        final markedPause = MarkedPause(index: markerIndex, type: type, marker: marker);
        markedPause.precedingWordIndex = wordCount - 1;
        pauses.add(markedPause);
@@ -314,9 +318,10 @@ class _RhythmAndPausesExerciseScreenState
 
     ConsoleLogger.info('Pauses marquées trouvées: ${pauses.length}');
     for (var p in pauses) {
+       // Rétablir le log avec l'index estimé
        ConsoleLogger.info('Marqueur "${p.marker}" à index ${p.index}, estimé après mot ${p.precedingWordIndex}');
     }
-    return rawText; // Retourner le texte original
+    // Ne retourne plus rien, met juste à jour l'état _markedPauses
   }
 
   // --- Core Logic Methods ---
@@ -350,7 +355,6 @@ class _RhythmAndPausesExerciseScreenState
         _isProcessing = false;
         _isExerciseCompleted = false;
         _azureError = '';
-        // _finalAzureResultFromStream = null; // Supprimer cette ligne car la variable n'existe plus
         _openAiFeedback = '';
         _analysisResult = null;
         _detectedPauses = [];
