@@ -139,7 +139,9 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
       }
     } else {
        submessage = 'Continuez à vous entraîner';
-       bannerColor = AppTheme.accentRed; // Rouge si score < 70
+       if (score < 70) { // Seulement si le score est bas, sinon garder jaune
+         bannerColor = AppTheme.accentRed; // Rouge si score < 70
+       }
     }
 
     return Container(
@@ -155,7 +157,7 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
       ),
       child: Column(
         children: [
-          // Icône de succès
+          // Icône de succès ou d'information
           Container(
             width: 80,
             height: 80,
@@ -164,7 +166,7 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
               color: bannerColor.withOpacity(0.2),
             ),
             child: Icon(
-              Icons.check_circle,
+              success ? Icons.check_circle : Icons.info_outline, // Icône différente si pas succès
               color: bannerColor,
               size: 50,
             ),
@@ -205,46 +207,37 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
 
     // Carte Score Global (toujours présente)
     statCards.add(
-      Expanded(
-        flex: 2, // Prend plus de place
-        child: StatCard(
-          title: 'Score global',
-          value: '${overallScore.toStringAsFixed(0)}%', // Afficher sans décimale
-          icon: Icons.star,
-          gradient: AppTheme.primaryGradient,
-          height: 110, // Plus haute
-        ),
+      // Ne pas utiliser Expanded ici, car la Row parente n'est pas dans une Colonne/Row flexible
+      StatCard(
+        title: 'Score global',
+        value: '${overallScore.toStringAsFixed(0)}%', // Afficher sans décimale
+        icon: Icons.star,
+        gradient: AppTheme.primaryGradient,
+        height: 110, // Plus haute
       ),
     );
 
     // Cartes pour Rythme et Pauses (Utilisation de AppTheme.primaryGradient)
     if (placementScore != null) {
-      statCards.add(const SizedBox(width: 12));
-      statCards.add(Expanded(child: StatCard(title: 'Placement Pauses', value: '${(placementScore * 100).toStringAsFixed(0)}%', icon: Icons.location_on, gradient: AppTheme.primaryGradient)));
+      statCards.add(StatCard(title: 'Placement Pauses', value: '${(placementScore * 100).toStringAsFixed(0)}%', icon: Icons.location_on, gradient: AppTheme.primaryGradient));
     }
     if (durationScore != null) {
-      statCards.add(const SizedBox(width: 12));
-      statCards.add(Expanded(child: StatCard(title: 'Durée Pauses', value: '${(durationScore * 100).toStringAsFixed(0)}%', icon: Icons.timer, gradient: AppTheme.primaryGradient)));
+      statCards.add(StatCard(title: 'Durée Pauses', value: '${(durationScore * 100).toStringAsFixed(0)}%', icon: Icons.timer, gradient: AppTheme.primaryGradient));
     }
     if (averageWpm != null) {
-      statCards.add(const SizedBox(width: 12));
-      statCards.add(Expanded(child: StatCard(title: 'Rythme', value: '${averageWpm.toStringAsFixed(0)} MPM', icon: Icons.speed, gradient: AppTheme.primaryGradient)));
+      statCards.add(StatCard(title: 'Rythme', value: '${averageWpm.toStringAsFixed(0)} MPM', icon: Icons.speed, gradient: AppTheme.primaryGradient));
     }
 
     // Cartes pour scores génériques (si les spécifiques ne sont pas là) (Utilisation de AppTheme.primaryGradient)
     if (accuracyScore != null && placementScore == null) { // Afficher seulement si pas déjà couvert par placement
-       statCards.add(const SizedBox(width: 12));
-       statCards.add(Expanded(child: StatCard(title: 'Précision', value: '${accuracyScore.toStringAsFixed(0)}%', icon: Icons.gps_fixed, gradient: AppTheme.primaryGradient)));
+       statCards.add(StatCard(title: 'Précision', value: '${accuracyScore.toStringAsFixed(0)}%', icon: Icons.gps_fixed, gradient: AppTheme.primaryGradient));
     }
      if (fluencyScore != null && durationScore == null && averageWpm == null) { // Afficher seulement si pas déjà couvert
-       statCards.add(const SizedBox(width: 12));
-       statCards.add(Expanded(child: StatCard(title: 'Fluidité', value: '${fluencyScore.toStringAsFixed(0)}%', icon: Icons.waves, gradient: AppTheme.primaryGradient)));
+       statCards.add(StatCard(title: 'Fluidité', value: '${fluencyScore.toStringAsFixed(0)}%', icon: Icons.waves, gradient: AppTheme.primaryGradient));
     }
      if (completenessScore != null) {
-       statCards.add(const SizedBox(width: 12));
-       statCards.add(Expanded(child: StatCard(title: 'Complétude', value: '${completenessScore.toStringAsFixed(0)}%', icon: Icons.check_box, gradient: AppTheme.primaryGradient)));
+       statCards.add(StatCard(title: 'Complétude', value: '${completenessScore.toStringAsFixed(0)}%', icon: Icons.check_box, gradient: AppTheme.primaryGradient));
     }
-
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -258,23 +251,19 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        // Afficher la première ligne (Score Global)
-        Row(children: [statCards.first]), // Garder le score global sur sa propre ligne
+        // Afficher la première ligne (Score Global) - Utiliser Align pour centrer si seul
+        Align(
+          alignment: Alignment.centerLeft, // Ou center si vous préférez
+          child: statCards.first,
+        ),
         // Afficher les autres scores dans un Wrap pour éviter l'overflow
         if (statCards.length > 1) ...[
            const SizedBox(height: 16),
            Wrap(
              spacing: 12.0, // Espace horizontal entre les cartes
              runSpacing: 12.0, // Espace vertical entre les lignes
-             children: statCards.sublist(1).map((widget) {
-               // Donner une largeur fixe ou contrainte aux cartes pour le Wrap
-               // Ici, on utilise une FractionallySizedBox pour qu'elles prennent environ 1/3 de la largeur
-               // Moins l'espacement. Ajustez si nécessaire.
-               return FractionallySizedBox(
-                 widthFactor: 0.3, // Ajuster ce facteur si besoin
-                 child: widget,
-               );
-             }).toList(),
+             // Utiliser directement les widgets StatCard dans Wrap
+             children: statCards.sublist(1),
            ),
         ]
       ],
@@ -296,36 +285,44 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
             children: [
               const Icon(
                 Icons.lightbulb_outline_rounded, // Icône différente
-                color: AppTheme.accentYellow,
-                size: 24,
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Feedback du Coach IA',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const Spacer(), // Pousse le bouton TTS à droite
-              // Bouton TTS
-              if (feedback.isNotEmpty)
+                 color: AppTheme.accentYellow,
+                 size: 24,
+               ),
+               const SizedBox(width: 12), // Espacement standard
+               // Envelopper le titre dans Expanded pour qu'il prenne l'espace restant
+               const Expanded(
+                 child: Text(
+                   'Feedback du Coach IA',
+                   style: TextStyle(
+                     fontSize: 18,
+                     fontWeight: FontWeight.bold,
+                     color: Colors.white,
+                   ),
+                   overflow: TextOverflow.ellipsis, // Optionnel: Gérer le texte très long
+                 ),
+               ),
+               // Bouton TTS
+               if (feedback.isNotEmpty)
                  IconButton(
                    icon: const Icon(Icons.volume_up_rounded, color: AppTheme.primaryColor),
                    tooltip: 'Lire le feedback',
                    onPressed: () {
-                     _exampleAudioProvider.playExampleFor(feedback);
+                     // Ajouter une vérification pour s'assurer que le provider est prêt si nécessaire
+                     try {
+                       _exampleAudioProvider.playExampleFor(feedback);
+                     } catch (e) {
+                       print("Erreur lors de la lecture TTS: $e");
+                       // Afficher un message à l'utilisateur si nécessaire
+                       ScaffoldMessenger.of(context).showSnackBar(
+                         const SnackBar(content: Text("Impossible de lire le feedback pour le moment."))
+                       );
+                     }
                    },
                  ),
             ],
           ),
           const SizedBox(height: 12),
-          // Log pour déboguer l'absence du bouton TTS
-          Builder(builder: (context) {
-            print('[ExerciseResultScreen] TTS Button Check: feedback.isNotEmpty=${feedback.isNotEmpty}, _exampleAudioProvider != null=${_exampleAudioProvider != null}');
-            return const SizedBox.shrink(); // Widget vide juste pour le log
-          }),
+          // Le Builder inutile est supprimé ici
           Text(
             feedback.isNotEmpty ? feedback : 'Aucun commentaire spécifique.', // Message par défaut si vide
             style: TextStyle(
@@ -388,7 +385,7 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
       case ExerciseDifficulty.difficile:
         return 'Difficile';
       default:
-        return 'Moyen';
+        return 'Moyen'; // Valeur par défaut
     }
   }
 
@@ -431,3 +428,4 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
     );
   }
 }
+// --- Fin du code ---

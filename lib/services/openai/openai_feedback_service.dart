@@ -475,12 +475,13 @@ Ne fournis que le JSON, sans aucune introduction, explication ou formatage suppl
           final Map<String, dynamic> jsonObject = jsonDecode(cleanedContent); // Décoder comme Map
           ConsoleLogger.info('🤖 [OPENAI] Contenu décodé comme Map avec succès.');
 
-          // Extraire la liste de la clé "words" (ou une clé similaire si le modèle varie)
-          ConsoleLogger.info('🤖 [OPENAI] Tentative d\'extraction de la liste depuis la clé "words"...');
-          final List<dynamic>? wordsList = jsonObject['words'] as List?; // Chercher la clé 'words'
+          // Extraire la liste de la clé "words" ou "mots" (pour gérer les variations de l'API)
+          ConsoleLogger.info('🤖 [OPENAI] Tentative d\'extraction de la liste depuis la clé "words" ou "mots"...');
+          final List<dynamic>? wordsList = (jsonObject['words'] ?? jsonObject['mots']) as List?; // Essayer les deux clés
 
           if (wordsList != null) {
-             ConsoleLogger.info('🤖 [OPENAI] Liste "words" extraite avec succès (${wordsList.length} éléments).');
+             final String foundKey = jsonObject.containsKey('words') ? 'words' : 'mots';
+             ConsoleLogger.info('🤖 [OPENAI] Liste "$foundKey" extraite avec succès (${wordsList.length} éléments).');
                 // Valider la structure de chaque élément dans la liste extraite
                 final List<Map<String, dynamic>> resultList = [];
                 for (var item in wordsList) {
@@ -505,10 +506,10 @@ Ne fournis que le JSON, sans aucune introduction, explication ou formatage suppl
                throw Exception('La liste JSON générée est vide ou ne contient que des items invalides.');
             }
               } else {
-                 ConsoleLogger.error('🤖 [OPENAI] Clé "words" manquante ou n\'est pas une liste dans le JSON retourné.');
-                throw Exception('Clé "words" manquante ou n\'est pas une liste dans le JSON retourné.');
-              }
-            } catch (e) { // Attraper spécifiquement l'erreur de parsing du *contenu*
+             ConsoleLogger.error('🤖 [OPENAI] Clé "words" ou "mots" manquante ou n\'est pas une liste dans le JSON retourné.');
+            throw Exception('Clé "words" ou "mots" manquante ou n\'est pas une liste dans le JSON retourné.');
+          }
+        } catch (e) { // Attraper spécifiquement l'erreur de parsing du *contenu*
           ConsoleLogger.error('🤖 [OPENAI] Erreur parsing JSON de la réponse: $e');
           ConsoleLogger.error('🤖 [OPENAI] Réponse brute: $responseBody');
           throw Exception('Erreur parsing JSON: $e');

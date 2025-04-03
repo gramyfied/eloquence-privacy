@@ -111,7 +111,7 @@ class _RhythmAndPausesExerciseScreenState
   bool _isLoading = true;
   bool _isRecording = false;
   bool _isProcessing = false;
-  bool _isDemoPlaying = false;
+  final bool _isDemoPlaying = false;
   bool _isExerciseCompleted = false;
 
   String _textToRead = '';
@@ -224,8 +224,8 @@ class _RhythmAndPausesExerciseScreenState
                 final dynamicWordsList = nBestList[0]['Words'] as List?;
                  if (dynamicWordsList != null) {
                     words = dynamicWordsList
-                        .where((item) => item is Map)
-                        .map((item) => Map<String, dynamic>.from(item as Map))
+                        .whereType<Map>()
+                        .map((item) => Map<String, dynamic>.from(item))
                         .toList();
                  }
               }

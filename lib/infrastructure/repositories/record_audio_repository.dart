@@ -114,8 +114,9 @@ class RecordAudioRepository implements AudioRepository {
     }
 
     if (_isRecording) {
-      ConsoleLogger.warning('Enregistrement déjà en cours. Arrêt de l\'enregistrement précédent...');
-      await stopRecording(); // Arrêter l'enregistrement précédent avant de démarrer un stream
+      ConsoleLogger.warning('Streaming déjà en cours (ou enregistrement fichier?). Arrêt du stream précédent...');
+      // Correction: Appeler stopRecordingStream() ici, pas stopRecording()
+      await stopRecordingStream();
     }
 
     // Annuler l'abonnement précédent par sécurité

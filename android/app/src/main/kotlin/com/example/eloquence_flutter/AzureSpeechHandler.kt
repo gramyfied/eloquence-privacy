@@ -220,12 +220,7 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
             speechConfig = SpeechConfig.fromSubscription(subscriptionKey, region)
             speechConfig?.speechRecognitionLanguage = "fr-FR" // Définir la langue
 
-            // *** AJOUT: Configurer les timeouts de silence ***
-            // Timeout après la fin de la parole (ex: 1 seconde de silence)
-            speechConfig?.setProperty(PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "1000")
-            // Timeout au début si aucun son n'est détecté (ex: 5 secondes)
-            speechConfig?.setProperty(PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, "5000")
-            Log.i(logTag, "Silence timeouts configured (Initial: 5000ms, End: 1000ms).")
+            // *** SUPPRESSION: Configuration des timeouts de silence ***
 
             Log.i(logTag, "Azure Speech Config created/updated successfully for region: $region")
             sendEvent("status", mapOf("message" to "Azure Config Initialized"))
@@ -262,13 +257,15 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
                         Log.d(logTag, "No Pronunciation Assessment JSON found in properties.")
                         payload["pronunciationResult"] = null
                     }
-                    sendEvent("final", payload)
-                } else if (result.reason == ResultReason.NoMatch) {
-                    Log.i(logTag, "No speech could be recognized.")
-                    sendEvent("status", mapOf("message" to "No speech recognized"))
-                } else {
-                    Log.w(logTag, "Recognition ended with reason: ${result.reason}")
-                    sendEvent("status", mapOf("message" to "Recognition ended: ${result.reason}"))
+                     sendEvent("final", payload)
+                 } else if (result.reason == ResultReason.NoMatch) {
+                     Log.i(logTag, "Recognized with NoMatch: No speech could be recognized.")
+                     // Envoyer un événement spécifique pour NoMatch
+                     sendEvent("no_match", mapOf("reason" to result.reason.name))
+                 } else {
+                     // Log plus détaillé pour les autres raisons
+                     Log.w(logTag, "Recognition completed with unexpected reason: ${result.reason}")
+                     sendEvent("status", mapOf("message" to "Recognition completed: ${result.reason}"))
                 }
             } catch (e: Exception) {
                  Log.e(logTag, "Error processing recognized event: ${e.message}", e)
@@ -278,11 +275,14 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
             }
         }
 
-        recognizer.canceled.addEventListener { _, eventArgs -> // Syntaxe lambda correcte
-            Log.w(logTag, "Recognition Canceled: Reason=${eventArgs.reason}, ErrorCode=${eventArgs.errorCode}, Details=${eventArgs.errorDetails}")
-            val errorDetails = "Reason: ${eventArgs.reason}, Code: ${eventArgs.errorCode}, Details: ${eventArgs.errorDetails}"
-            sendEvent("error", mapOf("code" to eventArgs.errorCode.name, "message" to errorDetails))
-            // Nettoyer les ressources de session sur l'executor
+         recognizer.canceled.addEventListener { _, eventArgs -> // Syntaxe lambda correcte
+             val reason = eventArgs.reason
+             val errorCode = eventArgs.errorCode
+             val errorDetails = eventArgs.errorDetails
+             Log.w(logTag, "Recognition Canceled: Reason=$reason, ErrorCode=$errorCode, Details=$errorDetails")
+             val errorMessage = "Recognition canceled: Reason=$reason, Code=$errorCode, Details=$errorDetails"
+             sendEvent("error", mapOf("code" to errorCode.name, "message" to errorMessage))
+             // Nettoyer les ressources de session sur l'executor
             executor.submit { releaseRecognizerResourcesInternal() }
         }
 
@@ -398,12 +398,15 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
         val stream = audioInputStream // Copie locale
         if (stream == null) {
             // Log.w(logTag, "sendAudioChunk called but audioInputStream is null.") // Peut être trop verbeux
-            return
-        }
-        try {
-            stream.write(audioChunk)
-        } catch (e: Exception) {
-             Log.e(logTag, "Error writing to audioInputStream: ${e.message}")
+             // Log.w(logTag, "sendAudioChunk called but audioInputStream is null.") // Peut être trop verbeux
+             return
+         }
+         try {
+             // Ajouter un log pour confirmer la réception et la taille du chunk
+             Log.d(logTag, "sendAudioChunkInternal: Received chunk, size=${audioChunk.size}. Writing to stream...")
+             stream.write(audioChunk)
+         } catch (e: Exception) {
+              Log.e(logTag, "Error writing to audioInputStream: ${e.message}")
         }
     }
 

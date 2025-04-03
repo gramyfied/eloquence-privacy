@@ -14,7 +14,7 @@ import '../presentation/screens/profile/profile_screen.dart';
 import '../presentation/screens/history/session_history_screen.dart';
 import '../presentation/screens/debug/debug_screen.dart';
 import '../presentation/widgets/exercise_selection_modal.dart';
-import '../domain/entities/user.dart';
+import '../domain/entities/user.dart' as domain_user; // Ajouter un préfixe
 import '../domain/entities/exercise.dart';
 import '../domain/entities/exercise_category.dart';
 // Importer les écrans d'exercices spécifiques
@@ -26,6 +26,7 @@ import '../presentation/screens/exercise_session/volume_control_exercise_screen.
 import '../presentation/screens/exercise_session/resonance_placement_exercise_screen.dart';
 import '../presentation/screens/exercise_session/effortless_projection_exercise_screen.dart'; // AJOUT: Import pour projection
 import '../presentation/screens/exercise_session/syllabic_precision_exercise_screen.dart'; // AJOUT: Import pour précision syllabique
+import '../presentation/screens/exercise_session/consonant_contrast_exercise_screen.dart'; // AJOUT: Import pour contraste consonantique
 
 
 /// Crée et configure le router de l'application
@@ -43,9 +44,9 @@ GoRouter createRouter(AuthRepository authRepository) {
       GoRoute(
         path: AppRoutes.home,
         builder: (context, state) {
-          final user = state.extra as User?;
+          final user = state.extra as domain_user.User?; // Utiliser le préfixe
           return HomeScreen(
-            user: user ?? User(id: '123', name: 'Utilisateur', email: 'user@example.com'),
+            user: user ?? domain_user.User(id: '123', name: 'Utilisateur', email: 'user@example.com'), // Utiliser le préfixe
             onNewSessionPressed: () {
               context.push(AppRoutes.exerciseCategories);
             },
@@ -146,8 +147,8 @@ GoRouter createRouter(AuthRepository authRepository) {
       GoRoute(
         path: AppRoutes.statistics,
         builder: (context, state) {
-          final user = state.extra as User? ??
-            User(id: '123', name: 'Utilisateur', email: 'user@example.com');
+          final user = state.extra as domain_user.User? ?? // Utiliser le préfixe
+            domain_user.User(id: '123', name: 'Utilisateur', email: 'user@example.com'); // Utiliser le préfixe
 
           return StatisticsScreen(
             user: user,
@@ -162,9 +163,9 @@ GoRouter createRouter(AuthRepository authRepository) {
       GoRoute(
         path: AppRoutes.profile,
         builder: (context, state) {
-          final user = state.extra as User?;
+          final user = state.extra as domain_user.User?; // Utiliser le préfixe
           return ProfileScreen(
-            user: user ?? User(id: '123', name: 'Utilisateur', email: 'user@example.com'),
+            user: user ?? domain_user.User(id: '123', name: 'Utilisateur', email: 'user@example.com'), // Utiliser le préfixe
             onBackPressed: () {
               context.pop();
             },
@@ -173,7 +174,7 @@ GoRouter createRouter(AuthRepository authRepository) {
             },
             onProfileUpdate: (name, avatarUrl) {
               // Créer un nouvel utilisateur avec les informations mises à jour
-              final updatedUser = User(
+              final updatedUser = domain_user.User( // Utiliser le préfixe
                 id: user?.id ?? '123',
                 email: user?.email ?? 'user@example.com',
                 name: name,
@@ -199,8 +200,8 @@ GoRouter createRouter(AuthRepository authRepository) {
       GoRoute(
         path: AppRoutes.history,
         builder: (context, state) {
-          final user = state.extra as User? ??
-            User(id: '123', name: 'Utilisateur', email: 'user@example.com');
+          final user = state.extra as domain_user.User? ?? // Utiliser le préfixe
+            domain_user.User(id: '123', name: 'Utilisateur', email: 'user@example.com'); // Utiliser le préfixe
 
           return SessionHistoryScreen(
             user: user,
@@ -374,6 +375,20 @@ GoRouter createRouter(AuthRepository authRepository) {
         },
       ),
 
+      // Contraste Consonantique (Nouvelle route)
+      GoRoute(
+        path: AppRoutes.exerciseConsonantContrast,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          // TODO: Récupérer l'exercice complet via exerciseId
+          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Contraste Consonantique', objective: 'Apprendre à distinguer et produire clairement des paires de consonnes proches (ex: P/B, T/D).', instructions: 'Écoutez attentivement la paire de mots, puis répétez-la en vous concentrant sur la différence entre les sons mis en évidence.', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'clarity-expressivity', name: 'Clarté et Expressivité', description: '', type: ExerciseCategoryType.clarteExpressivite, iconPath: ''), evaluationParameters: {});
+
+          return ConsonantContrastExerciseScreen(
+             exercise: exercise, // Passer l'exercice récupéré
+          );
+        },
+      ),
+
 
     ],
     errorBuilder: (context, state) => Scaffold(
@@ -474,8 +489,11 @@ Widget _buildCategoriesScreen(BuildContext context, List<ExerciseCategory> categ
           case 'rythme-pauses': // Ajouter le cas pour la route spécifique
              targetRoute = AppRoutes.exerciseRhythmPauses;
              break;
-          case 'precision-syllabique': // Ajouter le cas pour la nouvelle route
+          case 'precision-syllabique':
              targetRoute = AppRoutes.exerciseSyllabicPrecision.replaceFirst(':exerciseId', exerciseId);
+             break;
+          case 'contraste-consonantique': // Ajouter le cas pour le nouvel exercice
+             targetRoute = AppRoutes.exerciseConsonantContrast.replaceFirst(':exerciseId', exerciseId);
              break;
           default:
             // Pour les autres exercices, utiliser la route générique pour l'instant
@@ -655,21 +673,21 @@ List<Exercise> _getDefaultExercisesForCategory(ExerciseCategory category) {
           evaluationParameters: {
             'articulation': 0.6,
             'precision': 0.4,
-          },
-        ),
-        Exercise(
-          id: 'contraste-consonantique',
-          title: 'Contraste Consonantique',
-          objective: 'Distinguez clairement les sons consonantiques similaires',
-          instructions: 'Lisez le texte en portant une attention particulière aux paires de consonnes similaires.',
-          textToRead: 'Pierre porte un beau pantalon bleu. Ton thé est-il dans la tasse de Denis ?',
-          difficulty: ExerciseDifficulty.moyen,
-          category: category,
-          evaluationParameters: {
-            'consonant_clarity': 0.7,
-            'precision': 0.3,
-          },
-        ),
+           },
+         ),
+         Exercise( // Garder l'ancienne définition pour l'instant, on ajoutera la nouvelle
+           id: 'contraste-consonantique',
+           title: 'Contraste Consonantique',
+           objective: 'Distinguez clairement les sons consonantiques similaires',
+           instructions: 'Lisez le texte en portant une attention particulière aux paires de consonnes similaires.',
+           textToRead: 'Pierre porte un beau pantalon bleu. Ton thé est-il dans la tasse de Denis ?',
+           difficulty: ExerciseDifficulty.moyen,
+           category: category,
+           evaluationParameters: {
+             'consonant_clarity': 0.7,
+             'precision': 0.3,
+           },
+         ),
         Exercise(
           id: 'finales-nettes',
           title: 'Finales Nettes',
@@ -707,6 +725,21 @@ List<Exercise> _getDefaultExercisesForCategory(ExerciseCategory category) {
           evaluationParameters: {
             'pitch_variation': 0.7,
             'expressivity': 0.3,
+          },
+        ),
+        // Ajout du nouvel exercice "Contraste Consonantique" (avec l'ID existant pour l'instant)
+        Exercise(
+          id: 'contraste-consonantique', // ID unique (garder le même ID pour l'instant)
+          title: 'Contraste Consonantique',
+          objective: 'Apprendre à distinguer et produire clairement des paires de consonnes proches (ex: P/B, T/D).',
+          instructions: 'Écoutez attentivement la paire de mots, puis répétez-la en vous concentrant sur la différence entre les sons mis en évidence.',
+          textToRead: '', // Le texte sera généré dynamiquement (paires de mots)
+          difficulty: ExerciseDifficulty.moyen, // Ou à ajuster
+          category: category, // La catégorie est passée en argument
+          evaluationParameters: {
+            'consonant_distinction': 0.6, // Évaluation de la clarté du contraste
+            'phonetic_accuracy': 0.3, // Précision des consonnes cibles
+            'general_clarity': 0.1, // Clarté générale
           },
         ),
       ];

@@ -336,7 +336,7 @@ class AzureSpeechEvent {
         return 'AzureSpeechEvent(type: partial, text: "$text")';
       case AzureSpeechEventType.finalResult:
         // Accéder au score imbriqué pour l'affichage, avec vérifications null
-        dynamic score = null;
+        dynamic score;
         if (pronunciationResult != null &&
             pronunciationResult!['NBest'] is List &&
             (pronunciationResult!['NBest'] as List).isNotEmpty &&

@@ -20,5 +20,6 @@ class AppRoutes {
   static const String exerciseProjection = '/exercise/projection/:exerciseId';
   static const String exerciseRhythmPauses = '/exercise/rhythm-pauses'; // Nouvelle route
   static const String exerciseSyllabicPrecision = '/exercise/syllabic-precision/:exerciseId'; // Nouvelle route
+  static const String exerciseConsonantContrast = '/exercise/consonant-contrast/:exerciseId'; // Nouvelle route pour Contraste Consonantique
   // Ajoutez d'autres routes spécifiques ici si nécessaire
 }
