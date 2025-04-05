@@ -53,6 +53,11 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
     final fluencyScore = (widget.results['fluencyScore'] as num?)?.toDouble();
     final completenessScore = (widget.results['completenessScore'] as num?)?.toDouble();
 
+    // Extraire les données spécifiques à l'analyse des finales si présentes
+    final finalAnalysis = widget.results['finalAnalysis'] as Map<String, dynamic>?;
+    final finalScore = (finalAnalysis?['calculatedScore'] as num?)?.toDouble();
+    final specificFeedback = finalAnalysis?['feedbackIA'] as String?;
+
 
     return Scaffold(
       backgroundColor: AppTheme.darkBackground,
@@ -91,10 +96,13 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
                         accuracyScore, // Passer aussi les scores génériques
                         fluencyScore,
                         completenessScore,
+                        finalScore, // Passer le score de la finale
                       ),
                       const SizedBox(height: 32),
-                      _buildFeedbackSection(feedback),
+                      // Utiliser le feedback spécifique s'il existe, sinon le général
+                      _buildFeedbackSection(specificFeedback ?? feedback),
                       const SizedBox(height: 32),
+                      // TODO: Ajouter potentiellement une section pour visualiser la finale ici
                       _buildExerciseDetails(),
                     ],
                   ),
@@ -113,9 +121,12 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
                       primaryColor: AppTheme.primaryColor,
                     secondaryColor: AppTheme.accentGreen,
                     durationSeconds: 5,
+                    // Remettre le callback onComplete requis
                     onComplete: () {
-                      print('[ExerciseResultScreen] Celebration animation completed.');
-                      },
+                      if (mounted) { // Ajouter une vérification 'mounted' par sécurité
+                        print('[ExerciseResultScreen] Celebration animation completed.');
+                      }
+                    },
                     ),
                   ),
                 ),
@@ -201,6 +212,7 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
     double? accuracyScore, // Scores génériques
     double? fluencyScore,
     double? completenessScore,
+    double? finalScore, // Ajouter le paramètre manquant ici dans la définition
   ) {
     // Construire la liste des cartes de stats en fonction des scores disponibles
     List<Widget> statCards = [];
@@ -238,6 +250,17 @@ class _ExerciseResultScreenState extends State<ExerciseResultScreen> {
      if (completenessScore != null) {
        statCards.add(StatCard(title: 'Complétude', value: '${completenessScore.toStringAsFixed(0)}%', icon: Icons.check_box, gradient: AppTheme.primaryGradient));
     }
+
+    // Carte pour le Score Finale (si disponible)
+    if (finalScore != null) {
+      statCards.add(StatCard(
+         title: 'Score Finale',
+         value: '${finalScore.toStringAsFixed(0)}%', // Score spécifique de la finale
+         icon: Icons.flag_circle_outlined, // Icône appropriée
+         gradient: AppTheme.primaryGradient, // Réutiliser le gradient primaire
+       ));
+     }
+
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

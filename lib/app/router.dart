@@ -27,6 +27,8 @@ import '../presentation/screens/exercise_session/resonance_placement_exercise_sc
 import '../presentation/screens/exercise_session/effortless_projection_exercise_screen.dart'; // AJOUT: Import pour projection
 import '../presentation/screens/exercise_session/syllabic_precision_exercise_screen.dart'; // AJOUT: Import pour précision syllabique
 import '../presentation/screens/exercise_session/consonant_contrast_exercise_screen.dart'; // AJOUT: Import pour contraste consonantique
+import '../presentation/screens/exercise_session/finales_nettes_exercise_screen.dart'; // AJOUT: Import pour Finales Nettes
+import '../presentation/screens/exercise_session/expressive_intonation_exercise_screen.dart'; // AJOUT: Import pour Intonation Expressive
 
 
 /// Crée et configure le router de l'application
@@ -102,11 +104,13 @@ GoRouter createRouter(AuthRepository authRepository) {
         },
       ),
 
-      // Exercise Screen
+      // Exercise Screen (Generic Fallback)
       GoRoute(
         path: AppRoutes.exercise,
         builder: (context, state) {
           final exercise = state.extra as Exercise;
+          // ATTENTION: Cet écran ne devrait être utilisé que si aucun écran spécifique n'est trouvé.
+          print("ATTENTION: Navigation vers l'écran générique pour ${exercise.id}. Vérifier la logique de routage.");
           return ExerciseScreen(
             exercise: exercise,
             onBackPressed: () {
@@ -116,7 +120,8 @@ GoRouter createRouter(AuthRepository authRepository) {
               // Ce callback ne devrait JAMAIS être appelé pour les exercices spécifiques
               // qui ont leur propre écran et callback.
               print("ERREUR: onExerciseCompleted de la route générique /exercise a été appelé !");
-              // Optionnel : Naviguer vers une page d'erreur ou juste ne rien faire.
+              // Naviguer vers les résultats même depuis l'écran générique
+              context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': {}});
             },
           );
         },
@@ -126,9 +131,18 @@ GoRouter createRouter(AuthRepository authRepository) {
       GoRoute(
         path: AppRoutes.exerciseResult,
         builder: (context, state) {
-          final data = state.extra as Map<String, dynamic>;
-          final exercise = data['exercise'] as Exercise;
-          final results = data['results'] as Map<String, dynamic>;
+          final data = state.extra as Map<String, dynamic>?; // Rendre nullable
+          if (data == null) {
+             // Gérer le cas où les données sont manquantes
+             return Scaffold(body: Center(child: Text("Erreur: Données de résultat manquantes.")));
+          }
+          final exercise = data['exercise'] as Exercise?;
+          final results = data['results'] as Map<String, dynamic>?;
+
+          if (exercise == null || results == null) {
+             // Gérer le cas où les données dans la map sont null
+             return Scaffold(body: Center(child: Text("Erreur: Données d'exercice ou de résultat invalides.")));
+          }
 
           return ExerciseResultScreen(
             exercise: exercise,
@@ -137,7 +151,7 @@ GoRouter createRouter(AuthRepository authRepository) {
               context.go(AppRoutes.home);
             },
             onTryAgainPressed: () {
-              context.pop();
+              context.pop(); // Revenir à l'écran précédent (l'exercice)
             },
           );
         },
@@ -227,17 +241,13 @@ GoRouter createRouter(AuthRepository authRepository) {
         path: AppRoutes.exerciseLungCapacity,
         builder: (context, state) {
           final exerciseId = state.pathParameters['exerciseId'];
-          // TODO: Récupérer l'exercice complet via exerciseId en utilisant ExerciseRepository
-          // Pour l'instant, on utilise un placeholder ou on suppose qu'il est passé via extra si nécessaire
-          // Si l'exercice n'est pas trouvé, afficher une erreur ou rediriger
           final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Capacité Pulmonaire', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
 
           return LungCapacityExerciseScreen(
             exercise: exercise,
             onExerciseCompleted: (results) {
               print("Résultats Capacité Pulmonaire: $results");
-              // Naviguer vers l'écran de résultats avec go_router
-              context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+              context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
             },
             onExitPressed: () => context.pop(),
           );
@@ -249,14 +259,13 @@ GoRouter createRouter(AuthRepository authRepository) {
         path: AppRoutes.exerciseArticulation,
         builder: (context, state) {
           final exerciseId = state.pathParameters['exerciseId'];
-          // TODO: Récupérer l'exercice complet via exerciseId
           final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Articulation', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
 
           return ArticulationExerciseScreen(
             exercise: exercise,
             onExerciseCompleted: (results) {
               print("Résultats Articulation: $results");
-              context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+              context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
             },
             onExitPressed: () => context.pop(),
           );
@@ -268,16 +277,13 @@ GoRouter createRouter(AuthRepository authRepository) {
         path: AppRoutes.exerciseBreathing,
         builder: (context, state) {
           final exerciseId = state.pathParameters['exerciseId'];
-          // TODO: Récupérer l'exercice complet via exerciseId
           final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Respiration', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
 
           return BreathingExerciseScreen(
             exercise: exercise,
             onExerciseCompleted: (results) {
               print("Résultats Respiration Diaphragmatique: $results");
-              // La modale est gérée dans l'écran, on pop simplement ici ou on navigue vers les résultats si nécessaire
-              // context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
-               context.pop(); // Ou context.go(AppRoutes.home); ou autre selon le flux désiré
+               context.pop(); // Pop pour revenir à la liste des exercices
             },
             onExitPressed: () => context.pop(),
           );
@@ -289,14 +295,13 @@ GoRouter createRouter(AuthRepository authRepository) {
         path: AppRoutes.exerciseVolumeControl,
         builder: (context, state) {
           final exerciseId = state.pathParameters['exerciseId'];
-          // TODO: Récupérer l'exercice complet via exerciseId
           final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Contrôle Volume', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
 
           return VolumeControlExerciseScreen(
             exercise: exercise,
             onExerciseCompleted: (results) {
               print("Résultats Contrôle Volume: $results");
-              context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+              context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
             },
             onExitPressed: () => context.pop(),
           );
@@ -308,14 +313,13 @@ GoRouter createRouter(AuthRepository authRepository) {
         path: AppRoutes.exerciseResonance,
         builder: (context, state) {
           final exerciseId = state.pathParameters['exerciseId'];
-          // TODO: Récupérer l'exercice complet via exerciseId
           final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Résonance', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
 
           return ResonancePlacementExerciseScreen(
             exercise: exercise,
             onExerciseCompleted: (results) {
               print("Résultats Résonance & Placement: $results");
-              context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+              context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
             },
             onExitPressed: () => context.pop(),
           );
@@ -327,23 +331,22 @@ GoRouter createRouter(AuthRepository authRepository) {
         path: AppRoutes.exerciseProjection,
         builder: (context, state) {
           final exerciseId = state.pathParameters['exerciseId'];
-          // TODO: Récupérer l'exercice complet via exerciseId
           final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Projection', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
 
           return EffortlessProjectionExerciseScreen(
             exercise: exercise,
             onExerciseCompleted: (results) {
               print("Résultats Projection Sans Forçage: $results");
-              context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+              context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
             },
             onExitPressed: () => context.pop(),
           );
         },
       ),
 
-      // Rythme et Pauses (Route spécifique pour gérer correctement les résultats)
+      // Rythme et Pauses
       GoRoute(
-        path: AppRoutes.exerciseRhythmPauses, // Assurez-vous que cette constante existe dans AppRoutes
+        path: AppRoutes.exerciseRhythmPauses,
          builder: (context, state) {
            final exercise = state.extra as Exercise? ?? Exercise(id: 'rythme-pauses', title: 'Rythme et Pauses', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'impact-presence', name: 'Impact et Présence', description: '', type: ExerciseCategoryType.impactPresence, iconPath: ''), evaluationParameters: {});
 
@@ -351,47 +354,79 @@ GoRouter createRouter(AuthRepository authRepository) {
              exercise: exercise,
              onExerciseCompleted: (results) {
                print("[Router] Résultats Rythme/Pauses reçus: $results");
-               // Passer les VRAIS résultats à l'écran de résultats
-               context.push(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+               context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
              },
             onExitPressed: () => context.pop(),
           );
         },
       ),
 
-      // Précision Syllabique (Nouvelle route)
+      // Précision Syllabique
       GoRoute(
         path: AppRoutes.exerciseSyllabicPrecision,
         builder: (context, state) {
           final exerciseId = state.pathParameters['exerciseId'];
-          // TODO: Récupérer l'exercice complet via exerciseId
           final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Précision Syllabique', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'clarity-expressivity', name: 'Clarté et Expressivité', description: '', type: ExerciseCategoryType.clarteExpressivite, iconPath: ''), evaluationParameters: {});
 
-          // Note: SyllabicPrecisionExerciseScreen gère sa propre logique de fin (appel à _nextWord ou pop)
-          // Il n'a pas besoin de onExerciseCompleted ici.
           return SyllabicPrecisionExerciseScreen(
-             exercise: exercise, // Passer l'exercice récupéré
+             exercise: exercise,
           );
         },
       ),
 
-      // Contraste Consonantique (Nouvelle route)
+      // Contraste Consonantique
       GoRoute(
         path: AppRoutes.exerciseConsonantContrast,
         builder: (context, state) {
           final exerciseId = state.pathParameters['exerciseId'];
-          // TODO: Récupérer l'exercice complet via exerciseId
           final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Contraste Consonantique', objective: 'Apprendre à distinguer et produire clairement des paires de consonnes proches (ex: P/B, T/D).', instructions: 'Écoutez attentivement la paire de mots, puis répétez-la en vous concentrant sur la différence entre les sons mis en évidence.', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'clarity-expressivity', name: 'Clarté et Expressivité', description: '', type: ExerciseCategoryType.clarteExpressivite, iconPath: ''), evaluationParameters: {});
 
           return ConsonantContrastExerciseScreen(
-             exercise: exercise, // Passer l'exercice récupéré
+             exercise: exercise,
+         );
+       },
+       ),
+
+      // Finales Nettes
+      GoRoute(
+        path: AppRoutes.exerciseFinalesNettes,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Finales Nettes', objective: 'Améliorer l\'intelligibilité en prononçant distinctement les sons et syllabes finales des mots.', instructions: 'Prononcez le mot affiché en articulant clairement la fin.', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'clarity-expressivity', name: 'Clarté et Expressivité', description: '', type: ExerciseCategoryType.clarteExpressivite, iconPath: ''), evaluationParameters: {});
+
+          return FinalesNettesExerciseScreen(
+             exercise: exercise,
+          );
+        },
+      ),
+
+      // Intonation Expressive (Nouvelle route)
+      GoRoute(
+        path: AppRoutes.exerciseExpressiveIntonation, // Utilise la constante définie dans AppRoutes
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'intonation-expressive', title: 'Intonation Expressive', objective: 'Utilisez les variations mélodiques pour un discours engageant', instructions: 'Écoutez le modèle, puis répétez la phrase en essayant de reproduire la mélodie vocale indiquée.', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'clarity-expressivity', name: 'Clarté et Expressivité', description: '', type: ExerciseCategoryType.clarteExpressivite, iconPath: ''), evaluationParameters: {});
+
+          return ExpressiveIntonationExerciseScreen(
+             exercise: exercise,
+             onBackPressed: () => context.pop(),
+             onExerciseCompleted: () {
+                // Naviguer vers l'écran de résultats générique (qui n'affichera pas de scores spécifiques à cet exercice pour l'instant)
+                // TODO: Créer un écran de résultat spécifique pour l'intonation si nécessaire
+                print("[Router] ExpressiveIntonationExerciseScreen completed. Navigating to generic results.");
+                // Passer les résultats d'analyse de pitch si disponibles, sinon map vide
+                // Note: L'écran ExpressiveIntonation ne passe pas de 'results' dans son callback onExerciseCompleted pour l'instant.
+                // Il faudrait adapter cela si on veut passer les métriques de pitch.
+                // Pour l'instant, on passe une map vide explicitement typée.
+                context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': <String, dynamic>{}});
+             },
           );
         },
       ),
 
 
-    ],
-    errorBuilder: (context, state) => Scaffold(
+     ],
+     errorBuilder: (context, state) => Scaffold(
       body: Center(
         child: Text(
           'Page non trouvée: ${state.uri.path}',
@@ -433,6 +468,14 @@ List<ExerciseCategory> getSampleCategories() {
       type: ExerciseCategoryType.applicationProfessionnelle,
       iconPath: 'briefcase',
     ),
+     // Ajouter la catégorie Maîtrise Avancée si elle n'existe pas
+     ExerciseCategory(
+       id: 'advanced-mastery',
+       name: 'Maîtrise Avancée',
+       description: 'Perfectionnez votre art vocal avec des techniques avancées',
+       type: ExerciseCategoryType.maitriseAvancee, // Assurez-vous que ce type existe dans l'enum
+       iconPath: 'advanced', // Choisir une icône appropriée
+     ),
   ];
 }
 
@@ -449,11 +492,19 @@ Widget _buildCategoriesScreen(BuildContext context, List<ExerciseCategory> categ
 
       try {
         exercises = await exerciseRepository.getExercisesByCategory(category.id);
+        if (exercises.isEmpty) {
+           print("Aucun exercice trouvé dans Supabase pour la catégorie: ${category.name}");
+           exercises = _getDefaultExercisesForCategory(category);
+           print("Utilisation des exercices par défaut pour la catégorie: ${category.name}");
+        }
       } catch (e) {
         print("Erreur lors de la récupération des exercices: $e");
         // En cas d'erreur, utiliser les exercices par défaut
         exercises = _getDefaultExercisesForCategory(category);
+        print("Utilisation des exercices par défaut suite à une erreur pour la catégorie: ${category.name}");
       }
+       print("Nombre d'exercices par défaut: ${exercises.length}");
+
 
       // Afficher la modale de sélection d'exercice
       final selectedExercise = await showExerciseSelectionModal(
@@ -486,26 +537,31 @@ Widget _buildCategoriesScreen(BuildContext context, List<ExerciseCategory> categ
           case 'projection-sans-force':
             targetRoute = AppRoutes.exerciseProjection.replaceFirst(':exerciseId', exerciseId);
             break;
-          case 'rythme-pauses': // Ajouter le cas pour la route spécifique
+          case 'rythme-pauses':
              targetRoute = AppRoutes.exerciseRhythmPauses;
              break;
           case 'precision-syllabique':
              targetRoute = AppRoutes.exerciseSyllabicPrecision.replaceFirst(':exerciseId', exerciseId);
              break;
-          case 'contraste-consonantique': // Ajouter le cas pour le nouvel exercice
+          case 'contraste-consonantique':
              targetRoute = AppRoutes.exerciseConsonantContrast.replaceFirst(':exerciseId', exerciseId);
              break;
+          case 'finales-nettes-01': // Assurez-vous que l'ID correspond
+             targetRoute = AppRoutes.exerciseFinalesNettes.replaceFirst(':exerciseId', exerciseId);
+             break;
+          case 'intonation-expressive': // AJOUT: Cas pour le nouvel exercice
+             targetRoute = AppRoutes.exerciseExpressiveIntonation.replaceFirst(':exerciseId', exerciseId);
+             break;
+          // Le cas default doit être le dernier (et unique)
           default:
-            // Pour les autres exercices, utiliser la route générique pour l'instant
+            // Pour les autres exercices non listés explicitement, utiliser la route générique
             print("Navigation vers écran générique pour exercice: $exerciseId");
-            targetRoute = AppRoutes.exercise; // La route générique attend l'exercice dans 'extra'
+            targetRoute = AppRoutes.exercise;
             context.push(targetRoute, extra: selectedExercise);
             return; // Sortir car on a déjà navigué
         }
 
         print("Navigation vers $targetRoute pour exercice: $exerciseId");
-        // Passer l'exercice complet via 'extra' pour éviter de le recharger dans chaque route builder pour l'instant
-        // TODO: Idéalement, passer seulement l'ID et charger l'exercice dans le builder de la route spécifique
         context.push(targetRoute, extra: selectedExercise);
       }
     },
@@ -520,60 +576,6 @@ List<Exercise> _getDefaultExercisesForCategory(ExerciseCategory category) {
   switch (category.type) {
     case ExerciseCategoryType.fondamentaux:
       return [
-        // Exercise( // Commenté car l'ID codé en dur pose problème lors de l'enregistrement de session si utilisé en fallback.
-        //   id: 'respiration-diaphragmatique',
-        //   title: 'Respiration Diaphragmatique',
-        //   objective: 'Développez la technique fondamentale de respiration pour soutenir la voix',
-        //   instructions: 'Placez une main sur votre ventre et inspirez profondément en gonflant le ventre, puis expirez lentement.',
-        //   textToRead: 'La respiration diaphragmatique est la base d\'une voix stable et puissante.',
-        //   difficulty: ExerciseDifficulty.facile,
-        //   category: category,
-        //   evaluationParameters: {
-        //     'breath_control': 0.6,
-        //     'rhythm': 0.2,
-        //     'voice_stability': 0.2,
-        //   },
-        // ),
-        // Exercise( // Commenté car l'ID codé en dur pose problème lors de l'enregistrement de session si utilisé en fallback.
-        //   id: 'capacite-pulmonaire',
-        //   title: 'Capacité Pulmonaire Progressive',
-        //   objective: 'Développez votre endurance vocale et votre contrôle respiratoire',
-        //   instructions: 'Inspirez profondément, puis lisez le texte en essayant d\'aller le plus loin possible avec une seule respiration.',
-        //   textToRead: 'La capacité à gérer efficacement son souffle est essentielle pour maintenir une voix forte et stable pendant de longues périodes de parole.',
-        //   difficulty: ExerciseDifficulty.moyen,
-        //   category: category,
-        //   evaluationParameters: {
-        //     'breath_control': 0.7,
-        //     'endurance': 0.3,
-        //   },
-        // ),
-        Exercise(
-          id: 'articulation-base',
-          title: 'Articulation de Base',
-          objective: 'Clarté fondamentale de prononciation pour être bien compris',
-          instructions: 'Lisez le texte en exagérant légèrement l\'articulation de chaque syllabe.',
-          textToRead: 'Pour être parfaitement compris, il est essentiel d\'articuler clairement chaque syllabe.',
-          difficulty: ExerciseDifficulty.facile,
-          category: category,
-          evaluationParameters: {
-            'breath_control': 0.6,
-            'rhythm': 0.2,
-            'voice_stability': 0.2,
-          },
-        ),
-        // Exercise( // Commenté car l'ID codé en dur pose problème lors de l'enregistrement de session si utilisé en fallback.
-        //   id: 'capacite-pulmonaire',
-        //   title: 'Capacité Pulmonaire Progressive',
-        //   objective: 'Développez votre endurance vocale et votre contrôle respiratoire',
-        //   instructions: 'Inspirez profondément, puis lisez le texte en essayant d\'aller le plus loin possible avec une seule respiration.',
-        //   textToRead: 'La capacité à gérer efficacement son souffle est essentielle pour maintenir une voix forte et stable pendant de longues périodes de parole.',
-        //   difficulty: ExerciseDifficulty.moyen,
-        //   category: category,
-        //   evaluationParameters: {
-        //     'breath_control': 0.7,
-        //     'endurance': 0.3,
-        //   },
-        // ),
         Exercise(
           id: 'articulation-base',
           title: 'Articulation de Base',
@@ -675,7 +677,20 @@ List<Exercise> _getDefaultExercisesForCategory(ExerciseCategory category) {
             'precision': 0.4,
            },
          ),
-         Exercise( // Garder l'ancienne définition pour l'instant, on ajoutera la nouvelle
+         Exercise(
+           id: 'finales-nettes-01',
+           title: 'Finales Nettes',
+           objective: 'Améliorer l\'intelligibilité en prononçant distinctement les sons et syllabes finales des mots.',
+           instructions: 'Prononcez le mot affiché en articulant clairement la fin.',
+           textToRead: '',
+           difficulty: ExerciseDifficulty.moyen,
+           category: category,
+           evaluationParameters: {
+             'ending_clarity': 0.8,
+             'phoneme_accuracy': 0.2,
+           },
+         ),
+         Exercise(
            id: 'contraste-consonantique',
            title: 'Contraste Consonantique',
            objective: 'Distinguez clairement les sons consonantiques similaires',
@@ -689,24 +704,11 @@ List<Exercise> _getDefaultExercisesForCategory(ExerciseCategory category) {
            },
          ),
         Exercise(
-          id: 'finales-nettes',
-          title: 'Finales Nettes',
-          objective: 'Évitez le "marmonnement" en finissant clairement vos mots',
-          instructions: 'Lisez le texte en portant une attention particulière à la fin de chaque mot.',
-          textToRead: 'Chaque mot mérite d\'être entendu jusqu\'à sa dernière lettre, sans disparaître dans un murmure indistinct.',
-          difficulty: ExerciseDifficulty.moyen,
-          category: category,
-          evaluationParameters: {
-            'ending_clarity': 0.7,
-            'articulation': 0.3,
-          },
-        ),
-        Exercise(
-          id: 'intonation-expressive',
+          id: 'intonation-expressive', // ID pour le nouvel exercice
           title: 'Intonation Expressive',
           objective: 'Utilisez les variations mélodiques pour un discours engageant',
           instructions: 'Lisez le texte en variant consciemment la mélodie de votre voix pour exprimer différentes émotions.',
-          textToRead: 'La même phrase peut exprimer la joie, la tristesse, la colère ou la surprise, simplement en changeant l\'intonation.',
+          textToRead: '', // Sera généré par OpenAI
           difficulty: ExerciseDifficulty.moyen,
           category: category,
           evaluationParameters: {
@@ -725,21 +727,6 @@ List<Exercise> _getDefaultExercisesForCategory(ExerciseCategory category) {
           evaluationParameters: {
             'pitch_variation': 0.7,
             'expressivity': 0.3,
-          },
-        ),
-        // Ajout du nouvel exercice "Contraste Consonantique" (avec l'ID existant pour l'instant)
-        Exercise(
-          id: 'contraste-consonantique', // ID unique (garder le même ID pour l'instant)
-          title: 'Contraste Consonantique',
-          objective: 'Apprendre à distinguer et produire clairement des paires de consonnes proches (ex: P/B, T/D).',
-          instructions: 'Écoutez attentivement la paire de mots, puis répétez-la en vous concentrant sur la différence entre les sons mis en évidence.',
-          textToRead: '', // Le texte sera généré dynamiquement (paires de mots)
-          difficulty: ExerciseDifficulty.moyen, // Ou à ajuster
-          category: category, // La catégorie est passée en argument
-          evaluationParameters: {
-            'consonant_distinction': 0.6, // Évaluation de la clarté du contraste
-            'phonetic_accuracy': 0.3, // Précision des consonnes cibles
-            'general_clarity': 0.1, // Clarté générale
           },
         ),
       ];

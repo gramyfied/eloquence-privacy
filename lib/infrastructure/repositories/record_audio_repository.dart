@@ -55,6 +55,17 @@ class RecordAudioRepository implements AudioRepository {
   Future<void> startRecording({required String filePath}) async {
     ConsoleLogger.info('startRecording appelé avec filePath: $filePath');
 
+    // S'assurer que l'instance précédente est disposée avant d'en créer une nouvelle
+    // Utiliser try-finally pour garantir la recréation même si dispose échoue
+    try {
+      await _recorder.dispose();
+    } catch (e) {
+      ConsoleLogger.warning('Erreur lors du dispose de l\'ancien recorder (ignorée): $e');
+    } finally {
+      _recorder = AudioRecorder();
+      ConsoleLogger.info('Nouvelle instance AudioRecorder créée pour l\'enregistrement fichier.');
+    }
+
     if (!await _requestPermissions()) {
       throw Exception('Permission microphone refusée');
     }
@@ -74,7 +85,7 @@ class RecordAudioRepository implements AudioRepository {
 
     // Configuration de l'enregistrement pour WAV PCM16 Mono 16kHz
     final config = RecordConfig(
-      encoder: AudioEncoder.wav, // Enregistrer en WAV
+      encoder: AudioEncoder.wav, // Revenir à WAV
       sampleRate: sampleRate,
       numChannels: numChannels,
       bitRate: bitRate, // Spécifier le bitrate pour PCM16

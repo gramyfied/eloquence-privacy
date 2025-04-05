@@ -10,16 +10,14 @@ import '../service_locator.dart'; // Ajouté pour récupérer AzureTtsService
 class ExampleAudioProvider {
   // Remplacer FlutterTts par AzureTtsService
   late final AzureTtsService _azureTtsService;
-  // Garder un StreamController pour propager l'état si nécessaire, mais il sera piloté par AzureTtsService
-  final StreamController<bool> _isPlayingController = StreamController<bool>.broadcast();
-  StreamSubscription? _ttsStateSubscription;
+  // StreamController et souscription retirés, on utilise directement ceux d'AzureTtsService
 
   ExampleAudioProvider() {
     // Récupérer l'instance de AzureTtsService depuis le service locator
     // Assurez-vous qu'il est enregistré avant ExampleAudioProvider
     try {
       _azureTtsService = serviceLocator<AzureTtsService>();
-      _subscribeToTtsState();
+      // _subscribeToTtsState(); // Retiré
       _initializeAzureTts(); // Initialiser avec les clés
     } catch (e) {
        ConsoleLogger.error('[ExampleAudioProvider] Erreur lors de la récupération ou initialisation d\'AzureTtsService: $e');
@@ -47,24 +45,12 @@ class ExampleAudioProvider {
     }
   }
 
-
-  /// S'abonne au stream d'état de lecture d'AzureTtsService
-  void _subscribeToTtsState() {
-    _ttsStateSubscription = _azureTtsService.isPlayingStream.listen(
-      (isPlaying) {
-        _isPlayingController.add(isPlaying);
-      },
-      onError: (error) {
-        ConsoleLogger.error('[ExampleAudioProvider] Erreur du stream AzureTtsService: $error');
-        _isPlayingController.add(false); // Assurer l'état non-joueur
-      }
-    );
-  }
+  // Méthode _subscribeToTtsState retirée
 
   // Les méthodes _setupTtsHandlers et _setDefaultLanguage sont retirées car gérées par AzureTtsService
 
-  /// Joue un exemple audio pour le mot spécifié via Azure TTS
-  Future<void> playExampleFor(String word, {String? voiceName}) async {
+  /// Joue un exemple audio pour le mot spécifié via Azure TTS, avec style optionnel
+  Future<void> playExampleFor(String word, {String? voiceName, String? style}) async {
     if (!_azureTtsService.isInitialized) {
        ConsoleLogger.error('[ExampleAudioProvider] AzureTtsService non initialisé. Tentative d\'initialisation...');
        await _initializeAzureTts(); // Essayer d'initialiser à la volée
@@ -72,18 +58,15 @@ class ExampleAudioProvider {
           ConsoleLogger.error('[ExampleAudioProvider] Échec de l\'initialisation. Lecture annulée pour "$word".');
           return; // Ne pas continuer si l'initialisation échoue
        }
-    }
-    try {
-      ConsoleLogger.info('[ExampleAudioProvider] Demande de lecture Azure TTS pour: "$word"');
-      // Déléguer à AzureTtsService
-      await _azureTtsService.synthesizeAndPlay(word, voiceName: voiceName);
-      // L'état isPlaying est géré par le stream _azureTtsService.isPlayingStream
-    } catch (e) {
-      ConsoleLogger.error('[ExampleAudioProvider] Erreur lors de la lecture de l\'exemple via Azure: $e');
-      // Assurer que l'état est correct via le stream si l'erreur n'a pas été propagée
-      if (_isPlayingController.hasListener && _azureTtsService.isPlaying) {
-         _isPlayingController.add(false);
-      }
+     }
+     try {
+       ConsoleLogger.info('[ExampleAudioProvider] Demande de lecture Azure TTS pour: "$word"${style != null ? ' avec style $style' : ''}');
+       // Déléguer à AzureTtsService, en passant le style
+       await _azureTtsService.synthesizeAndPlay(word, voiceName: voiceName, style: style);
+       // L'état isPlaying est maintenant directement géré par AzureTtsService
+     } catch (e) {
+       ConsoleLogger.error('[ExampleAudioProvider] Erreur lors de la lecture de l\'exemple via Azure: $e');
+       // Pas besoin de gérer _isPlayingController ici
     }
   }
 
@@ -92,32 +75,29 @@ class ExampleAudioProvider {
     try {
       ConsoleLogger.info('[ExampleAudioProvider] Demande d\'arrêt de la lecture Azure TTS');
       // Déléguer à AzureTtsService
-      await _azureTtsService.stop();
-      // L'état isPlaying est géré par le stream _azureTtsService.isPlayingStream
-    } catch (e) {
-      ConsoleLogger.error('[ExampleAudioProvider] Erreur lors de l\'arrêt de la lecture via Azure: $e');
-      // Assurer que l'état est correct via le stream si l'erreur n'a pas été propagée
-      if (_isPlayingController.hasListener && _azureTtsService.isPlaying) {
-         _isPlayingController.add(false);
-      }
+       await _azureTtsService.stop();
+       // L'état isPlaying est maintenant directement géré par AzureTtsService
+     } catch (e) {
+       ConsoleLogger.error('[ExampleAudioProvider] Erreur lors de l\'arrêt de la lecture via Azure: $e');
+       // Pas besoin de gérer _isPlayingController ici
     }
   }
 
   /// Vérifie si une lecture est en cours (via AzureTtsService)
   bool get isPlaying => _azureTtsService.isPlaying;
 
-  /// Stream indiquant si une lecture est en cours (via AzureTtsService)
-  Stream<bool> get isPlayingStream => _isPlayingController.stream;
+  /// Stream indiquant si une lecture est en cours (directement depuis AzureTtsService)
+  Stream<bool> get isPlayingStream => _azureTtsService.isPlayingStream;
 
 
   /// Libère les ressources
   Future<void> dispose() async {
     try {
       ConsoleLogger.info('[ExampleAudioProvider] Libération des ressources');
-      await _ttsStateSubscription?.cancel(); // Annuler l'abonnement
+      // _ttsStateSubscription?.cancel(); // Retiré
       // Pas besoin de disposer _azureTtsService ici, car c'est un singleton géré par GetIt
-      await _isPlayingController.close();
-      ConsoleLogger.success('[ExampleAudioProvider] Ressources libérées');
+      // await _isPlayingController.close(); // Retiré
+      ConsoleLogger.success('[ExampleAudioProvider] Ressources libérées (pas de contrôleur local à fermer)');
     } catch (e) {
       ConsoleLogger.error('[ExampleAudioProvider] Erreur lors de la libération des ressources: $e');
     }

@@ -1,28 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-// Remplacer Provider par serviceLocator pour la cohérence
-// import 'package:provider/provider.dart';
-import 'dart:async'; // Importer async pour StreamSubscription
-// Importer foundation pour kIsWeb
+import 'dart:async';
 import '../../../app/theme.dart';
 import '../../../domain/entities/exercise.dart';
 import '../../../domain/entities/exercise_category.dart';
 import '../../../domain/repositories/audio_repository.dart';
-// Supprimer l'import de SpeechRecognitionRepository
-// import '../../../domain/repositories/speech_recognition_repository.dart';
-import '../../../services/service_locator.dart'; // Importer GetIt
-import '../../../services/azure/azure_speech_service.dart'; // Importer AzureSpeechService
-// import '../../../infrastructure/repositories/flutter_sound_audio_repository.dart'; // Retiré
+import '../../../services/service_locator.dart';
+import '../../../services/azure/azure_speech_service.dart';
 import '../../widgets/microphone_button.dart';
-import '../../widgets/visual_effects/info_modal.dart'; // Importer InfoModal
-import '../exercises/exercise_categories_screen.dart'; // Utilisé dans getSampleExercise
-import 'breathing_exercise_screen.dart';
-import 'articulation_exercise_screen.dart';
-import 'lung_capacity_exercise_screen.dart'; // Importer LungCapacityExerciseScreen
-import 'rhythm_and_pauses_exercise_screen.dart'; // Importer le nouvel écran
-import '../../widgets/visual_effects/celebration_effect.dart'; // Importer CelebrationEffect
-import '../../../services/audio/example_audio_provider.dart'; // Importer ExampleAudioProvider
-import 'package:audio_signal_processor/audio_signal_processor.dart'; // Assurez-vous que cet import est présent
+import '../../widgets/visual_effects/info_modal.dart';
+import '../../widgets/visual_effects/celebration_effect.dart';
+import '../../../services/audio/example_audio_provider.dart';
+// Imports pour AudioSignalProcessor et OpenAIFeedbackService retirés
 
 class ExerciseScreen extends StatefulWidget {
   final Exercise exercise;
@@ -46,16 +35,14 @@ class ExerciseScreen extends StatefulWidget {
 
 class _ExerciseScreenState extends State<ExerciseScreen> {
   bool _isRecording = false;
-  // String? _recordingFilePath; // Supprimé, plus besoin avec le streaming
   AudioRepository? _audioRepository;
-  // SpeechRecognitionRepository? _speechRepository; // Supprimé
   AzureSpeechService? _azureSpeechService;
   Stream<double>? _audioLevelStream;
 
-  // Variables d'état pour l'analyse Azure
+  // Azure state variables
   String _recognizedText = '';
   String _azureError = '';
-  bool _isAzureProcessing = false; // Pour indiquer si Azure analyse
+  bool _isAzureProcessing = false;
   double? _pronunciationScore;
   double? _accuracyScore;
   double? _fluencyScore;
@@ -64,17 +51,12 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   // Stream Subscriptions
   StreamSubscription? _audioSubscription;
   StreamSubscription? _recognitionSubscription;
-  StreamSubscription<AudioAnalysisResult>? _audioAnalysisSubscription; // Subscription for the new plugin
 
-  // State for audio analysis results
-  AudioAnalysisResult? _latestAudioAnalysisResult;
-
-  // États pour la fin d'exercice
+  // Exercise completion state
   bool _isExerciseCompleted = false;
   bool _showCelebration = false;
-  // Ajouter ExampleAudioProvider pour le TTS
   ExampleAudioProvider? _exampleAudioProvider;
-
+  // Variables pour OpenAI et AudioAnalysis retirées
 
   @override
   void initState() {
@@ -82,81 +64,76 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     print('[ExerciseScreen initState] START - Widget HashCode: ${widget.hashCode}');
     _audioRepository = serviceLocator<AudioRepository>();
     _azureSpeechService = serviceLocator<AzureSpeechService>();
-    _exampleAudioProvider = serviceLocator<ExampleAudioProvider>(); // Récupérer ExampleAudioProvider
+    _exampleAudioProvider = serviceLocator<ExampleAudioProvider>();
     print('[ExerciseScreen initState] Retrieved _azureSpeechService instance with HashCode: ${_azureSpeechService.hashCode}');
 
-    // Initialiser le flux des niveaux audio (si disponible)
     _audioLevelStream = _audioRepository?.audioLevelStream;
-
-    // S'abonner au flux de reconnaissance d'Azure
     _subscribeToRecognitionStream();
-
-    // Initialiser et s'abonner au plugin d'analyse audio
-    _initializeAndSubscribeAudioProcessor();
-
-    // S'abonner au flux audio pour envoyer les chunks (sera activé dans _toggleRecording)
-    // _subscribeToAudioStream(); // Ne pas s'abonner ici, mais au démarrage de l'enregistrement
   }
 
-  // --- Initialize and Subscribe to Audio Signal Processor ---
-  Future<void> _initializeAndSubscribeAudioProcessor() async {
-    try {
-      await AudioSignalProcessor.initialize();
-      print('[ExerciseScreen] AudioSignalProcessor initialized.');
-      _audioAnalysisSubscription = AudioSignalProcessor.analysisResultStream.listen(
-        (result) {
-          if (mounted) {
-            // print('[ExerciseScreen] Received Audio Analysis Result: F0=${result.f0}, Jitter=${result.jitter}, Shimmer=${result.shimmer}');
-            setState(() {
-              _latestAudioAnalysisResult = result;
-            });
-          }
-        },
-        onError: (error) {
-          print('[ExerciseScreen] Audio Analysis Stream Error: $error');
-          // Handle error appropriately, maybe show a message to the user
-        },
-        onDone: () {
-          print('[ExerciseScreen] Audio Analysis Stream Done.');
-        },
-      );
-    } catch (e) {
-      print('[ExerciseScreen] Failed to initialize AudioSignalProcessor: $e');
-      // Handle initialization error
-    }
-  }
-  // --- End Audio Signal Processor Init ---
-
+  // Initialisation et souscription à AudioSignalProcessor retirées
 
   void _subscribeToRecognitionStream() {
-    _recognitionSubscription?.cancel(); // Annuler l'abonnement précédent s'il existe
+    _recognitionSubscription?.cancel();
     _recognitionSubscription = _azureSpeechService?.recognitionStream.listen(
-      (result) {
-        // Utiliser toString() ou des propriétés spécifiques pour le log
+      (result) async {
         print('[ExerciseScreen] Received Azure Result: ${result.toString()}');
         if (mounted) {
-          setState(() {
-            _isAzureProcessing = false; // L'analyse est terminée ou une partie est arrivée
-            // Vérifier une propriété d'erreur probable (ex: result.errorMessage)
-            // Adapter le nom de la propriété si différent.
-            final errorMsg = result.errorMessage; // Essayer avec errorMessage
-            if (errorMsg != null && errorMsg.isNotEmpty) {
-              _azureError = "Erreur Azure: $errorMsg";
-              _recognizedText = ''; // Réinitialiser le texte en cas d'erreur
+          if (result.type == AzureSpeechEventType.error) {
+            setState(() {
+              _isAzureProcessing = false;
+              _azureError = "Erreur Azure: ${result.errorMessage ?? result.errorCode ?? 'Inconnue'}";
+              _recognizedText = '';
               _pronunciationScore = null;
               _accuracyScore = null;
               _fluencyScore = null;
               _completenessScore = null;
-            } else {
-              _azureError = ''; // Réinitialiser l'erreur si succès
-              _recognizedText = result.text ?? _recognizedText; // Garder l'ancien si null
-              // Accéder aux scores via la map et caster
-              _pronunciationScore = (result.pronunciationResult?['pronunciationScore'] as num?)?.toDouble();
-              _accuracyScore = (result.pronunciationResult?['accuracyScore'] as num?)?.toDouble();
-              _fluencyScore = (result.pronunciationResult?['fluencyScore'] as num?)?.toDouble();
-              _completenessScore = (result.pronunciationResult?['completenessScore'] as num?)?.toDouble();
-            }
-          });
+            });
+          } else if (result.type == AzureSpeechEventType.partial) {
+             setState(() {
+               _recognizedText = result.text ?? _recognizedText;
+               _azureError = '';
+             });
+          } else if (result.type == AzureSpeechEventType.finalResult) {
+             final recognized = result.text ?? '';
+             final assessment = result.pronunciationResult;
+             Map<String, dynamic>? pronunciationAssessmentData;
+             double? pronScore, accScore, fluScore, compScore;
+
+             if (assessment != null &&
+                 assessment['NBest'] is List &&
+                 (assessment['NBest'] as List).isNotEmpty &&
+                 assessment['NBest'][0] is Map &&
+                 assessment['NBest'][0]['PronunciationAssessment'] is Map) {
+               pronunciationAssessmentData = assessment['NBest'][0]['PronunciationAssessment'] as Map<String, dynamic>;
+               pronScore = (pronunciationAssessmentData['PronunciationScore'] as num?)?.toDouble();
+               accScore = (pronunciationAssessmentData['AccuracyScore'] as num?)?.toDouble();
+               fluScore = (pronunciationAssessmentData['FluencyScore'] as num?)?.toDouble();
+               compScore = (pronunciationAssessmentData['CompletenessScore'] as num?)?.toDouble();
+               print("[ExerciseScreen] Scores extracted: Pron=$pronScore, Acc=$accScore, Flu=$fluScore, Comp=$compScore");
+             } else {
+               print("[ExerciseScreen] Warning: Could not find PronunciationAssessment structure in Azure result. Assessment data: $assessment");
+             }
+
+             setState(() {
+               _isAzureProcessing = false;
+               _azureError = '';
+               _recognizedText = recognized;
+               _pronunciationScore = pronScore;
+               _accuracyScore = accScore;
+               _fluencyScore = fluScore;
+               _completenessScore = compScore;
+             });
+
+             // Appel direct à _completeExercise sans feedback IA
+             _completeExercise(pronScore, accScore, fluScore, compScore, null);
+
+          } else if (result.type == AzureSpeechEventType.status) {
+             print("[ExerciseScreen] Azure Status: ${result.statusMessage}");
+             if (result.statusMessage == "Recognition session stopped" && !_isExerciseCompleted) {
+                // Gérer l'arrêt inattendu si nécessaire
+             }
+          }
         }
       },
       onError: (error) {
@@ -177,7 +154,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
          print('[ExerciseScreen] Azure Recognition Stream Done');
          if (mounted) {
            setState(() {
-             _isAzureProcessing = false; // Assurer que l'indicateur est désactivé
+             _isAzureProcessing = false;
            });
          }
       }
@@ -185,184 +162,113 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
      print('[ExerciseScreen] Subscribed to Azure Recognition Stream.');
   }
 
-   // Modifié pour accepter le Stream en argument
    void _subscribeToAudioStream(Stream<Uint8List> audioStream) {
-     _audioSubscription?.cancel(); // Annuler l'abonnement précédent
+     _audioSubscription?.cancel();
      print('[ExerciseScreen] Subscribing to received Audio Stream...');
      _audioSubscription = audioStream.listen(
        (data) {
-         // Envoyer les chunks audio à Azure uniquement si l'enregistrement est actif
-         // Envoyer les chunks audio à Azure ET au nouveau plugin
-         if (_isRecording) {
-           if (_azureSpeechService != null && _azureSpeechService!.isInitialized) {
-             // print('[ExerciseScreen] Sending audio chunk to Azure. Size: ${data.length}');
-             _azureSpeechService!.sendAudioChunk(data);
-           }
-           // Envoyer aussi au plugin d'analyse de signal (pour Android principalement)
-           // print('[ExerciseScreen] Sending audio chunk to AudioSignalProcessor. Size: ${data.length}');
-           AudioSignalProcessor.processAudioChunk(data);
-         }
-       },
-       onError: (error) {
-         print('[ExerciseScreen] Audio Stream Error: $error');
-         // Gérer l'erreur, peut-être arrêter l'enregistrement ?
-         if (mounted) {
-           setState(() {
-             _azureError = "Erreur Stream Audio: $error";
-             // Potentiellement arrêter l'enregistrement ici si l'erreur est critique
-             // _stopRecordingLogic();
+         if (mounted && _isRecording) {
+           Future(() {
+             if (mounted && _isRecording) {
+               if (_azureSpeechService != null && _azureSpeechService!.isInitialized) {
+                 _azureSpeechService!.sendAudioChunk(data);
+               }
+             }
            });
          }
        },
+       onError: (error) {
+         Future(() {
+           if (mounted) {
+             print('[ExerciseScreen] Audio Stream Error: $error');
+             setState(() {
+               _azureError = "Erreur Stream Audio: $error";
+             });
+           }
+         });
+       },
        onDone: () {
-         print('[ExerciseScreen] Audio Stream Done.');
-         // Le flux audio est terminé (ne devrait arriver que si stopRecordingStream est appelé)
+         Future(() {
+           if (mounted) {
+             print('[ExerciseScreen] Audio Stream Done.');
+           }
+         });
        }
      );
    }
 
   @override
   void dispose() {
-    print('[ExerciseScreen dispose] Cancelling subscriptions and disposing processor.');
-    _audioSubscription?.cancel();
-    _recognitionSubscription?.cancel();
-    _audioAnalysisSubscription?.cancel(); // Cancel the audio analysis subscription
-    AudioSignalProcessor.dispose(); // Dispose the plugin resources
-    // Ne pas appeler stopRecording ici car cela pourrait interférer si l'écran est détruit pendant l'enregistrement
-    // Assurez-vous que stopRecognition est appelé dans _toggleRecording ou via un bouton explicite
-    super.dispose();
-  }
+     print('[ExerciseScreen dispose] Cancelling subscriptions.');
+     _audioSubscription?.cancel();
+     _recognitionSubscription?.cancel();
+     super.dispose();
+   }
 
 
   @override
   Widget build(BuildContext context) {
-    // Log instance hashcode in build as well - Supprimer la référence à _speechRepository
     print('[ExerciseScreen build] START - Widget HashCode: ${widget.hashCode}, Azure Service HashCode: ${_azureSpeechService.hashCode}, isInitialized: ${_azureSpeechService?.isInitialized}');
-    // Utiliser l'écran spécifique en fonction de l'ID de l'exercice
-    switch (widget.exercise.id) {
-      case 'respiration-diaphragmatique':
-        return BreathingExerciseScreen(
-          exercise: widget.exercise,
-          onExerciseCompleted: (results) {
-            // Simuler un temps de traitement avant de marquer l'exercice comme complété
-            Future.delayed(const Duration(milliseconds: 1500), () {
-              widget.onExerciseCompleted();
-            });
-          },
-          onExitPressed: widget.onBackPressed,
-        );
-      
-      case 'articulation-base':
-        return ArticulationExerciseScreen(
-          exercise: widget.exercise,
-          onExerciseCompleted: (results) {
-            // Simuler un temps de traitement avant de marquer l'exercice comme complété
-            Future.delayed(const Duration(milliseconds: 1500), () {
-              widget.onExerciseCompleted();
-            });
-          },
-          onExitPressed: widget.onBackPressed,
-        );
-
-      // Ajouter le cas pour LungCapacityExerciseScreen
-      case 'capacite-pulmonaire':
-        return LungCapacityExerciseScreen(
-           exercise: widget.exercise,
-           onExerciseCompleted: (results) {
-             // Simuler un temps de traitement avant de marquer l'exercice comme complété
-             Future.delayed(const Duration(milliseconds: 1500), () {
-               // Note: Les résultats ici viennent de LungCapacityExerciseScreen
-               // On ne les sauvegarde pas pour l'instant
-               print("[ExerciseScreen build] LungCapacityExercise completed. Results: $results");
-               // Appeler le callback parent (qui navigue vers les résultats factices pour l'instant)
-               // TODO: Passer les vrais résultats quand la sauvegarde sera implémentée
-               widget.onExerciseCompleted();
-             });
-           },
-           onExitPressed: widget.onBackPressed,
-         );
-
-      // Ajouter le cas pour Rythme et Pauses Stratégiques
-      case 'rythme-pauses': // <<< CORRECTION DE L'ID
-         return RhythmAndPausesExerciseScreen(
-           exercise: widget.exercise,
-           onExerciseCompleted: (results) {
-             // TODO: Gérer les résultats spécifiques de cet exercice si nécessaire
-             print("[ExerciseScreen build] RhythmAndPausesExercise completed. Results: $results");
-             widget.onExerciseCompleted(); // Appeler le callback parent
-           },
-           onExitPressed: widget.onBackPressed,
-         );
-
-      // Pour tous les autres exercices, utiliser l'écran générique (ou un écran par défaut)
-      default:
-        // Optionnel: Afficher un message indiquant que l'exercice n'est pas implémenté
-        // ou retourner un écran générique comme avant.
-        print("[ExerciseScreen build] ATTENTION: Exercice ID '${widget.exercise.id}' non géré explicitement. Affichage générique.");
-        return Scaffold(
-          backgroundColor: AppTheme.darkBackground,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: widget.onBackPressed,
-            ),
-            title: Text(
-              'Exercice - ${widget.exercise.category.name.toLowerCase()}',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+    print("[ExerciseScreen build] Affichage générique pour exercice: ${widget.exercise.id}");
+    return Scaffold(
+      backgroundColor: AppTheme.darkBackground,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: widget.onBackPressed,
+        ),
+        title: Text(
+          'Exercice - ${widget.exercise.category.name.toLowerCase()}',
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.primaryColor.withOpacity(0.2),
+              ),
+              child: const Icon(
+                Icons.info_outline,
+                color: AppTheme.primaryColor,
               ),
             ),
-            centerTitle: true,
-            actions: [
-              // Remplacer le bouton close par l'icône info
-              IconButton(
-                icon: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppTheme.primaryColor.withOpacity(0.2),
-                  ),
-                  child: const Icon(
-                    Icons.info_outline,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-                onPressed: _showInfoModal, // Lier à la future méthode _showInfoModal
+            onPressed: _showInfoModal,
+          ),
+          const SizedBox(width: 8),
+        ],
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+        ),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildExerciseHeader(),
+                  const SizedBox(height: 32),
+                  _buildTextToReadSection(),
+                  const SizedBox(height: 32),
+                ],
               ),
-              const SizedBox(width: 8), // Ajouter un peu d'espace
-            ],
-            systemOverlayStyle: const SystemUiOverlayStyle(
-              statusBarColor: Colors.transparent,
-              statusBarIconBrightness: Brightness.light,
             ),
           ),
-          body: Column(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildExerciseHeader(),
-                      const SizedBox(height: 32),
-                      // Supprimer l'affichage direct des instructions ici
-                      // _buildObjectiveSection(),
-                      // const SizedBox(height: 32),
-                      _buildTextToReadSection(), // Garder le texte à lire
-                      const SizedBox(height: 32), // Ajouter de l'espace en bas si besoin
-                    ],
-                  ),
-                ),
-              ),
-              _buildBottomSection(),
-            ],
-          ),
-        );
-    }
+          _buildBottomSection(),
+        ],
+      ),
+    );
   }
 
   Widget _buildExerciseHeader() {
@@ -376,7 +282,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
           ),
           padding: const EdgeInsets.all(8),
           child: const Icon(
-            Icons.adjust, // Changed from Icons.target which doesn't exist
+            Icons.adjust,
             color: Colors.white,
             size: 24,
           ),
@@ -396,7 +302,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Niveau: ${_difficultyToString(widget.exercise.difficulty)}', // Utiliser la vraie difficulté
+                'Niveau: ${_difficultyToString(widget.exercise.difficulty)}',
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.white.withOpacity(0.7),
@@ -409,26 +315,18 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     );
   }
 
-  // La méthode _buildObjectiveSection est supprimée car les instructions sont maintenant dans la modale
-
   Widget _buildTextToReadSection() {
-    if (widget.exercise.textToRead == null) {
-      return const SizedBox.shrink();
-    }
+     final textToDisplay = widget.exercise.textToRead;
 
-    return Column(
+     if (textToDisplay == null || textToDisplay.isEmpty) {
+       return const Text("Aucun texte à lire pour cet exercice.", style: TextStyle(color: Colors.orangeAccent));
+     }
+
+     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Texte à prononcer :',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 16),
         Container(
+          width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: AppTheme.darkSurface,
@@ -438,18 +336,19 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
               width: 1,
             ),
           ),
-          child: Text(
-            widget.exercise.textToRead!,
-            style: const TextStyle(
-              fontSize: 18,
-              color: Colors.white,
-              height: 1.5,
-            ),
-          ),
+           child: Text(
+                  textToDisplay,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    color: Colors.white,
+                    height: 1.5,
+                  ),
+                ),
         ),
       ],
     );
-  }
+   }
 
   Widget _buildBottomSection() {
     return Container(
@@ -463,8 +362,6 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
             isRecording: _isRecording,
             baseColor: AppTheme.primaryColor,
             audioLevelStream: _audioLevelStream,
-            // Désactiver le bouton si le repo est null ou non initialisé en passant une fonction vide
-            // Désactiver le bouton si Azure n'est pas initialisé ou si l'audio repo n'existe pas
             onPressed: (_azureSpeechService == null || !_azureSpeechService!.isInitialized || _audioRepository == null)
                        ? () {
                            print('[ExerciseScreen] Record button pressed but Azure/Audio service not ready.');
@@ -475,16 +372,15 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                              ),
                            );
                          }
-                       : _toggleRecording, // Utiliser la méthode refactorisée
+                       : _toggleRecording,
           ),
           const SizedBox(height: 16),
-          _buildFeedbackArea(), // Ajouter la zone de feedback
+          _buildFeedbackArea(),
         ],
       ),
     );
   }
 
-  // Méthode pour construire la zone de feedback (similaire à ArticulationExerciseScreen)
   Widget _buildFeedbackArea() {
     String statusText;
     Color statusColor = Colors.white.withOpacity(0.8);
@@ -493,11 +389,13 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       statusText = 'Service Azure indisponible';
       statusColor = Colors.red;
     } else if (_isRecording) {
-      statusText = _isAzureProcessing ? 'Analyse en cours...' : 'Enregistrement en cours...';
-      statusColor = AppTheme.primaryColor;
-    } else if (_recognizedText.isNotEmpty) {
-      statusText = 'Analyse terminée. Appuyez pour recommencer.';
-    } else if (_azureError.isNotEmpty) {
+       statusText = _isAzureProcessing
+                    ? 'Analyse Azure en cours...'
+                    : 'Enregistrement en cours...'; // Simplifié
+       statusColor = AppTheme.primaryColor;
+     } else if (_recognizedText.isNotEmpty) { // Simplifié
+       statusText = 'Analyse terminée. Appuyez pour recommencer.';
+     } else if (_azureError.isNotEmpty) {
        statusText = _azureError;
        statusColor = Colors.orange;
     }
@@ -513,7 +411,6 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 16),
-        // Afficher le texte reconnu et les scores si disponibles
         if (_recognizedText.isNotEmpty && _azureError.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -544,44 +441,27 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                     Text(
                       'Score Complétude: ${_completenessScore!.toStringAsFixed(1)}%',
                       style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor),
-                    ),
-              ],
-            ),
-          ),
-        // Afficher les résultats de l'analyse audio (F0, Jitter, Shimmer)
-        if (_latestAudioAnalysisResult != null && _isRecording) // Show only while recording for real-time feedback
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Text(
-              'F0: ${_latestAudioAnalysisResult!.f0.toStringAsFixed(1)} Hz | Jitter: ${_latestAudioAnalysisResult!.jitter.toStringAsFixed(2)}% | Shimmer: ${_latestAudioAnalysisResult!.shimmer.toStringAsFixed(2)}%',
-              style: TextStyle(fontSize: 14, color: Colors.lightBlueAccent),
-              textAlign: TextAlign.center,
-            ),
-          ),
-      ],
-    );
-  }
+                     ),
+               ],
+             ),
+           ),
+       ],
+     );
+   }
 
-
-  // --- Logique d'enregistrement et d'arrêt refactorisée ---
-
-  // Ajouter la méthode pour afficher la modale d'info (adaptée de ArticulationExerciseScreen)
   void _showInfoModal() {
-    print('[ExerciseScreen] Affichage de la modale d\'information pour l\'exercice: ${widget.exercise.title}');
-    // Utiliser les données de l'exercice actuel
     showDialog(
       context: context,
       builder: (context) => InfoModal(
         title: widget.exercise.title,
         description: widget.exercise.objective,
-        // Vous pouvez ajouter des bénéfices génériques ou spécifiques si nécessaire
-        benefits: const [
-          'Amélioration de la clarté vocale',
-          'Renforcement de la confiance en soi',
-          'Meilleure communication',
+        benefits: const [ // Garder des bénéfices génériques
+          "Améliore la clarté de la parole.",
+          "Renforce le contrôle vocal.",
+          "Augmente l'intelligibilité.",
         ],
-        instructions: widget.exercise.instructions,
-        backgroundColor: AppTheme.primaryColor, // Ou une autre couleur du thème
+        instructions: widget.exercise.instructions ?? "Lisez le texte affiché clairement et à un rythme modéré.",
+        backgroundColor: AppTheme.primaryColor,
       ),
     );
   }
@@ -603,51 +483,48 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   }
 
   Future<void> _startRecordingLogic() async {
-    print('[ExerciseScreen] Starting recording and Azure recognition...');
+    final referenceTextForAzure = widget.exercise.textToRead;
+    if (referenceTextForAzure == null || referenceTextForAzure.isEmpty) {
+       print("[ExerciseScreen] Erreur: Tentative de démarrer la reconnaissance sans texte de référence valide.");
+       setState(() {
+          _isRecording = false;
+          _isAzureProcessing = false;
+          _azureError = "Texte de l'exercice manquant.";
+       });
+       widget.onRecordingStateChanged?.call(false);
+       return;
+    }
+
     setState(() {
       _isRecording = true;
-      _isAzureProcessing = true; // Indiquer qu'Azure va commencer à traiter
-      _recognizedText = ''; // Réinitialiser les résultats précédents
+      _isAzureProcessing = true;
+      _recognizedText = '';
       _azureError = '';
       _pronunciationScore = null;
       _accuracyScore = null;
       _fluencyScore = null;
-      _completenessScore = null;
-      _isExerciseCompleted = false; // Réinitialiser l'état de complétion
-      _showCelebration = false;
-    });
+       _completenessScore = null;
+       _isExerciseCompleted = false;
+       _showCelebration = false;
+     });
 
-    try {
-      // Démarrer la reconnaissance Azure AVANT de démarrer le flux audio local
-      // TODO: Vérifier/ajouter le paramètre 'language' dans AzureSpeechService si nécessaire.
-      await _azureSpeechService!.startRecognition(
-        // language: 'fr-FR', // Paramètre retiré temporairement pour corriger l'erreur
-        referenceText: widget.exercise.textToRead, // Passer le texte de référence si disponible
-      );
-
-      // Démarrer l'analyse du plugin audio
-      await AudioSignalProcessor.startAnalysis();
-
-      // Démarrer l'enregistrement du flux audio et récupérer le stream
-      final audioStream = await _audioRepository!.startRecordingStream();
-
-      // S'abonner au flux audio retourné MAINTENANT (enverra les chunks à Azure et au plugin)
-      _subscribeToAudioStream(audioStream);
-
-      // Notifier le parent
-      widget.onRecordingStateChanged?.call(true);
-
+     try {
+       await _azureSpeechService!.startRecognition(
+         referenceText: referenceTextForAzure,
+       );
+       final audioStream = await _audioRepository!.startRecordingStream();
+       _subscribeToAudioStream(audioStream);
+       widget.onRecordingStateChanged?.call(true);
       print('[ExerciseScreen] Recording and Azure recognition started successfully.');
-
-    } catch (e) {
-      print('Erreur lors du démarrage de l\'enregistrement/reconnaissance: $e');
+     } catch (e) {
+       print('Erreur lors du démarrage de l\'enregistrement/reconnaissance: $e');
       setState(() {
         _isRecording = false;
         _isAzureProcessing = false;
         _azureError = "Erreur démarrage: $e";
       });
       widget.onRecordingStateChanged?.call(false);
-      _audioSubscription?.cancel(); // Assurer l'annulation en cas d'erreur au démarrage
+      _audioSubscription?.cancel();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erreur démarrage: $e'), backgroundColor: Colors.red),
@@ -657,43 +534,18 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   }
 
   Future<void> _stopRecordingLogic() async {
-     print('[ExerciseScreen] Stopping recording and Azure recognition...');
-     // Ne pas mettre _isAzureProcessing à false ici, car l'analyse peut continuer un peu après l'arrêt
-     // Il sera mis à false quand un résultat final ou une erreur arrive du stream Azure.
-
-     // D'abord, arrêter l'envoi de nouveaux chunks audio en arrêtant le stream du repository
-     // TODO: Assurer que l'interface AudioRepository expose `stopRecordingStream`
-     await _audioRepository?.stopRecordingStream(); // Appel de la nouvelle méthode
-     _audioSubscription?.cancel(); // Se désabonner explicitement aussi (bonne pratique)
-     print('[ExerciseScreen] Audio stream stopped and unsubscribed.');
-
-     // Arrêter l'analyse du plugin audio
-     await AudioSignalProcessor.stopAnalysis();
-     print('[ExerciseScreen] AudioSignalProcessor stopAnalysis called.');
-
-     // Ensuite, signaler à Azure d'arrêter la reconnaissance
-     await _azureSpeechService?.stopRecognition();
-     print('[ExerciseScreen] Azure stopRecognition called.');
-
-     // Mettre à jour l'état local pour refléter l'arrêt de l'enregistrement
-     // mais pas nécessairement de l'analyse Azure
-     if (mounted) {
+      print('[ExerciseScreen] Stopping recording and Azure recognition...');
+      await _audioRepository?.stopRecordingStream();
+      _audioSubscription?.cancel();
+      print('[ExerciseScreen] Audio stream stopped and unsubscribed.');
+      await _azureSpeechService?.stopRecognition();
+      print('[ExerciseScreen] Azure stopRecognition called.');
+      if (mounted) {
        setState(() {
          _isRecording = false;
-         // _isAzureProcessing reste true jusqu'à réception du résultat final ou erreur
        });
      }
-
-     // Notifier le parent
      widget.onRecordingStateChanged?.call(false);
-
-     // La logique pour onExerciseCompleted est déclenchée par le stream Azure
-     // ou après un délai si nécessaire (à ajuster selon le besoin)
-     // Pour l'instant, on attend le résultat d'Azure via le stream.
-     // On pourrait ajouter un timeout ici si Azure ne répond pas.
-
-     // Supprimer l'appel à onExerciseCompleted basé sur un délai
-     // Future.delayed(const Duration(milliseconds: 2000), () { ... });
   }
 
 
@@ -705,36 +557,27 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     }
   }
 
-  // --- Logique de fin d'exercice ---
-
-  /// Finalise l'exercice et affiche les résultats
-  // Modifier pour accepter les scores en paramètres
-  void _completeExercise(double? pronunciationScore, double? accuracyScore, double? fluencyScore, double? completenessScore) {
-    // Ne pas compléter plusieurs fois
-    if (_isExerciseCompleted) return;
-    print('[ExerciseScreen] Finalisation de l\'exercice avec score: $pronunciationScore');
-
-    // Utiliser le score passé en paramètre
-    final score = pronunciationScore ?? 0.0; // Utiliser 0 si null
-
-    setState(() {
+   /// Finalise l'exercice et affiche les résultats
+   void _completeExercise(double? pronunciationScore, double? accuracyScore, double? fluencyScore, double? completenessScore, String? aiFeedback) {
+     if (_isExerciseCompleted) return;
+     final score = accuracyScore ?? 0.0;
+     print('[ExerciseScreen] Finalisation de l\'exercice avec score global (basé sur Accuracy): $score et feedback: $aiFeedback');
+     setState(() {
       _isExerciseCompleted = true;
-      // _isProcessing = false; // Assurer que l'indicateur de traitement est arrêté (supprimé car _isProcessing n'existe pas ici)
-      _showCelebration = score > 70; // Condition pour la célébration
+      _showCelebration = score > 70;
     });
 
-    // Préparer les résultats pour la modale en utilisant les paramètres
     final finalResults = {
-      'score': score, // Score principal utilisé pour la célébration et l'affichage principal
-      'texte_reconnu': _recognizedText, // Lire depuis l'état car mis à jour dans le même setState
-      'erreur': _azureError.isNotEmpty ? _azureError : null, // Lire depuis l'état
-      'pronunciationScore': pronunciationScore, // Utiliser le paramètre
-      'accuracyScore': accuracyScore, // Utiliser le paramètre
-      'fluencyScore': fluencyScore, // Utiliser le paramètre
-      'completenessScore': completenessScore, // Utiliser le paramètre
-    };
+      'score': score,
+      'texte_reconnu': _recognizedText,
+      'erreur': _azureError.isNotEmpty ? _azureError : null,
+       'pronunciationScore': pronunciationScore,
+       'accuracyScore': accuracyScore,
+       'fluencyScore': fluencyScore,
+       'completenessScore': completenessScore,
+       'commentaires': aiFeedback ?? "Analyse terminée.", // Fournir un fallback si aiFeedback est null
+     };
 
-    // Lire le score via TTS si disponible et réussi
     if (_exampleAudioProvider != null && score > 0 && _azureError.isEmpty) {
       _exampleAudioProvider!.playExampleFor("Score: ${score.toStringAsFixed(0)}");
     }
@@ -742,45 +585,49 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     _showCompletionDialog(finalResults);
   }
 
+  // Fonction synchrone pour gérer la réinitialisation lors du clic sur "Réessayer"
+  void _resetForRetry() {
+    // Réinitialiser l'état
+    if (mounted) {
+      setState(() {
+        _isExerciseCompleted = false;
+        _showCelebration = false; // Aussi réinitialiser la célébration
+        _isRecording = false;
+        _recognizedText = '';
+        _azureError = '';
+        _pronunciationScore = null;
+        _accuracyScore = null;
+        _fluencyScore = null;
+        _completenessScore = null;
+      });
+    }
+  }
+
   /// Affiche la boîte de dialogue de fin d'exercice
   void _showCompletionDialog(Map<String, dynamic> results) {
     print('[ExerciseScreen] Affichage de la modale de complétion.');
-    final score = results['score'] as double? ?? 0.0;
-    final success = score > 70 && results['erreur'] == null;
-    final commentaires = results['commentaires'] as String? ?? '';
-    final details = results['details'] as Map<String, dynamic>?; // Pour les scores spécifiques
+     final score = results['score'] as double? ?? 0.0;
+     final success = score > 70 && results['erreur'] == null;
+     final commentaires = results['commentaires'] as String? ?? 'Aucun feedback généré.';
 
-    // Extraire les scores détaillés si disponibles
-    final placementScore = (details?['placement_score'] as num?)?.toDouble();
-    final durationScore = (details?['duration_score'] as num?)?.toDouble();
-    final averageWpm = (details?['average_wpm'] as num?)?.toDouble();
+     final pronunciationScore = results['pronunciationScore'] as double?;
+     final accuracyScore = results['accuracyScore'] as double?;
+     final fluencyScore = results['fluencyScore'] as double?;
+     final completenessScore = results['completenessScore'] as double?;
 
-    if (mounted) {
-      showDialog(
+
+     if (mounted) {
+       showDialog(
         context: context,
-        barrierDismissible: false, // Empêcher la fermeture en cliquant à l'extérieur
+        barrierDismissible: false,
         builder: (context) {
           return Stack(
             children: [
-              // Afficher la célébration en arrière-plan si succès
-              if (success)
-                CelebrationEffect(
-                  intensity: 0.6, // Ajuster l'intensité si besoin
-                  primaryColor: AppTheme.primaryColor,
-                  secondaryColor: AppTheme.accentGreen,
-                  durationSeconds: 4, // Durée de l'animation
-                  onComplete: () {
-                    print('[ExerciseScreen] Animation de célébration terminée.');
-                    // Ne pas fermer la modale automatiquement ici, laisser l'utilisateur le faire
-                  },
-                ),
+              if (success) CelebrationEffect(onComplete: () {}),
               Center(
                 child: AlertDialog(
                   backgroundColor: AppTheme.darkSurface,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.borderRadius3)),
-                  titlePadding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 10.0),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 10.0),
-                  actionsPadding: const EdgeInsets.all(16.0),
                   title: Row(
                     children: [
                       Icon(success ? Icons.check_circle_outline : Icons.info_outline, color: success ? AppTheme.accentGreen : Colors.orangeAccent, size: 28),
@@ -793,29 +640,17 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Score Global
                         Text('Score Global: ${score.toStringAsFixed(0)}%', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: success ? AppTheme.accentGreen : Colors.orangeAccent)),
-                        const SizedBox(height: 16),
-
-                        // Scores Détaillés (si disponibles)
-                        if (placementScore != null)
-                          Text('Placement Pauses: ${(placementScore * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
-                        if (durationScore != null)
-                          Text('Durée Pauses: ${(durationScore * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
-                        if (averageWpm != null)
-                          Text('Rythme: ${averageWpm.toStringAsFixed(0)} mots/min', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
-
-                        // Ajouter les scores génériques si présents (pour d'autres types d'exercices)
-                        if (results['accuracyScore'] != null && placementScore == null) // Éviter redondance
-                          Text('Précision: ${results['accuracyScore'].toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
-                        if (results['fluencyScore'] != null && durationScore == null) // Éviter redondance
-                          Text('Fluidité: ${results['fluencyScore'].toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
-                        if (results['completenessScore'] != null)
-                          Text('Complétude: ${results['completenessScore'].toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
-
-                        const SizedBox(height: 16),
-
-                        // Feedback OpenAI avec bouton TTS
+                         const SizedBox(height: 16),
+                         if (pronunciationScore != null)
+                           Text('Score Prononciation: ${pronunciationScore.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+                         if (accuracyScore != null)
+                           Text('Précision: ${accuracyScore.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+                         if (fluencyScore != null)
+                           Text('Fluidité: ${fluencyScore.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+                         if (completenessScore != null)
+                           Text('Complétude: ${completenessScore.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+                         const SizedBox(height: 16),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -825,7 +660,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                                 style: const TextStyle(fontSize: 15, color: Colors.white),
                               ),
                             ),
-                            if (commentaires.isNotEmpty && _exampleAudioProvider != null)
+                            if (commentaires.isNotEmpty && _exampleAudioProvider != null && commentaires != "Erreur lors de la génération du feedback IA." && commentaires != 'Aucun feedback généré.')
                               IconButton(
                                 icon: const Icon(Icons.volume_up_rounded, color: AppTheme.primaryColor),
                                 tooltip: 'Lire le feedback',
@@ -835,8 +670,6 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                               ),
                           ],
                         ),
-
-                        // Afficher l'erreur si présente
                         if (results['erreur'] != null) ...[
                           const SizedBox(height: 12),
                           Text('Erreur: ${results['erreur']}', style: const TextStyle(fontSize: 14, color: AppTheme.accentRed)),
@@ -847,34 +680,16 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                   actions: [
                     TextButton(
                       onPressed: () {
-                        Navigator.of(context).pop(); // Fermer la modale
-                        widget.onBackPressed(); // Retour à l'écran précédent
+                        Navigator.of(context).pop();
+                        widget.onBackPressed();
                       },
                       child: const Text('Terminer', style: TextStyle(color: Colors.white70)),
                     ),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
                       onPressed: () {
-                        Navigator.of(context).pop(); // Fermer la modale
-                        // Réinitialiser l'état pour permettre de réessayer
-                        setState(() {
-                          _isExerciseCompleted = false;
-                          _showCelebration = false;
-                          _isRecording = false;
-                          _recognizedText = '';
-                          _azureError = '';
-                          _pronunciationScore = null; // Score générique
-                           _accuracyScore = null;
-                           _fluencyScore = null;
-                           _completenessScore = null;
-                           // Supprimer les lignes suivantes car ces variables n'existent pas ici
-                           // _analysisResult = null;
-                           _latestAudioAnalysisResult = null;
-                           // _accumulatedRecognizedText = '';
-                           // _accumulatedWords = [];
-                         });
-                         // Optionnel: relancer l'initialisation si nécessaire
-                        // _initializeExercise();
+                        Navigator.of(context).pop();
+                        _resetForRetry();
                       },
                       child: const Text('Réessayer', style: TextStyle(color: Colors.white)),
                     ),
@@ -887,26 +702,5 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       );
     }
   }
-} // Fin de la classe _ExerciseScreenState
 
-// Helper method to create a sample exercise for preview
-Exercise getSampleExercise() {
-  final category = getSampleCategories().firstWhere(
-    (c) => c.type == ExerciseCategoryType.fondamentaux,
-  );
-
-  return Exercise(
-    id: '1',
-    title: 'Exercice de précision consonantique',
-    objective: 'Améliorer la prononciation des consonantes explosives',
-    instructions: 'Lisez le texte suivant en articulant clairement chaque consonne, en particulier les "p", "t" et "k".',
-    textToRead: 'Paul prend des pommes et des poires. Le chat dort dans le petit panier. Un gros chien aboie près de la porte.',
-    difficulty: ExerciseDifficulty.facile,
-    category: category,
-    evaluationParameters: {
-      'clarity': 0.4,
-      'rhythm': 0.3,
-      'precision': 0.3,
-    },
-  );
 }

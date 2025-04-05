@@ -26,11 +26,13 @@ class AzureTtsService {
 
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
+  bool _manuallyStopped = false; // Flag pour gérer l'arrêt manuel
 
   // StreamController pour l'état de lecture
   final StreamController<bool> _isPlayingController = StreamController<bool>.broadcast();
   Stream<bool> get isPlayingStream => _isPlayingController.stream;
-  bool get isPlaying => _audioPlayer.playing;
+  // Utiliser le stream pour déterminer l'état externe, mais garder isPlaying pour la logique interne si besoin
+  bool get isPlaying => _audioPlayer.playing; 
 
   // Voix par défaut
   final String defaultVoice = 'fr-FR-HenriNeural'; // Voix neurale masculine française
@@ -106,18 +108,32 @@ class AzureTtsService {
   /// Configure le listener pour l'état du lecteur audio
   void _setupPlayerListener() {
     _audioPlayer.playerStateStream.listen((state) {
-      final bool currentlyPlaying = state.playing && state.processingState != ProcessingState.completed;
-      // Émettre seulement si l'état change pour éviter les émissions redondantes
-      if (_isPlayingController.hasListener && currentlyPlaying != (_audioPlayer.playerState.playing && _audioPlayer.playerState.processingState != ProcessingState.completed)) {
-         _isPlayingController.add(currentlyPlaying);
-      }
-      // Gérer la fin de lecture ou l'arrêt
-      if (state.processingState == ProcessingState.completed || state.processingState == ProcessingState.idle) {
-         if (_isPlayingController.hasListener && (_audioPlayer.playerState.playing || _audioPlayer.playerState.processingState != ProcessingState.idle)) { // Check if it was playing before becoming idle/completed
-            _isPlayingController.add(false);
+      bool stateToEmit;
+      // Si on a manuellement arrêté, forcer l'état à false jusqu'à ce que le lecteur soit idle
+      if (_manuallyStopped && state.processingState != ProcessingState.idle) {
+        stateToEmit = false;
+      } else {
+         // Sinon, utiliser l'état réel du lecteur
+         stateToEmit = state.playing;
+         // Si le lecteur est devenu idle (après stop() ou fin naturelle), reset le flag
+         if (state.processingState == ProcessingState.idle) {
+            _manuallyStopped = false; 
          }
-      }
-    });
+       }
+
+       // Log avant l'émission
+       ConsoleLogger.info('[AzureTtsService Listener PRE-EMIT] Received State: ${state.processingState}, Playing: ${state.playing}, ManuallyStopped: $_manuallyStopped. Will emit: $stateToEmit');
+
+       if (!_isPlayingController.isClosed) {
+          // Vérifier si la valeur à émettre est différente de la dernière valeur émise (si possible, pour éviter bruit)
+          // Note: just_audio peut émettre des états redondants.
+          // Pour l'instant, on émet toujours pour un débogage complet.
+          _isPlayingController.add(stateToEmit);
+          ConsoleLogger.info('[AzureTtsService Listener POST-EMIT] Emitted: $stateToEmit');
+       } else {
+         ConsoleLogger.warning('[AzureTtsService Listener] Attempted to emit on closed controller.');
+       }
+     });
      // Gérer les erreurs du lecteur
      _audioPlayer.playbackEventStream.listen((event) {},
          onError: (Object e, StackTrace stackTrace) {
@@ -128,8 +144,8 @@ class AzureTtsService {
      });
   }
 
-  /// Synthétise le texte donné avec la voix spécifiée et le joue
-  Future<void> synthesizeAndPlay(String text, {String? voiceName}) async {
+  /// Synthétise le texte donné avec la voix et le style spécifiés et le joue
+  Future<void> synthesizeAndPlay(String text, {String? voiceName, String? style}) async {
     if (!_isInitialized) {
       ConsoleLogger.error('[AzureTtsService] Service non initialisé.');
       return;
@@ -148,21 +164,37 @@ class AzureTtsService {
     final String effectiveVoice = voiceName ?? defaultVoice;
     final String ttsUrl = 'https://$_region.tts.speech.microsoft.com/cognitiveservices/v1';
 
-    // Construction du corps SSML
-    final String ssmlBody = '''
-      <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='fr-FR'>
-          <voice name='$effectiveVoice'>
+    // Construction du corps SSML avec gestion du style optionnel
+    String ssmlContent;
+    if (style != null && style.isNotEmpty) {
+      // Inclure l'élément express-as si un style est fourni
+      ssmlContent = '''
+          <mstts:express-as style="$style">
               $text
+          </mstts:express-as>
+      ''';
+    } else {
+      // Sinon, utiliser le texte simple
+      ssmlContent = text;
+    }
+
+    final String ssmlBody = '''
+      <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts' xml:lang='fr-FR'>
+          <voice name='$effectiveVoice'>
+              $ssmlContent
           </voice>
       </speak>
     ''';
 
     try {
-      ConsoleLogger.info('[AzureTtsService] Demande de synthèse pour: "$text" avec voix $effectiveVoice');
-      await stop(); // Arrêter la lecture précédente
+       ConsoleLogger.info('[AzureTtsService] Demande de synthèse pour: "$text" avec voix $effectiveVoice${style != null ? ' et style $style' : ''}');
+       // Arrêter la lecture précédente. L'appel à stop() mettra _manuallyStopped à true.
+       await stop();
+       // Réinitialiser le flag d'arrêt manuel MAINTENANT, *après* l'arrêt et *avant* la nouvelle lecture.
+       _manuallyStopped = false;
 
-      final response = await http.post(
-        Uri.parse(ttsUrl),
+       final response = await http.post(
+         Uri.parse(ttsUrl),
         headers: {
           'Authorization': 'Bearer $_token',
           'Content-Type': 'application/ssml+xml',
@@ -252,14 +284,22 @@ class AzureTtsService {
   /// Arrête la lecture audio en cours
   Future<void> stop() async {
     try {
-      ConsoleLogger.info('[AzureTtsService] Arrêt de la lecture audio.');
-      await _audioPlayer.stop();
-      // L'état sera mis à jour par le listener
+      ConsoleLogger.info('[AzureTtsService] Appel de stop().');
+      _manuallyStopped = true; // <<< AJOUT: Indiquer un arrêt manuel immédiat
+      await _audioPlayer.stop(); // Arrête la lecture
+      // Le listener devrait maintenant détecter state.playing == false et émettre via _isPlayingController.
+      // Grâce à _manuallyStopped = true, le listener forcera l'émission de 'false' immédiatement.
+      // Le listener est la source de vérité pour l'état 'playing'.
+      ConsoleLogger.info('[AzureTtsService] _audioPlayer.stop() exécuté.');
     } catch (e) {
       ConsoleLogger.error('[AzureTtsService] Erreur lors de l\'arrêt de la lecture: $e');
-      if (_isPlayingController.hasListener) _isPlayingController.add(false);
+      // Assurer que l'état est non-joueur en cas d'erreur d'arrêt
+      // Le listener devrait aussi gérer cela, mais une sécurité ici peut être utile.
+      if (!_isPlayingController.isClosed && _audioPlayer.playing) {
+         _isPlayingController.add(false);
+      }
     }
-  }
+  } // Fin de la méthode stop()
 
   /// Libère les ressources
   Future<void> dispose() async {

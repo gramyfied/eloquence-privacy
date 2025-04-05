@@ -14,6 +14,8 @@ import com.microsoft.cognitiveservices.speech.audio.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import org.json.JSONObject
+import org.json.JSONException
 
 class AzureSpeechHandler(private val context: Context, private val messenger: BinaryMessenger) : MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
 
@@ -25,10 +27,10 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
 
     // Variables pour Azure Speech SDK
     private var speechConfig: SpeechConfig? = null
-    private var audioInputStream: PushAudioInputStream? = null
-    private var audioConfig: AudioConfig? = null
-    private var speechRecognizer: SpeechRecognizer? = null
-    // Utiliser un executor single-thread pour sérialiser les opérations Azure
+    // Retrait des variables liées au streaming continu si non utilisées ailleurs
+    // private var audioInputStream: PushAudioInputStream? = null
+    // private var audioConfig: AudioConfig? = null
+    // private var speechRecognizer: SpeechRecognizer? = null
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
 
     private val logTag = "AzureSpeechHandler(Android)"
@@ -50,13 +52,10 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
         releaseResources() // Nettoyage complet
     }
 
-    // Nettoyage final de toutes les ressources Azure et de l'executor
+    // Nettoyage final
     fun releaseResources() {
         Log.d(logTag, "Releasing all Azure resources and executor...")
-        // Exécuter le nettoyage sur l'executor pour éviter les conflits
         executor.submit {
-            releaseRecognizerResourcesInternal() // Libère les ressources de session
-
             try {
                 speechConfig?.close()
                 speechConfig = null
@@ -77,52 +76,6 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
         }
     }
 
-    // Libère uniquement les ressources liées à une session de reconnaissance active (INTERNE, appelé par l'executor)
-    private fun releaseRecognizerResourcesInternal() {
-        if (speechRecognizer == null && audioConfig == null && audioInputStream == null) {
-            return // Rien à faire
-        }
-        Log.d(logTag, "Releasing recognizer session resources (internal)...")
-        try {
-            // Tenter d'arrêter la reconnaissance avant de fermer
-            speechRecognizer?.stopContinuousRecognitionAsync()?.get(1, TimeUnit.SECONDS)
-        } catch (e: Exception) { Log.w(logTag, "Timeout or error stopping recognizer during release: ${e.message}") }
-
-        // Détacher les listeners AVANT de fermer le recognizer
-        try {
-             speechRecognizer?.recognizing?.removeEventListener { _, _ -> }
-             speechRecognizer?.recognized?.removeEventListener { _, _ -> }
-             speechRecognizer?.canceled?.removeEventListener { _, _ -> }
-             speechRecognizer?.sessionStarted?.removeEventListener { _, _ -> }
-             speechRecognizer?.sessionStopped?.removeEventListener { _, _ -> }
-             Log.d(logTag, "Listeners detached.")
-        } catch (e: Exception) { Log.e(logTag, "Error detaching listeners: ${e.message}") }
-
-
-        try {
-             speechRecognizer?.close() // Fermer le recognizer
-             speechRecognizer = null
-             Log.d(logTag, "SpeechRecognizer closed.")
-        } catch (e: Exception) { Log.e(logTag, "Error closing recognizer: ${e.message}") }
-
-
-        try {
-            audioConfig?.close()
-            audioConfig = null
-            Log.d(logTag, "AudioConfig closed.")
-        } catch (e: Exception) { Log.e(logTag, "Error closing audio config: ${e.message}") }
-
-
-        try {
-            audioInputStream?.close()
-            audioInputStream = null
-            Log.d(logTag, "PushAudioInputStream closed.")
-        } catch (e: Exception) { Log.e(logTag, "Error closing audio stream: ${e.message}") }
-
-        Log.d(logTag, "Recognizer session resources released (internal).")
-    }
-
-
     // --- MethodChannel.MethodCallHandler Implementation ---
 
     override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: MethodChannel.Result) {
@@ -132,12 +85,12 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
             result.error("EXECUTOR_SHUTDOWN", "Cannot process method call, internal executor is shut down.", null)
             return
         }
-        // Soumettre la tâche à l'executor
+
+        // Utiliser un Handler pour répondre sur le thread principal
+        val mainHandler = Handler(Looper.getMainLooper())
+
         executor.submit {
             try {
-                var methodResult: Any? = null // Pour stocker le résultat à envoyer à Flutter
-                var errorResult: Triple<String, String?, Any?>? = null // Pour stocker l'erreur
-
                 when (call.method) {
                     "initialize" -> {
                         val args = call.arguments as? Map<*, *>
@@ -145,61 +98,41 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
                         val region = args?.get("region") as? String
                         if (subscriptionKey != null && region != null) {
                             initializeAzureConfig(subscriptionKey, region)
-                            methodResult = true // Succès
+                            mainHandler.post { result.success(true) }
                         } else {
                             Log.e(logTag, "Initialization failed: Missing subscriptionKey or region")
-                            errorResult = Triple("INIT_FAILED", "Missing subscriptionKey or region", null)
+                            mainHandler.post { result.error("INIT_FAILED", "Missing subscriptionKey or region", null) }
                         }
                     }
-                    "startRecognition" -> {
+                    "analyzeAudioFile" -> { // Nouvelle méthode
                         val args = call.arguments as? Map<*, *>
+                        val filePath = args?.get("filePath") as? String
                         val referenceText = args?.get("referenceText") as? String
-                        startRecognitionInternal(referenceText)
-                        methodResult = true // Succès (le démarrage est asynchrone)
-                    }
-                    "stopRecognition" -> {
-                        stopRecognitionInternal()
-                        methodResult = true // Succès (l'arrêt est asynchrone)
-                    }
-                    "sendAudioChunk" -> {
-                        val audioChunk = call.arguments as? ByteArray
-                        if (audioChunk != null) {
-                            sendAudioChunkInternal(audioChunk)
-                            methodResult = true // Succès
+                        if (filePath != null && referenceText != null) {
+                            val analysisResult = analyzeAudioFileInternal(filePath, referenceText)
+                            mainHandler.post { result.success(analysisResult) }
                         } else {
-                            Log.e(logTag, "SendAudioChunk failed: audioChunk is null")
-                            errorResult = Triple("AUDIO_CHUNK_NULL", "Received null audio chunk", null)
+                             Log.e(logTag, "analyzeAudioFile failed: Missing filePath or referenceText")
+                             mainHandler.post { result.error("ARGS_MISSING", "Missing filePath or referenceText for analyzeAudioFile", null) }
                         }
                     }
+                    // Retrait des méthodes liées au streaming continu si non nécessaires
+                    // "startRecognition", "stopRecognition", "sendAudioChunk"
                     else -> {
-                        // Gérer notImplemented sur le thread principal
-                         Handler(Looper.getMainLooper()).post { result.notImplemented() }
-                         return@submit // Sortir du bloc submit
+                         mainHandler.post { result.notImplemented() }
                     }
                 }
-
-                 // Envoyer le résultat ou l'erreur sur le thread principal
-                 Handler(Looper.getMainLooper()).post {
-                    if (errorResult != null) {
-                        result.error(errorResult.first, errorResult.second, errorResult.third)
-                    } else {
-                        result.success(methodResult)
-                    }
-                 }
-
             } catch (e: Exception) {
                 Log.e(logTag, "Error handling method call ${call.method}: ${e.message}", e)
-                 // Envoyer l'erreur sur le thread principal
-                 Handler(Looper.getMainLooper()).post {
-                     result.error("METHOD_CALL_ERROR", "Error processing method ${call.method}: ${e.message}", e.stackTraceToString())
-                 }
+                mainHandler.post {
+                    result.error("METHOD_CALL_ERROR", "Error processing method ${call.method}: ${e.message}", e.stackTraceToString())
+                }
                 sendEvent("error", mapOf("code" to "NATIVE_ERROR", "message" to "Error in ${call.method}: ${e.message}"))
             }
         }
     }
 
-    // --- EventChannel.StreamHandler Implementation ---
-
+    // --- EventChannel.StreamHandler Implementation (peut être retiré si plus de streaming) ---
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
         Log.d(logTag, "EventChannel onListen called.")
         eventSink = events
@@ -212,202 +145,112 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
 
     // --- Azure SDK Interaction Logic ---
 
-    // Initialise ou réinitialise SEULEMENT la configuration (appelé par l'executor)
      private fun initializeAzureConfig(subscriptionKey: String, region: String) {
         try {
-            // Pas besoin de releaseRecognizerResources ici, seulement la config
-            speechConfig?.close() // Fermer l'ancienne config si elle existe
+            speechConfig?.close()
             speechConfig = SpeechConfig.fromSubscription(subscriptionKey, region)
-            speechConfig?.speechRecognitionLanguage = "fr-FR" // Définir la langue
-
-            // *** SUPPRESSION: Configuration des timeouts de silence ***
-
+            speechConfig?.speechRecognitionLanguage = "fr-FR"
             Log.i(logTag, "Azure Speech Config created/updated successfully for region: $region")
             sendEvent("status", mapOf("message" to "Azure Config Initialized"))
         } catch (e: Exception) {
             Log.e(logTag, "Azure Speech Config creation failed: ${e.message}", e)
             sendEvent("error", mapOf("code" to "CONFIG_ERROR", "message" to "Azure Config creation failed: ${e.message}"))
             speechConfig = null
-            throw e // Relancer pour informer Flutter de l'échec
+            throw e
         }
     }
 
-    // Attache les listeners au recognizer fourni (appelé par l'executor)
-     private fun setupRecognizerEvents(recognizer: SpeechRecognizer) {
-
-        recognizer.recognizing.addEventListener { _, eventArgs -> // Syntaxe lambda correcte
-            Log.d(logTag, "Recognizing: ${eventArgs.result.text}")
-            sendEvent("partial", mapOf("text" to eventArgs.result.text))
-        }
-
-        recognizer.recognized.addEventListener { _, eventArgs -> // Syntaxe lambda correcte
-            val result = eventArgs.result
-            val payload = mutableMapOf<String, Any?>("text" to result.text)
-            var pronunciationResultJson: String? = null
-
-            try {
-                if (result.reason == ResultReason.RecognizedSpeech) {
-                    Log.i(logTag, "Recognized: ${result.text}")
-                    pronunciationResultJson = result.properties.getProperty(PropertyId.SpeechServiceResponse_JsonResult)
-                    if (pronunciationResultJson != null && pronunciationResultJson.isNotEmpty()) {
-                        Log.i(logTag, "Pronunciation Assessment JSON found.")
-                        payload["pronunciationResult"] = pronunciationResultJson // Envoyer le JSON brut
-                        Log.i(logTag, "Pronunciation Assessment JSON added to payload.")
-                    } else {
-                        Log.d(logTag, "No Pronunciation Assessment JSON found in properties.")
-                        payload["pronunciationResult"] = null
-                    }
-                     sendEvent("final", payload)
-                 } else if (result.reason == ResultReason.NoMatch) {
-                     Log.i(logTag, "Recognized with NoMatch: No speech could be recognized.")
-                     // Envoyer un événement spécifique pour NoMatch
-                     sendEvent("no_match", mapOf("reason" to result.reason.name))
-                 } else {
-                     // Log plus détaillé pour les autres raisons
-                     Log.w(logTag, "Recognition completed with unexpected reason: ${result.reason}")
-                     sendEvent("status", mapOf("message" to "Recognition completed: ${result.reason}"))
-                }
-            } catch (e: Exception) {
-                 Log.e(logTag, "Error processing recognized event: ${e.message}", e)
-                 sendEvent("error", mapOf("code" to "RECOGNIZED_ERROR", "message" to "Error processing recognized event: ${e.message}"))
-            } finally {
-                result.close() // Fermer le résultat
-            }
-        }
-
-         recognizer.canceled.addEventListener { _, eventArgs -> // Syntaxe lambda correcte
-             val reason = eventArgs.reason
-             val errorCode = eventArgs.errorCode
-             val errorDetails = eventArgs.errorDetails
-             Log.w(logTag, "Recognition Canceled: Reason=$reason, ErrorCode=$errorCode, Details=$errorDetails")
-             val errorMessage = "Recognition canceled: Reason=$reason, Code=$errorCode, Details=$errorDetails"
-             sendEvent("error", mapOf("code" to errorCode.name, "message" to errorMessage))
-             // Nettoyer les ressources de session sur l'executor
-            executor.submit { releaseRecognizerResourcesInternal() }
-        }
-
-         recognizer.sessionStarted.addEventListener { _, _ -> // Syntaxe lambda correcte
-            Log.i(logTag, "Speech session started.")
-            sendEvent("status", mapOf("message" to "Recognition session started"))
-        }
-
-         recognizer.sessionStopped.addEventListener { _, _ -> // Syntaxe lambda correcte
-            Log.i(logTag, "Speech session stopped.")
-            sendEvent("status", mapOf("message" to "Recognition session stopped"))
-             // Nettoyer les ressources de session sur l'executor
-            executor.submit { releaseRecognizerResourcesInternal() }
-        }
-    }
-
-    // Crée les ressources et démarre la reconnaissance (appelé par l'executor)
-    private fun startRecognitionInternal(referenceText: String? = null) {
+    // Nouvelle méthode pour l'analyse ponctuelle (appelée par l'executor)
+    private fun analyzeAudioFileInternal(filePath: String, referenceText: String): Map<String, String?> {
         val currentSpeechConfig = speechConfig ?: run {
-            Log.e(logTag, "startRecognition called before config initialization.")
-            sendEvent("error", mapOf("code" to "CONFIG_NULL", "message" to "Speech config not initialized"))
+            Log.e(logTag, "analyzeAudioFile called before config initialization.")
             throw IllegalStateException("SpeechConfig not initialized")
         }
-        // Nettoyer les ressources d'une éventuelle session précédente (déjà sur l'executor)
-        releaseRecognizerResourcesInternal()
 
-        var pronunciationConfig: PronunciationAssessmentConfig? = null // Déclarer ici pour la portée
+        var audioConfig: AudioConfig? = null
+        var recognizer: SpeechRecognizer? = null
+        var pronunciationConfig: PronunciationAssessmentConfig? = null
+        val results = mutableMapOf<String, String?>("pronunciationResult" to null, "prosodyResult" to null, "error" to null)
 
         try {
-            Log.i(logTag, "Creating recognition resources...")
-            audioInputStream = PushAudioInputStream.create()
-            audioConfig = AudioConfig.fromStreamInput(audioInputStream)
+            Log.i(logTag, "Analyzing file: $filePath")
+            audioConfig = AudioConfig.fromWavFileInput(filePath) // Configurer l'audio depuis le fichier
 
-            // Configurer l'évaluation de la prononciation et les options de sortie AVANT de créer le recognizer
-            if (referenceText != null && referenceText.isNotEmpty()) {
-                Log.d(logTag, "Applying Pronunciation Assessment config for: \"$referenceText\"")
-                // Définir le format de sortie détaillé et demander les timestamps sur la config principale
-                currentSpeechConfig.outputFormat = OutputFormat.Detailed
-                currentSpeechConfig.requestWordLevelTimestamps() // Méthode correcte pour demander les timestamps
-                Log.d(logTag, "Word level timestamps requested on SpeechConfig.")
+            // Configurer l'évaluation de prononciation et de prosodie
+            currentSpeechConfig.outputFormat = OutputFormat.Detailed
+            currentSpeechConfig.requestWordLevelTimestamps()
+            // Demander la prosodie (si supporté par Detailed)
+            // currentSpeechConfig.setProperty(PropertyId.SpeechServiceResponse_RequestProsodyAssessment, "true") // Retiré car causait erreur
+            Log.d(logTag, "Detailed output and Word level timestamps requested (Prosody expected).")
 
-                try {
-                    pronunciationConfig = PronunciationAssessmentConfig(
-                        referenceText,
-                        PronunciationAssessmentGradingSystem.HundredMark,
-                        PronunciationAssessmentGranularity.Phoneme, // Garder Phoneme pour les scores
-                        true // enableMiscue
-                    )
-                    // La configuration sera appliquée au recognizer plus bas
+            pronunciationConfig = PronunciationAssessmentConfig(
+                referenceText,
+                PronunciationAssessmentGradingSystem.HundredMark,
+                PronunciationAssessmentGranularity.Phoneme,
+                true // enableMiscue
+            )
 
-                } catch (configError: Exception) {
-                     Log.e(logTag, "Error creating PronunciationAssessmentConfig: ${configError.message}", configError)
-                     sendEvent("error", mapOf("code" to "PRON_CONFIG_ERROR", "message" to "Error setting up pronunciation assessment: ${configError.message}"))
-                     pronunciationConfig = null // S'assurer qu'elle est nulle si erreur
-                     currentSpeechConfig.outputFormat = OutputFormat.Simple // Réinitialiser le format
+            // Créer le recognizer
+            recognizer = SpeechRecognizer(currentSpeechConfig, audioConfig)
+            pronunciationConfig.applyTo(recognizer) // Appliquer la config d'évaluation
+            Log.d(logTag, "Pronunciation Assessment config applied.")
+
+            // Lancer la reconnaissance ponctuelle
+            Log.i(logTag, "Starting recognizeOnceAsync...")
+            val recognitionResultFuture = recognizer.recognizeOnceAsync()
+            val result = recognitionResultFuture.get(30, TimeUnit.SECONDS) // Attendre le résultat avec timeout
+
+            Log.i(logTag, "recognizeOnceAsync completed with reason: ${result.reason}")
+
+            if (result.reason == ResultReason.RecognizedSpeech) {
+                Log.i(logTag, "Recognized text: ${result.text}")
+                val jsonResult = result.properties.getProperty(PropertyId.SpeechServiceResponse_JsonResult)
+                if (jsonResult != null && jsonResult.isNotEmpty()) {
+                    Log.i(logTag, "Detailed JSON result found.")
+                    Log.i(logTag, "Full JSON Result: $jsonResult") // <<< CHANGÉ Log.d en Log.i
+                    results["pronunciationResult"] = jsonResult // Stocker le JSON brut
+
+                    // Extraire la prosodie du JSON
+                    try {
+                        val fullResultJson = JSONObject(jsonResult)
+                        val nbestArray = fullResultJson.optJSONArray("NBest")
+                        if (nbestArray != null && nbestArray.length() > 0) {
+                            val bestChoice = nbestArray.getJSONObject(0)
+                            val prosodyAssessment = bestChoice.optJSONObject("ProsodyAssessment")
+                            if (prosodyAssessment != null) {
+                                results["prosodyResult"] = prosodyAssessment.toString()
+                                Log.i(logTag, "Prosody Assessment JSON extracted.")
+                            } else { Log.d(logTag, "ProsodyAssessment object not found in NBest.") }
+                        } else { Log.d(logTag, "NBest array not found or empty in JSON result.") }
+                    } catch (jsonError: JSONException) {
+                        Log.e(logTag, "Error parsing JSON for ProsodyAssessment: ${jsonError.message}")
+                    }
+                } else {
+                    Log.d(logTag, "Detailed JSON result not found in properties.")
                 }
-            } else {
-                 Log.d(logTag, "No reference text provided, skipping Pronunciation Assessment config.")
-                 currentSpeechConfig.outputFormat = OutputFormat.Simple
+            } else if (result.reason == ResultReason.NoMatch) {
+                Log.w(logTag, "No speech could be recognized from the file.")
+                results["error"] = "No speech recognized"
+            } else { // Canceled or other reason
+                val cancellation = CancellationDetails.fromResult(result) // Correction: Utiliser CancellationDetails
+                Log.e(logTag, "Recognition canceled/failed: Reason=${cancellation.reason}, Code=${cancellation.errorCode}, Details=${cancellation.errorDetails}")
+                results["error"] = "Recognition failed: ${cancellation.reason} / ${cancellation.errorDetails}"
             }
 
-            // Créer le recognizer AVEC la config potentiellement modifiée
-            speechRecognizer = SpeechRecognizer(currentSpeechConfig, audioConfig)
-
-            // Appliquer la configuration de prononciation AU RECOGNIZER si elle a été créée avec succès
-            if (pronunciationConfig != null) {
-                 try {
-                     pronunciationConfig.applyTo(speechRecognizer) // Correction: Appliquer au recognizer
-                     Log.d(logTag, "Pronunciation Assessment config applied to Recognizer.")
-                 } catch (applyError: Exception) {
-                     Log.e(logTag, "Error applying PronunciationAssessmentConfig to Recognizer: ${applyError.message}", applyError)
-                     sendEvent("error", mapOf("code" to "PRON_APPLY_ERROR", "message" to "Error applying pronunciation assessment: ${applyError.message}"))
-                     // Continuer même si l'application échoue ?
-                 }
-            }
-
-
-            // Attacher les listeners AU NOUVEAU recognizer
-            setupRecognizerEvents(speechRecognizer!!) // !! est sûr ici car créé juste avant
-
-            // Démarrer la reconnaissance
-            speechRecognizer?.startContinuousRecognitionAsync()
-            Log.i(logTag, "Starting continuous recognition...")
+            result.close()
 
         } catch (e: Exception) {
-            Log.e(logTag, "Error starting recognition: ${e.message}", e)
-            sendEvent("error", mapOf("code" to "START_ERROR", "message" to "Error starting recognition: ${e.message}"))
-            releaseRecognizerResourcesInternal() // Nettoyer en cas d'erreur
-            throw e // Relancer pour informer Flutter
+            Log.e(logTag, "Error during analyzeAudioFileInternal: ${e.message}", e)
+            results["error"] = "Native error during analysis: ${e.message}"
+        } finally {
+            // Nettoyer les ressources spécifiques à cette analyse
+            recognizer?.close()
+            audioConfig?.close()
+            pronunciationConfig?.close() // Fermer aussi la config d'évaluation
+            Log.d(logTag, "Analysis resources released.")
         }
-    }
 
-    // Arrête la reconnaissance (appelé par l'executor)
-    private fun stopRecognitionInternal() {
-        if (speechRecognizer == null) {
-            Log.w(logTag, "stopRecognitionInternal called but no active recognizer found.")
-            return
-        }
-        Log.i(logTag, "Requesting stop continuous recognition...")
-        try {
-            // L'arrêt asynchrone déclenchera sessionStopped ou canceled, qui appellera releaseRecognizerResourcesInternal
-            speechRecognizer?.stopContinuousRecognitionAsync()
-        } catch (e: Exception) {
-            Log.e(logTag, "Error requesting stopContinuousRecognitionAsync: ${e.message}", e)
-            sendEvent("error", mapOf("code" to "STOP_ERROR", "message" to "Error requesting stop recognition: ${e.message}"))
-            // Forcer le nettoyage si l'arrêt échoue ? Préférable d'attendre les callbacks.
-            // releaseRecognizerResourcesInternal()
-        }
-    }
-
-    // Envoie un chunk audio (appelé par l'executor)
-    private fun sendAudioChunkInternal(audioChunk: ByteArray) {
-        val stream = audioInputStream // Copie locale
-        if (stream == null) {
-            // Log.w(logTag, "sendAudioChunk called but audioInputStream is null.") // Peut être trop verbeux
-             // Log.w(logTag, "sendAudioChunk called but audioInputStream is null.") // Peut être trop verbeux
-             return
-         }
-         try {
-             // Ajouter un log pour confirmer la réception et la taille du chunk
-             Log.d(logTag, "sendAudioChunkInternal: Received chunk, size=${audioChunk.size}. Writing to stream...")
-             stream.write(audioChunk)
-         } catch (e: Exception) {
-              Log.e(logTag, "Error writing to audioInputStream: ${e.message}")
-        }
+        return results
     }
 
 
@@ -417,13 +260,11 @@ class AzureSpeechHandler(private val context: Context, private val messenger: Bi
             "type" to eventType,
             "payload" to data
         )
-        // Assurer l'exécution sur le thread principal pour l'UI thread de Flutter
         Handler(Looper.getMainLooper()).post {
             try {
                  eventSink?.success(eventData)
             } catch (e: Exception) {
                  Log.e(logTag, "Error sending event to Flutter: ${e.message}")
-                 // eventSink = null // Peut-être invalider le sink ici ?
             }
         }
     }

@@ -380,6 +380,104 @@ Exemple de format attendu: "La communication efficace... repose sur l'écoute ac
     }
   }
 
+  /// Génère une phrase pour un exercice d'intonation expressive avec une émotion cible.
+  Future<String> generateIntonationSentence({
+    required String targetEmotion, // Émotion à exprimer (ex: joyeux, triste, en colère)
+    int minWords = 6,
+    int maxWords = 12,
+    String language = 'fr-FR',
+  }) async {
+    ConsoleLogger.info('🤖 [OPENAI] Génération de phrase d\'intonation...');
+    ConsoleLogger.info('🤖 [OPENAI] - Émotion cible: $targetEmotion');
+    ConsoleLogger.info('🤖 [OPENAI] - Longueur: $minWords-$maxWords mots');
+
+    // Construire le prompt
+    String prompt = '''
+Génère une seule phrase en français ($language) spécifiquement conçue pour pratiquer l'expression de l'émotion "$targetEmotion".
+Objectif: Permettre à l'utilisateur de s'entraîner à moduler son intonation pour transmettre clairement l'émotion "$targetEmotion".
+Contraintes:
+- Longueur: entre $minWords et $maxWords mots.
+- Doit être grammaticalement correcte et naturelle pour un locuteur adulte.
+- La phrase elle-même doit être relativement neutre ou ambiguë pour que l'émotion soit principalement portée par l'intonation (éviter les phrases intrinsèquement très joyeuses ou tristes si possible, sauf si l'émotion est extrême comme "euphorique").
+- Éviter les questions directes sauf si l'émotion est "curieux" ou "interrogatif".
+
+Ne fournis que la phrase générée, sans aucune introduction, explication ou guillemets.
+''';
+
+    // Vérifier la configuration Azure OpenAI
+    if (apiKey.isEmpty || endpoint.isEmpty || deploymentName.isEmpty) {
+      ConsoleLogger.warning('🤖 [AZURE OPENAI] Informations Azure OpenAI manquantes. Utilisation d\'une phrase par défaut.');
+      // Retourner une phrase par défaut adaptée à l'émotion si possible
+      switch (targetEmotion.toLowerCase()) {
+        case 'joyeux':
+        case 'cheerful':
+          return "C'est une excellente nouvelle aujourd'hui.";
+        case 'triste':
+        case 'sad':
+          return "Il n'y a plus rien à faire maintenant.";
+        case 'en colère':
+        case 'angry':
+          return "Je ne peux pas accepter cette situation.";
+        default:
+          return "Le temps change rapidement ces derniers jours.";
+      }
+    }
+
+    // Appeler l'API Azure OpenAI
+    try {
+      ConsoleLogger.info('Appel de l\'API Azure OpenAI pour génération de phrase d\'intonation');
+      final url = Uri.parse('$endpoint/openai/deployments/$deploymentName/chat/completions?api-version=$apiVersion');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': apiKey,
+        },
+        body: jsonEncode({
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'Tu es un générateur de contenu spécialisé dans la création de phrases pour des exercices de coaching vocal en français, axés sur l\'expression des émotions par l\'intonation.',
+            },
+            {
+              'role': 'user',
+              'content': prompt,
+            },
+          ],
+          'temperature': 0.75, // Un peu plus de variété
+          'max_tokens': 100,
+          'top_p': 1.0,
+          'frequency_penalty': 0.1,
+          'presence_penalty': 0.1,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseBody = utf8.decode(response.bodyBytes);
+        final data = jsonDecode(responseBody);
+        String sentence = data['choices'][0]['message']['content'].trim();
+        // Nettoyer la phrase
+        sentence = sentence.replaceAll(RegExp(r'^"|"$'), '');
+        ConsoleLogger.success('🤖 [OPENAI] Phrase d\'intonation ($targetEmotion) générée: "$sentence"');
+        return sentence;
+      } else {
+        ConsoleLogger.error('🤖 [OPENAI] Erreur API lors de la génération de phrase d\'intonation: ${response.statusCode}, ${response.body}');
+        throw Exception('Erreur API OpenAI: ${response.statusCode}');
+      }
+    } catch (e) {
+      ConsoleLogger.error('🤖 [OPENAI] Erreur lors de la génération de phrase d\'intonation: $e');
+      // Retourner une phrase par défaut en cas d'erreur
+       switch (targetEmotion.toLowerCase()) {
+        case 'joyeux': return "C'est une excellente nouvelle aujourd'hui.";
+        case 'triste': return "Il n'y a plus rien à faire maintenant.";
+        case 'en colère': return "Je ne peux pas accepter cette situation.";
+        default: return "Le temps change rapidement ces derniers jours.";
+      }
+    }
+  }
+
+
   /// Génère une liste de mots avec leur décomposition syllabique pour l'exercice de précision syllabique.
   Future<List<Map<String, dynamic>>> generateSyllabicWords({
     required String exerciseLevel,
@@ -465,49 +563,39 @@ Ne fournis que le JSON, sans aucune introduction, explication ou formatage suppl
           }
           ConsoleLogger.info('🤖 [OPENAI] Contenu extrait: "$content"');
 
-          // Le contenu lui-même est la chaîne JSON d'un objet contenant la liste
+          // Le contenu lui-même est la chaîne JSON d'une liste
           // Nettoyer les éventuels ```json ... ``` autour
           ConsoleLogger.info('🤖 [OPENAI] Nettoyage du contenu...');
           final cleanedContent = content.replaceAll(RegExp(r'^```json\s*|\s*```$'), '').trim();
           ConsoleLogger.info('🤖 [OPENAI] Contenu nettoyé: "$cleanedContent"');
 
-          ConsoleLogger.info('🤖 [OPENAI] Tentative de décodage du contenu nettoyé comme Map...');
-          final Map<String, dynamic> jsonObject = jsonDecode(cleanedContent); // Décoder comme Map
-          ConsoleLogger.info('🤖 [OPENAI] Contenu décodé comme Map avec succès.');
+          // Tenter de décoder le contenu nettoyé directement comme une liste JSON
+          ConsoleLogger.info('🤖 [OPENAI] Tentative de décodage du contenu nettoyé comme List...');
+          final List<dynamic> wordsList = jsonDecode(cleanedContent); // Décoder comme List
+          ConsoleLogger.info('🤖 [OPENAI] Contenu décodé comme List avec succès (${wordsList.length} éléments).');
 
-          // Extraire la liste de la clé "words" ou "mots" (pour gérer les variations de l'API)
-          ConsoleLogger.info('🤖 [OPENAI] Tentative d\'extraction de la liste depuis la clé "words" ou "mots"...');
-          final List<dynamic>? wordsList = (jsonObject['words'] ?? jsonObject['mots']) as List?; // Essayer les deux clés
-
-          if (wordsList != null) {
-             final String foundKey = jsonObject.containsKey('words') ? 'words' : 'mots';
-             ConsoleLogger.info('🤖 [OPENAI] Liste "$foundKey" extraite avec succès (${wordsList.length} éléments).');
-                // Valider la structure de chaque élément dans la liste extraite
-                final List<Map<String, dynamic>> resultList = [];
-                for (var item in wordsList) {
-              if (item is Map && item.containsKey('word') && item.containsKey('syllables') && item['syllables'] is List) {
-                 // Convertir les syllabes en List<String> par sécurité
-                 final List<String> syllables = List<String>.from(item['syllables'].map((s) => s.toString()));
-                 if (syllables.isNotEmpty) { // S'assurer qu'il y a des syllabes
-                    resultList.add({'word': item['word'].toString(), 'syllables': syllables});
-                 } else {
-                    ConsoleLogger.warning('Mot ignoré car syllabes vides: ${item['word']}');
-                 }
-              } else {
-                 ConsoleLogger.warning('Format d\'item JSON invalide ignoré: $item');
-              }
-            }
-
-            if (resultList.isNotEmpty) {
-               ConsoleLogger.success('🤖 [OPENAI] Mots et syllabes générés et parsés avec succès: ${resultList.length} mots.');
-               return resultList;
+          // Valider la structure de chaque élément dans la liste extraite
+          final List<Map<String, dynamic>> resultList = [];
+          for (var item in wordsList) {
+            if (item is Map && item.containsKey('word') && item.containsKey('syllables') && item['syllables'] is List) {
+               // Convertir les syllabes en List<String> par sécurité
+               final List<String> syllables = List<String>.from(item['syllables'].map((s) => s.toString()));
+               if (syllables.isNotEmpty) { // S'assurer qu'il y a des syllabes
+                  resultList.add({'word': item['word'].toString(), 'syllables': syllables});
+               } else {
+                  ConsoleLogger.warning('Mot ignoré car syllabes vides: ${item['word']}');
+               }
             } else {
-               ConsoleLogger.error('🤖 [OPENAI] La liste JSON générée est vide ou ne contient que des items invalides.');
-               throw Exception('La liste JSON générée est vide ou ne contient que des items invalides.');
+               ConsoleLogger.warning('Format d\'item JSON invalide ignoré: $item');
             }
-              } else {
-             ConsoleLogger.error('🤖 [OPENAI] Clé "words" ou "mots" manquante ou n\'est pas une liste dans le JSON retourné.');
-            throw Exception('Clé "words" ou "mots" manquante ou n\'est pas une liste dans le JSON retourné.');
+          }
+
+          if (resultList.isNotEmpty) {
+             ConsoleLogger.success('🤖 [OPENAI] Mots et syllabes générés et parsés avec succès: ${resultList.length} mots.');
+             return resultList;
+          } else {
+             ConsoleLogger.error('🤖 [OPENAI] La liste JSON générée est vide ou ne contient que des items invalides.');
+             throw Exception('La liste JSON générée est vide ou ne contient que des items invalides.');
           }
         } catch (e) { // Attraper spécifiquement l'erreur de parsing du *contenu*
           ConsoleLogger.error('🤖 [OPENAI] Erreur parsing JSON de la réponse: $e');
@@ -529,4 +617,86 @@ Ne fournis que le JSON, sans aucune introduction, explication ou formatage suppl
     }
   }
 
+  /// Génère un feedback spécifique pour l'intonation expressive.
+  /// NOTE: Cette fonction suppose que l'audio est accessible et peut être traité
+  /// par un modèle capable d'analyser la prosodie (ce qui n'est pas le cas avec GPT-4 standard via texte).
+  /// Pour une vraie analyse, il faudrait un modèle multimodal ou un service dédié.
+  /// Ici, on simule une analyse basée sur le texte et l'émotion cible.
+  Future<String> getIntonationFeedback({
+    required String audioPath, // Chemin vers le fichier audio enregistré
+    required String targetEmotion, // Émotion que l'utilisateur devait exprimer
+    required String referenceSentence, // La phrase que l'utilisateur devait dire
+  }) async {
+    ConsoleLogger.info('🤖 [OPENAI] Génération de feedback pour l\'intonation...');
+    ConsoleLogger.info('🤖 [OPENAI] - Émotion cible: $targetEmotion');
+    ConsoleLogger.info('🤖 [OPENAI] - Phrase référence: "$referenceSentence"');
+    // ConsoleLogger.info('🤖 [OPENAI] - Fichier audio: $audioPath'); // Le modèle texte ne peut pas l'utiliser directement
+
+    // Construire le prompt pour l'analyse d'intonation (simulation textuelle)
+    String prompt = '''
+Contexte: Exercice d'intonation expressive.
+Émotion cible: "$targetEmotion"
+Phrase prononcée (transcription supposée identique à la référence pour cette simulation): "$referenceSentence"
+
+Tâche: Évalue si la phrase, telle que décrite, semble appropriée pour exprimer l'émotion "$targetEmotion". Fournis un feedback court (2-3 phrases) sur la manière dont l'intonation pourrait être ajustée pour mieux correspondre à l'émotion "$targetEmotion", en te basant sur les caractéristiques prosodiques typiques de cette émotion (ex: rythme, mélodie, volume).
+
+Exemple pour "joyeux": "Pour mieux exprimer la joie, essayez une mélodie plus montante en fin de phrase et un rythme légèrement plus rapide."
+Exemple pour "triste": "Pour accentuer la tristesse, ralentissez le rythme et utilisez une intonation plus descendante et monotone."
+
+Ne fournis que le feedback, sans introduction ni guillemets.
+''';
+
+    // Vérifier la configuration Azure OpenAI
+    if (apiKey.isEmpty || endpoint.isEmpty || deploymentName.isEmpty) {
+      ConsoleLogger.warning('🤖 [AZURE OPENAI] Informations Azure OpenAI manquantes. Utilisation d\'un feedback par défaut.');
+      return "L'analyse de l'intonation n'est pas disponible actuellement. Concentrez-vous sur la variation de votre mélodie vocale.";
+    }
+
+    // Appeler l'API Azure OpenAI
+    try {
+      ConsoleLogger.info('Appel de l\'API Azure OpenAI pour feedback d\'intonation');
+      final url = Uri.parse('$endpoint/openai/deployments/$deploymentName/chat/completions?api-version=$apiVersion');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': apiKey,
+        },
+        body: jsonEncode({
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'Tu es un coach vocal expert analysant la prosodie et l\'expression émotionnelle dans la voix, fournissant des conseils pour améliorer l\'intonation.',
+            },
+            {
+              'role': 'user',
+              'content': prompt,
+            },
+          ],
+          'temperature': 0.7,
+          'max_tokens': 150,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseBody = utf8.decode(response.bodyBytes);
+        final data = jsonDecode(responseBody);
+        String feedback = data['choices'][0]['message']['content'].trim();
+        feedback = feedback.replaceAll(RegExp(r'^"|"$'), ''); // Nettoyer
+        // Ajout d'une mention "Bien" si le feedback est positif (simplification)
+        if (!feedback.toLowerCase().contains('améliorer') && !feedback.toLowerCase().contains('essayer')) {
+           feedback = "Bien ! $feedback";
+        }
+        ConsoleLogger.success('🤖 [OPENAI] Feedback d\'intonation généré: "$feedback"');
+        return feedback;
+      } else {
+        ConsoleLogger.error('🤖 [OPENAI] Erreur API lors du feedback d\'intonation: ${response.statusCode}, ${response.body}');
+        throw Exception('Erreur API OpenAI: ${response.statusCode}');
+      }
+    } catch (e) {
+      ConsoleLogger.error('🤖 [OPENAI] Erreur lors du feedback d\'intonation: $e');
+      return "Une erreur est survenue lors de l'analyse de l'intonation.";
+    }
+  }
 }
