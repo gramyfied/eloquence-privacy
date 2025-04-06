@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+// import 'package:flutter_bloc/flutter_bloc.dart'; // Supprimé
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // Ajouté
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart'; // Pour initialiser les locales intl
@@ -16,9 +17,9 @@ import 'domain/repositories/exercise_repository.dart';
 import 'infrastructure/repositories/supabase_profile_repository.dart';
 import 'infrastructure/repositories/supabase_session_repository.dart';
 import 'infrastructure/repositories/supabase_statistics_repository.dart';
-// Les imports des services et blocs sont retirés car les fichiers n'existent pas
-// import 'application/services/auth_service.dart';
-// import 'application/services/exercise_service.dart';
+// Les imports des Blocs sont retirés car flutter_bloc n'est plus utilisé ici
+// import 'application/services/auth_service.dart'; // Garder si utilisé ailleurs
+// import 'application/services/exercise_service.dart'; // Garder si utilisé ailleurs
 // import 'application/services/profile_service.dart';
 // import 'application/services/session_service.dart';
 // import 'application/services/statistics_service.dart';
@@ -30,15 +31,7 @@ import 'infrastructure/repositories/supabase_statistics_repository.dart';
 // Supprimer l'import de WhisperService FFI
 // import 'infrastructure/native/whisper_service.dart';
 
-// --- PLACEHOLDER pour les Blocs manquants ---
-// Créez ces classes ou supprimez leur utilisation si elles ne sont plus nécessaires
-class AuthBloc extends Bloc<dynamic, dynamic> { AuthBloc({required dynamic authService, required dynamic profileService}) : super(0); }
-class AuthAppStarted {}
-class ProfileBloc extends Bloc<dynamic, dynamic> { ProfileBloc({required dynamic profileService, required dynamic authBloc}) : super(0); }
-class StatisticsBloc extends Bloc<dynamic, dynamic> { StatisticsBloc({required dynamic statisticsService, required dynamic authBloc}) : super(0); }
-class SessionBloc extends Bloc<dynamic, dynamic> { SessionBloc({required dynamic sessionService, required dynamic authBloc}) : super(0); }
-class ExerciseBloc extends Bloc<dynamic, dynamic> { ExerciseBloc({required dynamic exerciseService}) : super(0); }
-// --- Fin des Placeholders ---
+// --- PLACEHOLDER pour les Blocs manquants --- Supprimés car non utilisés ici
 
 
 void main() async {
@@ -117,54 +110,13 @@ void main() async {
   final profileRepository = serviceLocator<SupabaseProfileRepository>();
   final statisticsRepository = serviceLocator<SupabaseStatisticsRepository>();
   final sessionRepository = serviceLocator<SupabaseSessionRepository>();
-  final exerciseRepository = serviceLocator<ExerciseRepository>();
+  // Les repositories sont déjà enregistrés dans serviceLocator,
+  // Riverpod pourra y accéder via des providers si nécessaire.
 
   runApp(
-    MultiRepositoryProvider(
-      providers: [
-        // Fournir les repositories au lieu des services inexistants
-        RepositoryProvider.value(value: authRepository),
-        RepositoryProvider.value(value: profileRepository),
-        RepositoryProvider.value(value: statisticsRepository),
-        RepositoryProvider.value(value: sessionRepository),
-        RepositoryProvider.value(value: exerciseRepository),
-      ],
-      child: MultiBlocProvider(
-        providers: [
-          // Utiliser les repositories injectés pour les Blocs (placeholders)
-          BlocProvider(
-            create: (context) => AuthBloc(
-              authService: context.read<AuthRepository>(), // Utilise Repo
-              profileService: context.read<SupabaseProfileRepository>(), // Utilise Repo
-            )..add(AuthAppStarted()),
-          ),
-          BlocProvider(
-            create: (context) => ProfileBloc(
-              profileService: context.read<SupabaseProfileRepository>(), // Utilise Repo
-              authBloc: BlocProvider.of<AuthBloc>(context),
-            ),
-          ),
-          BlocProvider(
-            create: (context) => StatisticsBloc(
-              statisticsService: context.read<SupabaseStatisticsRepository>(), // Utilise Repo
-              authBloc: BlocProvider.of<AuthBloc>(context),
-            ),
-          ),
-          BlocProvider(
-            create: (context) => SessionBloc(
-              sessionService: context.read<SupabaseSessionRepository>(), // Utilise Repo
-              authBloc: BlocProvider.of<AuthBloc>(context),
-            ),
-          ),
-          BlocProvider(
-            create: (context) => ExerciseBloc(
-              exerciseService: context.read<ExerciseRepository>(), // Utilise Repo
-            ),
-          ),
-        ],
-        // Correction: Ne pas passer le router ici, il est géré dans App
-        child: const App(),
-      ),
+    // Envelopper l'application avec ProviderScope pour Riverpod
+    const ProviderScope(
+      child: App(),
     ),
   );
 }

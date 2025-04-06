@@ -264,10 +264,10 @@ GoRouter createRouter(AuthRepository authRepository) {
 
           return ArticulationExerciseScreen(
             exercise: exercise,
-            onExerciseCompleted: (results) {
-              print("Résultats Articulation: $results");
-              context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
-            },
+            // onExerciseCompleted: (results) { // Supprimé - La navigation sera gérée par le listener Riverpod dans l'écran
+            //   print("Résultats Articulation: $results");
+            //   context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
+            // },
             onExitPressed: () => context.pop(),
           );
         },

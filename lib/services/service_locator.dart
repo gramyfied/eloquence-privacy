@@ -13,6 +13,10 @@ import '../infrastructure/repositories/supabase_profile_repository.dart';
 import '../infrastructure/repositories/supabase_statistics_repository.dart';
 import '../infrastructure/repositories/supabase_session_repository.dart';
 import '../infrastructure/repositories/supabase_exercise_repository.dart';
+// Importer les nouvelles interfaces et implémentations
+import '../domain/repositories/azure_speech_repository.dart';
+import '../infrastructure/repositories/azure_speech_repository_impl.dart';
+import '../infrastructure/native/azure_speech_api.g.dart'; // API Pigeon générée
 // import 'package:flutter_tts/flutter_tts.dart'; // Retiré
 
 // Services
@@ -67,12 +71,26 @@ void setupServiceLocator() {
   // Enregistrer l'implémentation (simulée) de SpeechRecognitionRepository
   // TODO: Remplacer par la vraie implémentation si nécessaire
   serviceLocator.registerLazySingleton<SpeechRecognitionRepository>(
-    () => AzureSpeechRecognitionRepository()
+    () => AzureSpeechRecognitionRepository() // TODO: Vérifier si encore utile
   );
 
-  // Azure Services (TTS retiré, SpeechService gardé pour l'instant si PronunciationEvaluationResult est utilisé)
-  // Si PronunciationEvaluationResult n'est plus utilisé, on peut supprimer AzureSpeechService complètement.
-  // Correction: Appeler le constructeur par défaut. L'initialisation se fait via la méthode `initialize`.
+  // --- Nouvelle configuration pour Azure Speech SDK via Pigeon ---
+
+  // 1. Enregistrer l'API Pigeon générée
+  // Elle a généralement un constructeur par défaut.
+  serviceLocator.registerLazySingleton<AzureSpeechApi>(() => AzureSpeechApi());
+
+  // 2. Enregistrer l'implémentation du Repository en injectant l'API Pigeon
+  serviceLocator.registerLazySingleton<IAzureSpeechRepository>(
+    () => AzureSpeechRepositoryImpl(serviceLocator<AzureSpeechApi>())
+  );
+
+  // --- Fin de la nouvelle configuration ---
+
+
+  // Azure Services (TTS retiré, SpeechService gardé pour l'instant si PronunciationEvaluationResult est utilisé ailleurs)
+  // TODO: Vérifier si AzureSpeechService est encore nécessaire après la refactorisation complète.
+  // Si non, supprimer cet enregistrement.
   serviceLocator.registerLazySingleton<AzureSpeechService>(
     () => AzureSpeechService()
   );
