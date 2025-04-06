@@ -1,5 +1,5 @@
 import 'dart:async';
-// Import for Uint8List
+// Ajout pour Uint8List
 
 import 'package:flutter/services.dart';
 
@@ -63,8 +63,6 @@ class AudioSignalProcessor {
       print("AudioSignalProcessor initialized successfully.");
     } on PlatformException catch (e) {
       print("Failed to initialize AudioSignalProcessor: '${e.message}'.");
-      // Optionally rethrow or handle the error appropriately
-      // throw Exception("Failed to initialize AudioSignalProcessor: ${e.message}");
     }
   }
 
@@ -108,7 +106,9 @@ class AudioSignalProcessor {
         if (call.arguments is Map) {
           try {
             final result = AudioAnalysisResult.fromMap(call.arguments);
-            _analysisResultController.add(result); // Add result to the stream
+             if (!_analysisResultController.isClosed) {
+               _analysisResultController.add(result); // Add result to the stream
+             }
           } catch (e) {
             print("Error parsing analysis result: $e");
           }
@@ -118,21 +118,17 @@ class AudioSignalProcessor {
         break;
       default:
         print('Unknown method call received: ${call.method}');
-        throw MissingPluginException();
+        // Consider not throwing here to avoid crashing the handler
+        // throw MissingPluginException();
     }
   }
 
   /// Disposes the stream controller when no longer needed.
   static void dispose() {
-    _analysisResultController.close();
+    if (!_analysisResultController.isClosed) {
+       _analysisResultController.close();
+    }
     _isHandlerSet = false; // Reset flag if needed for re-initialization
      _channel.setMethodCallHandler(null); // Remove handler
   }
-
-  // --- Example method from template (can be removed or adapted) ---
-  // static Future<String?> getPlatformVersion() async {
-  //   final String? version = await _channel.invokeMethod('getPlatformVersion');
-  //   return version;
-  // }
-  // --- End of example method ---
 }

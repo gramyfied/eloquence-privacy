@@ -410,15 +410,10 @@ GoRouter createRouter(AuthRepository authRepository) {
           return ExpressiveIntonationExerciseScreen(
              exercise: exercise,
              onBackPressed: () => context.pop(),
-             onExerciseCompleted: () {
-                // Naviguer vers l'écran de résultats générique (qui n'affichera pas de scores spécifiques à cet exercice pour l'instant)
-                // TODO: Créer un écran de résultat spécifique pour l'intonation si nécessaire
-                print("[Router] ExpressiveIntonationExerciseScreen completed. Navigating to generic results.");
-                // Passer les résultats d'analyse de pitch si disponibles, sinon map vide
-                // Note: L'écran ExpressiveIntonation ne passe pas de 'results' dans son callback onExerciseCompleted pour l'instant.
-                // Il faudrait adapter cela si on veut passer les métriques de pitch.
-                // Pour l'instant, on passe une map vide explicitement typée.
-                context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': <String, dynamic>{}});
+             // MODIFIÉ: Accepter les résultats (results) du callback et les passer à l'écran suivant
+             onExerciseCompleted: (results) {
+                print("[Router] ExpressiveIntonationExerciseScreen completed. Navigating to results with data: $results");
+                context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
              },
           );
         },

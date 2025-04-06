@@ -1,16 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:get_it/get_it.dart';
 import 'dart:async';
 import 'dart:math'; // Import pour Random
-import 'dart:typed_data';
 import 'dart:convert'; // Import pour jsonEncode
 
 import '../../../app/routes.dart';
 import '../../../app/theme.dart';
 import '../../../domain/entities/exercise.dart';
-import '../../../domain/entities/exercise_category.dart';
 import '../../../domain/repositories/audio_repository.dart';
 import '../../../services/azure/azure_tts_service.dart';
 import '../../../services/openai/openai_feedback_service.dart';
@@ -18,7 +15,6 @@ import '../../../services/service_locator.dart';
 import '../../widgets/microphone_button.dart';
 import '../../widgets/visual_effects/info_modal.dart';
 import '../../../domain/entities/azure_pronunciation_assessment.dart';
-import 'exercise_result_screen.dart';
 import '../../../core/utils/console_logger.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 

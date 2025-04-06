@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import '../../../app/theme.dart';
 import '../../../domain/entities/exercise.dart';
-import '../../../domain/entities/exercise_category.dart';
 import '../../../domain/repositories/audio_repository.dart';
 import '../../../services/service_locator.dart';
 import '../../../services/azure/azure_speech_service.dart';

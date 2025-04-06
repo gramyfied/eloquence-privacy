@@ -1,32 +1,36 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'dart:convert'; // Ajout pour jsonEncode (affichage prosodie) - Peut être retiré si non utilisé ailleurs
-import 'dart:typed_data'; // Ajout pour Uint8List
-import 'dart:math'; // Pour Random
-import '../../../core/utils/console_logger.dart'; // Ajout pour ConsoleLogger
+import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:math' as math; // Importer avec préfixe pour les calculs
+import 'dart:math'; // Importer pour Random
+import 'package:audio_signal_processor/audio_signal_processor.dart'; // Importer le package
 
+import '../../../core/utils/console_logger.dart';
 import '../../../app/theme.dart';
 import '../../../domain/entities/exercise.dart';
-import '../../../domain/entities/exercise_category.dart'; // Importer pour ExerciseDifficulty
+import '../../../domain/entities/exercise_category.dart';
 import '../../../domain/repositories/audio_repository.dart';
 import '../../../services/service_locator.dart';
-import '../../../services/azure/azure_speech_service.dart'; // Importer AzureSpeechService
+// Retrait import AzureSpeechService car on n'utilise plus analyzeAudioFile
 import '../../../services/openai/openai_feedback_service.dart';
 import '../../../services/audio/example_audio_provider.dart';
 import '../../widgets/microphone_button.dart';
 import '../../widgets/visual_effects/info_modal.dart';
 import '../../widgets/visual_effects/celebration_effect.dart';
+import '../../widgets/pitch_contour_visualizer.dart'; // Importer le widget de visualisation
 
 class ExpressiveIntonationExerciseScreen extends StatefulWidget {
   final Exercise exercise;
   final VoidCallback onBackPressed;
-  final VoidCallback onExerciseCompleted;
+  // MODIFIÉ: Changer la signature du callback pour accepter les résultats
+  final void Function(Map<String, dynamic> results) onExerciseCompleted;
 
   const ExpressiveIntonationExerciseScreen({
     super.key,
     required this.exercise,
     required this.onBackPressed,
-    required this.onExerciseCompleted,
+    required this.onExerciseCompleted, // Mis à jour
   });
 
   @override
@@ -38,7 +42,6 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
   AudioRepository? _audioRepository;
   OpenAIFeedbackService? _openAIFeedbackService;
   ExampleAudioProvider? _ttsProvider;
-  AzureSpeechService? _azureSpeechService;
 
   // Emotions
   final Map<String, String> _emotionToStyleMap = {
@@ -49,24 +52,56 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
 
   // State
   bool _isRecording = false;
-  bool _isLoading = false;
+  bool _isLoading = false; // Pour le chargement initial ET l'analyse post-enregistrement
   String? _currentSentence;
   String _targetIntention = "Neutre";
   String _errorMessage = '';
-  String? _aiFeedback;
-  Map<String, dynamic>? _prosodyResult; // Gardé pour une utilisation future potentielle
-  Map<String, dynamic>? _pronunciationResult; // Gardé pour une utilisation future potentielle
-  bool _isExerciseCompleted = false;
+  String? _aiFeedback; // Feedback stocké dans l'état principal
+  List<double> _pitchContour = [];
+  List<double> _jitterValues = [];
+  List<double> _shimmerValues = [];
+  List<double> _amplitudeValues = [];
+  Map<String, double>? _lastAudioMetrics; // Pour stocker les métriques calculées
+  bool _isExerciseCompleted = false; // Indique si l'enregistrement est terminé
   bool _showCelebration = false;
   int _currentRound = 1;
   final int _totalRounds = 5;
 
   // Stream Subscriptions
+  StreamSubscription? _audioSubscription;
+  StreamSubscription? _analysisSubscription;
   final StreamController<double> _audioLevelController = StreamController<double>.broadcast();
   StreamSubscription? _amplitudeSubscription;
   StreamSubscription? _ttsStateSubscription;
   bool _isTtsPlaying = false;
   bool _isStoppingTts = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioRepository = serviceLocator<AudioRepository>();
+    try { _openAIFeedbackService = serviceLocator<OpenAIFeedbackService>(); }
+    catch (e) { ConsoleLogger.warning("[ExpressiveIntonation] OpenAIFeedbackService non trouvé: $e"); }
+    _ttsProvider = serviceLocator<ExampleAudioProvider>();
+
+    _availableEmotions = _emotionToStyleMap.keys.toList()..add('neutre');
+
+    _subscribeToTtsState();
+    _subscribeToAnalysisResults();
+    AudioSignalProcessor.initialize();
+    _initializeExercise();
+  }
+
+  @override
+  void dispose() {
+    _ttsStateSubscription?.cancel();
+    _amplitudeSubscription?.cancel();
+    _audioSubscription?.cancel();
+    _analysisSubscription?.cancel();
+    _audioLevelController.close();
+    AudioSignalProcessor.dispose();
+    super.dispose();
+  }
 
   void _subscribeToTtsState() {
     _ttsStateSubscription = _ttsProvider?.isPlayingStream.listen((isPlaying) {
@@ -79,31 +114,66 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
     });
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _audioRepository = serviceLocator<AudioRepository>();
-    try { _openAIFeedbackService = serviceLocator<OpenAIFeedbackService>(); }
-    catch (e) { ConsoleLogger.warning("[ExpressiveIntonation] OpenAIFeedbackService non trouvé: $e"); }
-    _ttsProvider = serviceLocator<ExampleAudioProvider>();
-    _azureSpeechService = serviceLocator<AzureSpeechService>();
-    _availableEmotions = _emotionToStyleMap.keys.toList()..add('neutre');
-
-    _subscribeToTtsState();
-    _initializeExercise();
+  void _subscribeToAnalysisResults() {
+    _analysisSubscription?.cancel();
+    _analysisSubscription = AudioSignalProcessor.analysisResultStream.listen(
+      (result) {
+        if (mounted && _isRecording) {
+          setState(() {
+            if (result.f0 > 50 && result.f0 < 500) {
+               _pitchContour.add(result.f0);
+            }
+            if (result.jitter.isFinite && result.jitter > 0) {
+               _jitterValues.add(result.jitter);
+            }
+             if (result.shimmer.isFinite && result.shimmer > 0) {
+               _shimmerValues.add(result.shimmer);
+            }
+          });
+        }
+      },
+      onError: (error) {
+        print("[ExpressiveIntonation] Error in analysis stream: $error");
+      },
+    );
   }
+
+   void _startAmplitudeSubscription() {
+     _amplitudeSubscription?.cancel();
+     _amplitudeSubscription = _audioRepository?.audioLevelStream.listen((level) {
+       if (mounted) {
+         _audioLevelController.add(level);
+         if (_isRecording && level.isFinite && level >= 0) {
+           _amplitudeValues.add(level);
+         }
+       }
+     }, onError: (e) { print("Amplitude Stream Error: $e"); });
+   }
 
   Future<void> _initializeExercise({bool nextRound = false}) async {
     if (!mounted) return;
     if (nextRound) {
-      if (_currentRound < _totalRounds) _currentRound++;
-      else { widget.onExerciseCompleted(); return; }
+      if (_currentRound < _totalRounds) {
+        _currentRound++;
+      } else {
+        // Fin de la session, appeler onExerciseCompleted avec les derniers résultats
+        final finalResults = {
+          'score': _calculateOverallScore(_lastAudioMetrics),
+          'commentaires': _aiFeedback ?? 'Session terminée.',
+          'details': _lastAudioMetrics ?? {},
+          'erreur': _errorMessage.isNotEmpty ? _errorMessage : null,
+        };
+        print("[ExpressiveIntonation] Session terminée. Appel de onExerciseCompleted avec: $finalResults");
+        widget.onExerciseCompleted(finalResults);
+        return; // Important de sortir ici pour ne pas réinitialiser
+      }
     }
+    // Réinitialisation pour le nouveau tour (ou le premier tour)
     setState(() {
       _isLoading = true; _errorMessage = ''; _currentSentence = null;
       _targetIntention = 'Chargement...'; _isExerciseCompleted = false;
-      _showCelebration = false; _aiFeedback = null; _prosodyResult = null;
-      _pronunciationResult = null;
+      _showCelebration = false; _aiFeedback = null; _lastAudioMetrics = null;
+      _pitchContour = []; _jitterValues = []; _shimmerValues = []; _amplitudeValues = [];
     });
     try {
       final random = Random();
@@ -115,17 +185,22 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
       } else {
         sentence = _getFallbackSentence(selectedEmotion);
       }
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _targetIntention = selectedEmotion; _currentSentence = sentence; _isLoading = false;
       });
+      }
     } catch (e) {
       print("[ExpressiveIntonation] Erreur init: $e");
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _targetIntention = "Erreur"; _currentSentence = "Impossible de générer.";
         _errorMessage = "Erreur génération."; _isLoading = false;
       });
+      }
     }
   }
+
 
   String _getFallbackSentence(String emotion) {
      switch (emotion.toLowerCase()) {
@@ -139,25 +214,33 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
      }
   }
 
-   void _startAmplitudeSubscription() {
-     _amplitudeSubscription?.cancel();
-     _amplitudeSubscription = _audioRepository?.audioLevelStream.listen((level) {
-       if (mounted) _audioLevelController.add(level);
-     }, onError: (e) { print("Amplitude Stream Error: $e"); });
+   void _subscribeToAudioStream(Stream<Uint8List> audioStream) {
+     _audioSubscription?.cancel();
+     _audioSubscription = audioStream.listen(
+       (data) {
+         if (mounted && _isRecording) {
+           AudioSignalProcessor.processAudioChunk(data);
+         }
+       },
+       onError: (error) {
+         if(mounted) {
+           print('[ExpressiveIntonation] Audio Stream Error: $error');
+           setState(() => _errorMessage = "Erreur flux audio.");
+         }
+       },
+       onDone: () {
+          if(mounted) print('[ExpressiveIntonation] Audio Stream Done.');
+       }
+     );
    }
-
-  @override
-  void dispose() {
-    _ttsStateSubscription?.cancel();
-    _amplitudeSubscription?.cancel();
-    _audioLevelController.close();
-    super.dispose();
-  }
 
   Future<void> _toggleRecording() async {
     if (_audioRepository == null) return;
-    if (_isRecording) await _stopRecordingAndAnalyze();
-    else await _startRecording();
+    if (_isRecording) {
+      await _stopRecordingAndAnalyze();
+    } else {
+      await _startRecording();
+    }
   }
 
   Future<void> _startRecording() async {
@@ -165,101 +248,167 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
     setState(() {
       _isRecording = true; _errorMessage = ''; _isLoading = false;
       _isExerciseCompleted = false; _showCelebration = false;
-      _aiFeedback = null; _prosodyResult = null; _pronunciationResult = null;
+      _aiFeedback = null; _lastAudioMetrics = null;
+      _pitchContour = []; _jitterValues = []; _shimmerValues = []; _amplitudeValues = [];
     });
     try {
-      final recordingPath = await _audioRepository!.getRecordingFilePath();
-      print("[ExpressiveIntonation] Starting recording to file: $recordingPath");
-      await _audioRepository!.startRecording(filePath: recordingPath);
+      await AudioSignalProcessor.startAnalysis();
+      final audioStream = await _audioRepository!.startRecordingStream();
+      _subscribeToAudioStream(audioStream);
       _startAmplitudeSubscription();
-      print("Recording started for intonation (to file)...");
+      print("Recording stream started for intonation...");
     } catch (e) {
-      print("Error starting recording: $e");
+      print("Error starting recording stream or analysis: $e");
       if (mounted) setState(() { _isRecording = false; _errorMessage = "Erreur démarrage: $e"; });
     }
   }
 
   Future<void> _stopRecordingAndAnalyze() async {
-    if (!_isRecording || _audioRepository == null || _azureSpeechService == null) return;
+    if (!_isRecording || _audioRepository == null) {
+      if (!_isRecording) print("[ExpressiveIntonation] Stop called but not recording.");
+      return;
+    }
 
-    print("[ExpressiveIntonation] Stopping recording...");
-    setState(() { _isLoading = true; _isRecording = false; _aiFeedback = null; _prosodyResult = null; _pronunciationResult = null; _errorMessage = ''; });
+    print("[ExpressiveIntonation] Stopping recording stream...");
+    setState(() { _isLoading = true; _isRecording = false; _errorMessage = ''; }); // Indicate loading
 
-    String? recordingPath;
+    Map<String, dynamic> currentResults = {}; // Initialiser la map de résultats
+
     try {
-      // 1. Arrêter l'enregistrement fichier
-      recordingPath = await _audioRepository!.stopRecording();
+      // 1. Arrêter l'enregistrement et l'analyse
+      await Future.wait([
+        _audioRepository!.stopRecordingStream(),
+        AudioSignalProcessor.stopAnalysis(),
+      ]);
       _amplitudeSubscription?.cancel();
-      print("[ExpressiveIntonation] File recording stopped. Path: $recordingPath");
+      _audioSubscription?.cancel();
+      print("[ExpressiveIntonation] Recording and analysis stopped.");
 
-      if (recordingPath == null || recordingPath.isEmpty) {
-        throw Exception("Chemin d'enregistrement invalide.");
-      }
+      // Ajouter une courte pause pour laisser le temps aux derniers événements du stream d'arriver
+      await Future.delayed(const Duration(milliseconds: 300));
+      print("[ExpressiveIntonation] Delay finished, calculating metrics...");
 
-      // 2. Lancer l'analyse ponctuelle Azure
-      print("[ExpressiveIntonation] Starting Azure analysis for file: $recordingPath");
-      final azureResults = await _azureSpeechService!.analyzeAudioFile(
-          filePath: recordingPath,
-          referenceText: _currentSentence ?? "");
+      // 2. Calculer les métriques agrégées
+      final calculatedMetrics = _calculateMetrics();
+      print("[ExpressiveIntonation] Calculated Audio Metrics: $calculatedMetrics");
 
-      // 3. Traiter les résultats Azure
-      _pronunciationResult = azureResults['pronunciationResult'];
-      _prosodyResult = azureResults['prosodyResult']; // Stocker même si null
-      final azureError = azureResults['error'];
+      // 3. Obtenir le feedback OpenAI en passant les métriques
+      String feedbackMessage = "Analyse terminée."; // Message par défaut
+      String currentError = _errorMessage; // Capturer l'erreur actuelle
 
-      if (azureError != null) {
-         _errorMessage = "Erreur Azure: $azureError";
-         print("[ExpressiveIntonation] Azure analysis error: $azureError");
-      } else {
-         print("[ExpressiveIntonation] Azure analysis successful.");
-         if (_pronunciationResult != null) print("[ExpressiveIntonation] Pronunciation data received.");
-         if (_prosodyResult != null) print("[ExpressiveIntonation] Prosody data received."); // Log si reçu
-         else print("[ExpressiveIntonation] No Prosody data received from Azure."); // Log si non reçu
-      }
-
-      // 4. Obtenir le feedback OpenAI (basé sur l'émotion cible)
-      String feedbackMessage = _errorMessage.isNotEmpty ? _errorMessage : "Analyse terminée."; // Message par défaut
-      if (_openAIFeedbackService != null && _currentSentence != null && azureError == null) {
-        print("[ExpressiveIntonation] Getting AI feedback for emotion '$_targetIntention'...");
+      if (currentError.isEmpty && _openAIFeedbackService != null && _currentSentence != null) {
+        print("[ExpressiveIntonation] Getting AI feedback for emotion '$_targetIntention' with audio metrics...");
         try {
           feedbackMessage = await _openAIFeedbackService!.getIntonationFeedback(
-            audioPath: recordingPath, // Peut être retiré si l'IA n'analyse que le texte/émotion
+            audioPath: '',
             targetEmotion: _targetIntention,
             referenceSentence: _currentSentence!,
-            // On n'utilise pas les métriques Azure ici car la prosodie n'est pas fiable
+            audioMetrics: calculatedMetrics,
           );
           print("[ExpressiveIntonation] AI Feedback received.");
         } catch (aiError) {
           print("[ExpressiveIntonation] Error getting AI feedback: $aiError");
           feedbackMessage = "Erreur analyse OpenAI.";
+          currentError = feedbackMessage; // Reporter l'erreur OpenAI
         }
-      } else if (azureError == null) {
-         ConsoleLogger.warning("[ExpressiveIntonation] OpenAI service not available for feedback.");
-         // Message par défaut si ni erreur Azure ni feedback OpenAI
-         feedbackMessage = "Analyse Azure terminée (pas de feedback OpenAI).";
-      } // Si azureError != null, on garde le message d'erreur Azure
+      } else if (currentError.isEmpty) {
+         ConsoleLogger.warning("[ExpressiveIntonation] OpenAI service or sentence not available for feedback.");
+         feedbackMessage = "Service de feedback non disponible.";
+      }
 
-      // 5. Mettre à jour l'état final et afficher
+      // Préparer les résultats pour le callback et l'état
+      currentResults = {
+        'score': _calculateOverallScore(calculatedMetrics), // Calculer un score global
+        'commentaires': feedbackMessage,
+        'details': calculatedMetrics,
+        'erreur': currentError.isNotEmpty ? currentError : null,
+      };
+
+      // 4. Mettre à jour l'état final AVANT d'appeler showDialog
       if (mounted) {
         setState(() {
-          _aiFeedback = feedbackMessage;
-          _isLoading = false;
+          _aiFeedback = feedbackMessage; // Stocker le feedback
+          _lastAudioMetrics = calculatedMetrics; // Stocker les métriques
+          _isLoading = false; // Arrêter le loader
           _isExerciseCompleted = true;
+          _errorMessage = currentError; // Mettre à jour l'erreur si nécessaire
+          _showCelebration = currentError.isEmpty && feedbackMessage.toLowerCase().contains('bien'); // Déterminer la célébration
         });
-        _showCompletionDialog();
+        // Appeler le dialogue APRÈS que l'état soit mis à jour
+        _showCompletionDialog(currentResults); // Passer les résultats au dialogue
       }
 
     } catch (e) {
-      print("[ExpressiveIntonation] Error stopping/analyzing: $e");
+      print("[ExpressiveIntonation] Error stopping recording/analyzing: $e");
       if (mounted) {
+        final errorMsg = "Erreur: $e";
         setState(() {
-          _isLoading = false; _isRecording = false;
-          _errorMessage = "Erreur: $e"; _isExerciseCompleted = true;
+          _isLoading = false;
+          _isRecording = false;
+          _errorMessage = errorMsg;
+          _isExerciseCompleted = true;
+          _aiFeedback = null; // Pas de feedback en cas d'erreur majeure
+          _lastAudioMetrics = {}; // Pas de métriques
+          _showCelebration = false;
         });
-         _showCompletionDialog();
+         // Préparer les résultats d'erreur
+         currentResults = {
+           'score': 0.0,
+           'commentaires': errorMsg,
+           'details': {},
+           'erreur': errorMsg,
+         };
+         _showCompletionDialog(currentResults); // Appeler avec les résultats d'erreur
       }
     }
   }
+
+  // Méthode pour calculer les métriques (appelée depuis _stopRecordingAndAnalyze)
+  Map<String, double> _calculateMetrics() {
+      Map<String, double> metrics = {};
+      if (_pitchContour.isNotEmpty) {
+        metrics['meanF0'] = _pitchContour.reduce((a, b) => a + b) / _pitchContour.length;
+        metrics['minF0'] = _pitchContour.reduce(math.min);
+        metrics['maxF0'] = _pitchContour.reduce(math.max);
+        metrics['rangeF0'] = metrics['maxF0']! - metrics['minF0']!;
+        final mean = metrics['meanF0']!;
+        final variance = _pitchContour.length > 1
+            ? _pitchContour.map((p) => math.pow(p - mean, 2)).reduce((a, b) => a + b) / _pitchContour.length
+            : 0.0;
+        metrics['stdevF0'] = math.sqrt(variance);
+      }
+      // Correction: Utiliser _jitterValues directement après filtrage
+      final validJitterValues = _jitterValues.where((j) => j.isFinite && j > 0).toList();
+      if (validJitterValues.isNotEmpty) {
+         metrics['meanJitter'] = validJitterValues.reduce((a, b) => a + b) / validJitterValues.length;
+      }
+      final validShimmerValues = _shimmerValues.where((s) => s.isFinite && s > 0).toList();
+      if (validShimmerValues.isNotEmpty) {
+         metrics['meanShimmer'] = validShimmerValues.reduce((a, b) => a + b) / validShimmerValues.length;
+      }
+      final validAmplitudeValues = _amplitudeValues.where((a) => a.isFinite && a >= 0).toList(); // Amplitude peut être 0
+       if (validAmplitudeValues.isNotEmpty) {
+         metrics['meanAmplitude'] = validAmplitudeValues.reduce((a, b) => a + b) / validAmplitudeValues.length;
+      }
+      return metrics;
+  }
+
+  // Calculer un score global simple basé sur les métriques (exemple)
+  double _calculateOverallScore(Map<String, double>? metrics) {
+    if (metrics == null || metrics.isEmpty) return 0.0;
+    // Exemple simple: moyenne pondérée (à ajuster selon l'importance)
+    double score = 0;
+    int count = 0;
+    // Donner plus de poids à la variation de pitch pour l'expressivité
+    if (metrics.containsKey('rangeF0')) { score += (metrics['rangeF0']! > 50 ? 1 : 0) * 3; count += 3; } // Bonus si range > 50Hz
+    if (metrics.containsKey('stdevF0')) { score += (metrics['stdevF0']! > 20 ? 1 : 0) * 2; count += 2; } // Bonus si stdev > 20Hz
+    // Pénaliser légèrement le jitter/shimmer élevés
+    if (metrics.containsKey('meanJitter')) { score += (1 - math.min(metrics['meanJitter']! / 5, 1)); count++; } // Normaliser sur 0-5%
+    if (metrics.containsKey('meanShimmer')) { score += (1 - math.min(metrics['meanShimmer']! / 10, 1)); count++; } // Normaliser sur 0-10%
+
+    return count > 0 ? (score / count) * 100 : 0.0;
+  }
+
 
   void _playModelAudio() {
     if (_ttsProvider != null && _currentSentence != null) {
@@ -302,12 +451,14 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
                   borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
                   border: Border.all(color: Colors.white10),
                 ),
-                child: const Center(
-                  child: Text(
-                    "[Visualisation de la courbe de Pitch ici]",
-                    style: TextStyle(color: Colors.white54),
-                  ),
-                ),
+                child: _pitchContour.isNotEmpty
+                  ? PitchContourVisualizer(pitchData: _pitchContour)
+                  : Center(
+                      child: Text(
+                        _isLoading ? "Chargement..." : (_isRecording ? "Enregistrement..." : "Appuyez sur le micro pour commencer"),
+                        style: const TextStyle(color: Colors.white54),
+                      ),
+                    ),
               ),
             ),
             const SizedBox(height: 24),
@@ -352,9 +503,9 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
               ],
             ),
             const SizedBox(height: 16),
-            if (_isLoading && !_isRecording)
+            if (_isLoading) // Afficher le loader si _isLoading est true
                const CircularProgressIndicator(color: AppTheme.primaryColor),
-            if (_errorMessage.isNotEmpty)
+            if (_errorMessage.isNotEmpty && !_isLoading) // N'afficher l'erreur que si on ne charge pas
                Padding(
                  padding: const EdgeInsets.only(top: 8.0),
                  child: Text(_errorMessage, style: const TextStyle(color: Colors.redAccent)),
@@ -425,32 +576,56 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
     }
   }
 
-  void _showCompletionDialog() {
-    final String commentaires = _errorMessage.isNotEmpty
-        ? _errorMessage
-        : (_aiFeedback ?? 'Analyse terminée.');
-    final bool success = _errorMessage.isEmpty && (_aiFeedback?.toLowerCase().contains('bien') ?? false);
-
-    // L'affichage des détails JSON Azure est retiré pour ne montrer que le feedback OpenAI
-    // String prosodyDetails = '';
-    // String pronunciationDetails = '';
-    // const jsonEncoder = JsonEncoder.withIndent('  ');
-    // if (_prosodyResult != null) { ... }
-    // if (_pronunciationResult != null) { ... }
-
-    if (mounted) {
-      setState(() {
-        _showCelebration = success;
-      });
+  // Méthode pour formater les métriques pour l'affichage
+  String _formatMetrics(Map<String, double>? metrics) {
+    if (metrics == null || metrics.isEmpty) {
+      return "Aucune métrique audio calculée.";
     }
+    final formattedEntries = metrics.entries.map((entry) {
+      String keyName;
+      String unit = "";
+      switch (entry.key) {
+        case 'meanF0': keyName = 'Pitch Moyen'; unit = ' Hz'; break;
+        case 'minF0': keyName = 'Pitch Min'; unit = ' Hz'; break;
+        case 'maxF0': keyName = 'Pitch Max'; unit = ' Hz'; break;
+        case 'rangeF0': keyName = 'Étendue Pitch'; unit = ' Hz'; break;
+        case 'stdevF0': keyName = 'Variabilité Pitch'; unit = ' Hz'; break;
+        case 'meanJitter': keyName = 'Jitter Moyen'; unit = ' %'; break;
+        case 'meanShimmer': keyName = 'Shimmer Moyen'; unit = ' %'; break;
+        case 'meanAmplitude': keyName = 'Amplitude Moyenne'; break;
+        default: keyName = entry.key;
+      }
+      final valueString = entry.value.isFinite ? entry.value.toStringAsFixed(2) : 'N/A';
+      return "$keyName: $valueString$unit";
+    });
+    return "Métriques Audio:\n- ${formattedEntries.join('\n- ')}";
+  }
+
+
+  // Afficher le dialogue avec les résultats finaux (feedback et métriques)
+  // MODIFIÉ: Accepter les résultats en argument
+  void _showCompletionDialog([Map<String, dynamic>? results]) {
+    // Utiliser les résultats passés ou ceux de l'état si null (cas d'erreur avant calcul)
+    final currentResults = results ?? {
+      'score': _calculateOverallScore(_lastAudioMetrics),
+      'commentaires': _errorMessage.isNotEmpty ? _errorMessage : (_aiFeedback ?? 'Analyse terminée.'),
+      'details': _lastAudioMetrics ?? {},
+      'erreur': _errorMessage.isNotEmpty ? _errorMessage : null,
+    };
+
+    final String commentaires = currentResults['commentaires'] as String? ?? 'Analyse terminée.';
+    final bool success = currentResults['erreur'] == null && commentaires.toLowerCase().contains('bien');
+    final String metricsText = _formatMetrics(currentResults['details'] as Map<String, double>?);
+    bool showCelebration = success; // Gérer la célébration localement
 
     showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) {
+          // Pas besoin de StatefulBuilder ici car les données sont prêtes
           return Stack(
             children: [
-              if (_showCelebration) CelebrationEffect(onComplete: () {}),
+              if (showCelebration) CelebrationEffect(onComplete: () {}),
               Center(
                 child: AlertDialog(
                   backgroundColor: AppTheme.darkSurface,
@@ -471,9 +646,11 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
                           commentaires, // Feedback OpenAI ou message d'erreur
                           style: const TextStyle(fontSize: 15, color: Colors.white),
                         ),
-                        // Retrait de l'affichage des détails JSON
-                        // if (prosodyDetails.isNotEmpty) ...
-                        // if (pronunciationDetails.isNotEmpty) ...
+                        const SizedBox(height: 16),
+                        Text(
+                          metricsText, // Afficher les métriques formatées
+                          style: const TextStyle(fontSize: 12, color: Colors.white70, fontFamily: 'monospace'),
+                        ),
                       ],
                     ),
                   ),
@@ -492,7 +669,8 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
                         if (_currentRound < _totalRounds) {
                           _initializeExercise(nextRound: true);
                         } else {
-                          widget.onExerciseCompleted();
+                          // MODIFIÉ: Appeler onExerciseCompleted avec les résultats finaux
+                          widget.onExerciseCompleted(currentResults);
                         }
                       },
                       child: Text(

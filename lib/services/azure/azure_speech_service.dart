@@ -146,7 +146,7 @@ class AzureSpeechService {
           if (kDebugMode) print('AzureSpeechService: Parsed pronunciationResult.');
         } catch (e) {
           if (kDebugMode) print('AzureSpeechService: Failed to parse pronunciationResult JSON: $e');
-          errorMessage = (errorMessage ?? '') + ' Failed to parse pronunciationResult. ';
+          errorMessage = '${errorMessage ?? ''} Failed to parse pronunciationResult. ';
         }
       }
       if (safeResult['prosodyResult'] is String) {
@@ -155,7 +155,7 @@ class AzureSpeechService {
           if (kDebugMode) print('AzureSpeechService: Parsed prosodyResult.');
         } catch (e) {
           if (kDebugMode) print('AzureSpeechService: Failed to parse prosodyResult JSON: $e');
-           errorMessage = (errorMessage ?? '') + ' Failed to parse prosodyResult. ';
+           errorMessage = '${errorMessage ?? ''} Failed to parse prosodyResult. ';
         }
       }
 

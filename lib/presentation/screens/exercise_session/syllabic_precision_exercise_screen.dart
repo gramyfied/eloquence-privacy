@@ -521,7 +521,7 @@ class _SyllabicPrecisionExerciseScreenState
              wordFound = true;
              final List<SyllableResult> azureSyllables = wordData.syllables;
              // Tenter d'utiliser les scores des syllabes Azure si le nombre correspond
-             if (azureSyllables != null && azureSyllables.length == expectedSyllables.length) {
+             if (azureSyllables.length == expectedSyllables.length) {
                print("Correspondance du nombre de syllabes trouvée (${expectedSyllables.length}). Utilisation des scores de syllabes Azure.");
                for (int i = 0; i < expectedSyllables.length; i++) {
                  final sylScore = azureSyllables[i].pronunciationAssessment?.accuracyScore ?? 0.0;
@@ -532,7 +532,7 @@ class _SyllabicPrecisionExerciseScreenState
              // Si les scores de syllabes Azure ne sont pas utilisables, calculer la moyenne des phonèmes
              if (!scoresAssignedDirectly) {
                final List<PhonemeResult> phonemes = wordData.phonemes;
-               if (phonemes != null && phonemes.isNotEmpty) {
+               if (phonemes.isNotEmpty) {
                  double totalPhonemeScore = 0;
                  int validPhonemeCount = 0;
                  for (final phonemeData in phonemes) {

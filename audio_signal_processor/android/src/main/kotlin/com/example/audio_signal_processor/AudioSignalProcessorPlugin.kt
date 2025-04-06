@@ -98,23 +98,45 @@ class AudioSignalProcessorPlugin: FlutterPlugin, MethodCallHandler {
     }
 
      private fun setupPitchProcessor() {
-        val handler = PitchDetectionHandler { res, _ ->
+        println("[Native Log] Setting up PitchDetectionHandler...") // Log setup start
+        val handler = PitchDetectionHandler { res, event ->
+             // This handler is called from TarsosDSP's processing thread
             val pitchInHz = res.pitch
+            // Log raw detection outside the main thread post
+            println("[Native Log - BG Thread] Pitch detected: ${pitchInHz} Hz at time ${event.timeStamp} s")
+
             if (pitchInHz > 0) { // Often -1 if no pitch detected
-                // Calculate Jitter and Shimmer
+                // Calculate Jitter and Shimmer (can stay on background thread)
                 pitchValues.add(pitchInHz)
                 if (pitchValues.size > maxPitchValuesSize) {
                     pitchValues.removeAt(0) // Keep only the last 'maxPitchValuesSize' values
                 }
                 val jitter = calculateJitter()
                 val shimmer = calculateShimmer() // Placeholder
+                println("[Native Log - BG Thread] Calculated Jitter: $jitter, Shimmer: $shimmer")
 
-                // Send result back to Flutter on the main thread
-                 channel.invokeMethod("onAnalysisResult", mapOf(
+                // Prepare data payload
+                val resultData = mapOf(
                     "f0" to pitchInHz.toDouble(),
                     "jitter" to jitter,
                     "shimmer" to shimmer
-                ))
+                )
+
+                // Post the channel invocation to the main thread
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    try {
+                        // Log just before invoking on the main thread
+                        println("[Native Log - Main Thread] Invoking onAnalysisResult with data: $resultData")
+                        channel.invokeMethod("onAnalysisResult", resultData)
+                        // Log success after invoking
+                        // println("[Native Log - Main Thread] Successfully invoked onAnalysisResult.")
+                    } catch (e: Exception) {
+                         println("[Native Log - Main Thread] Error invoking MethodChannel: ${e.message}")
+                    }
+                }
+            } else {
+                 // Log when pitch is not detected or invalid
+                 // println("[Native Log - BG Thread] Invalid pitch detected: $pitchInHz")
             }
         }
         // Using YIN algorithm as an example

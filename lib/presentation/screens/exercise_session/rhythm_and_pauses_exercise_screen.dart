@@ -3,12 +3,12 @@ import 'dart:math'; // Importer pour max
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // Gardé pour cohérence
+// Gardé pour cohérence
 
 import '../../../app/theme.dart';
 import '../../../core/utils/console_logger.dart';
 import '../../../domain/entities/exercise.dart';
-import '../../../domain/entities/exercise_category.dart'; // Pour ExerciseCategoryType
+// Pour ExerciseCategoryType
 import '../../../services/service_locator.dart';
 import '../../../domain/repositories/audio_repository.dart';
 import '../../../services/azure/azure_speech_service.dart'; // Pour STT

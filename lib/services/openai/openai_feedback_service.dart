@@ -123,7 +123,7 @@ class OpenAIFeedbackService {
 Contexte: Exercice de $exerciseType, niveau $exerciseLevel
 Texte attendu: "$expectedText"
 Texte prononcé: "$spokenText"
-Métriques: 
+Métriques:
 $metricsString
 
 Génère un feedback personnalisé, constructif et encourageant pour cet exercice de $exerciseType.
@@ -478,6 +478,108 @@ Ne fournis que la phrase générée, sans aucune introduction, explication ou gu
   }
 
 
+  /// Génère un feedback spécifique pour l'intonation expressive.
+  Future<String> getIntonationFeedback({
+    required String audioPath, // Gardé pour référence future, mais non utilisé par le modèle texte
+    required String targetEmotion,
+    required String referenceSentence,
+    Map<String, double>? audioMetrics, // Nouveau paramètre optionnel (remplace pitchMetrics)
+  }) async {
+    _log("Génération de feedback pour l'intonation...");
+    _log("- Émotion cible: $targetEmotion");
+    _log("- Phrase référence: \"$referenceSentence\"");
+    if (audioMetrics != null && audioMetrics.isNotEmpty) {
+      _log("- Métriques audio fournies: ${audioMetrics.entries.map((e) => '${e.key}: ${e.value.toStringAsFixed(2)}').join(', ')}");
+    } else {
+      _log("- Aucune métrique audio fournie.");
+    }
+
+    // Construire la partie du prompt concernant les métriques
+    String metricsString = "";
+    if (audioMetrics != null && audioMetrics.isNotEmpty) {
+      metricsString = "\nVoici quelques métriques extraites de l'audio de l'utilisateur :\n"
+                      "${audioMetrics.entries.map((e) => "- ${e.key}: ${e.value.toStringAsFixed(2)}").join('\n')}\n"
+                      "Utilise ces métriques (F0 moyen, étendue F0, écart-type F0, jitter moyen, shimmer moyen, amplitude moyenne) pour affiner ton évaluation de l'intonation et de l'émotion perçue.";
+    }
+
+    // Construire le prompt système et utilisateur
+    final systemPrompt = """
+Tu es un coach vocal expert en intonation et expression émotionnelle en français. Ton rôle est d'évaluer si l'utilisateur a réussi à prononcer une phrase donnée avec l'intention émotionnelle demandée, en te basant sur la phrase de référence, l'émotion cible, et potentiellement des métriques audio fournies.
+
+Instructions pour le feedback :
+1.  Sois concis (2-3 phrases maximum).
+2.  Sois positif et constructif.
+3.  Indique clairement si l'intonation correspond bien à l'émotion cible.
+4.  Si l'émotion est globalement bien exprimée, commence par "Bien !".
+5.  Si des améliorations sont possibles, donne UN conseil spécifique et actionnable (ex: varier davantage la mélodie, utiliser un rythme plus lent, marquer une pause...).
+6.  Si des métriques audio (F0, Jitter, Shimmer, Amplitude) sont fournies, utilise-les pour informer ton jugement sur l'intonation et l'émotion, mais ne les mentionne PAS explicitement dans ta réponse finale à l'utilisateur. Concentre-toi sur la perception de l'émotion et comment l'améliorer. Par exemple, si le pitch moyen est bas et l'émotion cible est 'joyeux', suggère une mélodie plus ascendante. Si l'étendue du pitch est faible pour 'excité', suggère plus de variation. Si le jitter/shimmer est élevé pour 'calme', suggère une voix plus stable. Si l'amplitude est faible pour 'en colère', suggère plus d'intensité.
+7.  Adapte ton langage pour être encourageant.
+
+Informations pour l'évaluation :
+Phrase de référence : "$referenceSentence"
+Émotion cible : "$targetEmotion"
+$metricsString
+""".trim();
+
+    final userPrompt = """
+Évalue mon intonation pour l'émotion '$targetEmotion' sur la phrase '$referenceSentence', en tenant compte des métriques si elles ont été fournies.
+""".trim();
+
+
+    // Vérifier la configuration Azure OpenAI
+    if (apiKey.isEmpty || endpoint.isEmpty || deploymentName.isEmpty) {
+      ConsoleLogger.warning('🤖 [AZURE OPENAI] Informations Azure OpenAI manquantes. Utilisation d\'un feedback par défaut.');
+      return "L'analyse de l'intonation n'est pas disponible actuellement. Concentrez-vous sur la variation de votre mélodie vocale.";
+    }
+
+    // Appeler l'API Azure OpenAI
+    try {
+      ConsoleLogger.info('Appel de l\'API Azure OpenAI pour feedback d\'intonation');
+      final url = Uri.parse('$endpoint/openai/deployments/$deploymentName/chat/completions?api-version=$apiVersion');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': apiKey,
+        },
+        body: jsonEncode({
+          'messages': [
+            {
+              'role': 'system',
+              'content': systemPrompt, // Utiliser le prompt système détaillé
+            },
+            {
+              'role': 'user',
+              'content': userPrompt, // Prompt utilisateur simple
+            },
+          ],
+          'temperature': 0.7,
+          'max_tokens': 150,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseBody = utf8.decode(response.bodyBytes);
+        final data = jsonDecode(responseBody);
+        String feedback = data['choices'][0]['message']['content'].trim();
+        feedback = feedback.replaceAll(RegExp(r'^"|"$'), ''); // Nettoyer
+        // Ajout d'une mention "Bien" si le feedback est positif (simplification)
+        if (!feedback.toLowerCase().contains('améliorer') && !feedback.toLowerCase().contains('essayer')) {
+           feedback = "Bien ! $feedback";
+        }
+        ConsoleLogger.success('🤖 [OPENAI] Feedback d\'intonation généré: "$feedback"');
+        return feedback;
+      } else {
+        ConsoleLogger.error('🤖 [OPENAI] Erreur API lors du feedback d\'intonation: ${response.statusCode}, ${response.body}');
+        throw Exception('Erreur API OpenAI: ${response.statusCode}');
+      }
+    } catch (e) {
+      ConsoleLogger.error('🤖 [OPENAI] Erreur lors du feedback d\'intonation: $e');
+      return "Une erreur est survenue lors de l'analyse de l'intonation.";
+    }
+  }
+
   /// Génère une liste de mots avec leur décomposition syllabique pour l'exercice de précision syllabique.
   Future<List<Map<String, dynamic>>> generateSyllabicWords({
     required String exerciseLevel,
@@ -617,86 +719,8 @@ Ne fournis que le JSON, sans aucune introduction, explication ou formatage suppl
     }
   }
 
-  /// Génère un feedback spécifique pour l'intonation expressive.
-  /// NOTE: Cette fonction suppose que l'audio est accessible et peut être traité
-  /// par un modèle capable d'analyser la prosodie (ce qui n'est pas le cas avec GPT-4 standard via texte).
-  /// Pour une vraie analyse, il faudrait un modèle multimodal ou un service dédié.
-  /// Ici, on simule une analyse basée sur le texte et l'émotion cible.
-  Future<String> getIntonationFeedback({
-    required String audioPath, // Chemin vers le fichier audio enregistré
-    required String targetEmotion, // Émotion que l'utilisateur devait exprimer
-    required String referenceSentence, // La phrase que l'utilisateur devait dire
-  }) async {
-    ConsoleLogger.info('🤖 [OPENAI] Génération de feedback pour l\'intonation...');
-    ConsoleLogger.info('🤖 [OPENAI] - Émotion cible: $targetEmotion');
-    ConsoleLogger.info('🤖 [OPENAI] - Phrase référence: "$referenceSentence"');
-    // ConsoleLogger.info('🤖 [OPENAI] - Fichier audio: $audioPath'); // Le modèle texte ne peut pas l'utiliser directement
-
-    // Construire le prompt pour l'analyse d'intonation (simulation textuelle)
-    String prompt = '''
-Contexte: Exercice d'intonation expressive.
-Émotion cible: "$targetEmotion"
-Phrase prononcée (transcription supposée identique à la référence pour cette simulation): "$referenceSentence"
-
-Tâche: Évalue si la phrase, telle que décrite, semble appropriée pour exprimer l'émotion "$targetEmotion". Fournis un feedback court (2-3 phrases) sur la manière dont l'intonation pourrait être ajustée pour mieux correspondre à l'émotion "$targetEmotion", en te basant sur les caractéristiques prosodiques typiques de cette émotion (ex: rythme, mélodie, volume).
-
-Exemple pour "joyeux": "Pour mieux exprimer la joie, essayez une mélodie plus montante en fin de phrase et un rythme légèrement plus rapide."
-Exemple pour "triste": "Pour accentuer la tristesse, ralentissez le rythme et utilisez une intonation plus descendante et monotone."
-
-Ne fournis que le feedback, sans introduction ni guillemets.
-''';
-
-    // Vérifier la configuration Azure OpenAI
-    if (apiKey.isEmpty || endpoint.isEmpty || deploymentName.isEmpty) {
-      ConsoleLogger.warning('🤖 [AZURE OPENAI] Informations Azure OpenAI manquantes. Utilisation d\'un feedback par défaut.');
-      return "L'analyse de l'intonation n'est pas disponible actuellement. Concentrez-vous sur la variation de votre mélodie vocale.";
-    }
-
-    // Appeler l'API Azure OpenAI
-    try {
-      ConsoleLogger.info('Appel de l\'API Azure OpenAI pour feedback d\'intonation');
-      final url = Uri.parse('$endpoint/openai/deployments/$deploymentName/chat/completions?api-version=$apiVersion');
-
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'api-key': apiKey,
-        },
-        body: jsonEncode({
-          'messages': [
-            {
-              'role': 'system',
-              'content': 'Tu es un coach vocal expert analysant la prosodie et l\'expression émotionnelle dans la voix, fournissant des conseils pour améliorer l\'intonation.',
-            },
-            {
-              'role': 'user',
-              'content': prompt,
-            },
-          ],
-          'temperature': 0.7,
-          'max_tokens': 150,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final responseBody = utf8.decode(response.bodyBytes);
-        final data = jsonDecode(responseBody);
-        String feedback = data['choices'][0]['message']['content'].trim();
-        feedback = feedback.replaceAll(RegExp(r'^"|"$'), ''); // Nettoyer
-        // Ajout d'une mention "Bien" si le feedback est positif (simplification)
-        if (!feedback.toLowerCase().contains('améliorer') && !feedback.toLowerCase().contains('essayer')) {
-           feedback = "Bien ! $feedback";
-        }
-        ConsoleLogger.success('🤖 [OPENAI] Feedback d\'intonation généré: "$feedback"');
-        return feedback;
-      } else {
-        ConsoleLogger.error('🤖 [OPENAI] Erreur API lors du feedback d\'intonation: ${response.statusCode}, ${response.body}');
-        throw Exception('Erreur API OpenAI: ${response.statusCode}');
-      }
-    } catch (e) {
-      ConsoleLogger.error('🤖 [OPENAI] Erreur lors du feedback d\'intonation: $e');
-      return "Une erreur est survenue lors de l'analyse de l'intonation.";
-    }
+  // Helper pour logger
+  void _log(String message) {
+    ConsoleLogger.info('🤖 [OPENAI Feedback] $message');
   }
 }
