@@ -20,10 +20,14 @@ const int bitRate = sampleRate * 16 * numChannels; // PCM 16 bits
 
 class RecordAudioRepository implements AudioRepository {
   // Rendre _recorder non final pour pouvoir le recréer
-  AudioRecorder _recorder = AudioRecorder(); // Utiliser AudioRecorder de record
-  final ja.AudioPlayer _player = ja.AudioPlayer(); // Utiliser just_audio pour la lecture
-  String? _currentRecordingPath;
+  AudioRecorder _recorder = AudioRecorder();
+  final ja.AudioPlayer _player = ja.AudioPlayer();
+  String? _currentRecordingPath; // Chemin pour l'enregistrement fichier OU le stream sauvegardé
   bool _isRecording = false;
+  bool _isStreamingToFile = false; // Indique si le stream est sauvegardé
+  IOSink? _fileSink; // Pour écrire le stream dans un fichier
+  StreamController<Uint8List>? _streamController; // Pour renvoyer le stream au Cubit
+  StreamSubscription? _rawAudioSubscription; // Pour écouter le stream brut du recorder
 
   final StreamController<double> _audioLevelController = StreamController<double>.broadcast();
   StreamSubscription? _amplitudeSubscription;
@@ -113,62 +117,103 @@ class RecordAudioRepository implements AudioRepository {
   Future<Stream<Uint8List>> startRecordingStream() async {
     ConsoleLogger.info('startRecordingStream appelé.');
 
-    // Recréer l'instance pour garantir un état propre et éviter l'erreur "Stream has already been listened to"
-    // S'assurer que l'ancienne instance est correctement disposée si nécessaire (dispose est appelé sur le repo)
-    await _recorder.dispose(); // Disposer l'ancienne instance
-    _recorder = AudioRecorder(); // Créer une nouvelle instance
-    ConsoleLogger.info('Nouvelle instance AudioRecorder créée pour le streaming.');
-
+    // Recréer l'instance pour garantir un état propre
+    try {
+      await _recorder.dispose();
+    } catch (e) {
+      ConsoleLogger.warning('Erreur lors du dispose de l\'ancien recorder (ignorée): $e');
+    } finally {
+      _recorder = AudioRecorder();
+      ConsoleLogger.info('Nouvelle instance AudioRecorder créée pour le streaming.');
+    }
 
     if (!await _requestPermissions()) {
-      throw Exception('Permission microphone refusée');
+      throw Exception('Permission microphone refusée.');
     }
 
     if (_isRecording) {
-      ConsoleLogger.warning('Streaming déjà en cours (ou enregistrement fichier?). Arrêt du stream précédent...');
-      // Correction: Appeler stopRecordingStream() ici, pas stopRecording()
-      await stopRecordingStream();
+      ConsoleLogger.warning('Enregistrement (fichier ou stream) déjà en cours. Arrêt...');
+      await stopRecordingStream(); // Arrête le stream et nettoie
     }
 
-    // Annuler l'abonnement précédent par sécurité
+    // Nettoyer les anciens états au cas où
+    await _amplitudeSubscription?.cancel();
     await _amplitudeSubscription?.cancel();
     _amplitudeSubscription = null;
+    await _rawAudioSubscription?.cancel();
+    _rawAudioSubscription = null;
+    await _fileSink?.close();
+    _fileSink = null;
+    _currentRecordingPath = null;
+    _isStreamingToFile = false;
+
+    // Générer un chemin de fichier temporaire pour sauvegarder le stream
+    _currentRecordingPath = await getRecordingFilePath();
+    ConsoleLogger.info('Chemin temporaire pour sauvegarde stream: $_currentRecordingPath');
 
     // Configuration pour le streaming (PCM16 brut)
-    // Note: Le package 'record' ne permet pas de spécifier directement PCM16 pour le stream.
-    // Il retourne des chunks bruts. Le format exact dépend de la plateforme.
-    // Il faudra potentiellement convertir/adapter ces chunks avant de les envoyer à Azure.
-    // Pour l'instant, on utilise la configuration par défaut du stream.
+    // Note: Le package 'record' peut ne pas garantir PCM16 sur toutes les plateformes pour le stream.
     final config = RecordConfig(
-      encoder: AudioEncoder.pcm16bits, // Tentative de spécifier PCM16, vérifier si supporté en stream
+      encoder: AudioEncoder.pcm16bits, // Tenter PCM16
       sampleRate: sampleRate,
       numChannels: numChannels,
-      // bitRate n'est généralement pas utilisé pour le streaming PCM brut
     );
 
     try {
+      // Ouvrir le fichier pour l'écriture
+      final file = File(_currentRecordingPath!);
+      _fileSink = file.openWrite();
+      _isStreamingToFile = true;
+      ConsoleLogger.info('Fichier temporaire ouvert pour écriture: $_currentRecordingPath');
+
+      // Créer le StreamController qui sera retourné
+      _streamController = StreamController<Uint8List>.broadcast();
+
       ConsoleLogger.info('Appel de _recorder.startStream...');
-      final stream = await _recorder.startStream(config);
-      _isRecording = true; // Supposer que l'enregistrement a démarré
+      final rawStream = await _recorder.startStream(config);
+      _isRecording = true;
       ConsoleLogger.success('Streaming d\'enregistrement démarré.');
+
+      // Écouter le stream brut, écrire dans le fichier et transférer au controller
+      _rawAudioSubscription = rawStream.listen(
+        (chunk) {
+          _fileSink?.add(chunk); // Écrire dans le fichier
+          _streamController?.add(chunk); // Envoyer au Cubit
+        },
+        onError: (error) {
+          ConsoleLogger.error('Erreur dans le raw audio stream: $error');
+          _streamController?.addError(error);
+          stopRecordingStream(); // Arrêter en cas d'erreur
+        },
+        onDone: () {
+          ConsoleLogger.info('Raw audio stream terminé (onDone).');
+          // Ne pas arrêter ici, attendre l'appel explicite à stopRecordingStream
+        },
+        cancelOnError: true,
+      );
+
       _startAmplitudeSubscription(); // Démarrer l'écoute de l'amplitude
-      _currentRecordingPath = null; // Pas de chemin de fichier pour le streaming
-      // Convertir en Broadcast Stream pour permettre plusieurs écoutes si nécessaire
-      return stream.asBroadcastStream();
+
+      return _streamController!.stream; // Retourner notre stream contrôlé
+
     } catch (e) {
-      ConsoleLogger.error('Erreur CATCHée lors de l\'appel à _recorder.startStream: $e');
+      ConsoleLogger.error('Erreur CATCHée lors de l\'appel à _recorder.startStream ou préparation fichier: $e');
+      await _fileSink?.close(); // Nettoyer le fichier en cas d'erreur
+      _fileSink = null;
       _isRecording = false;
+      _isStreamingToFile = false;
+      _currentRecordingPath = null;
       rethrow;
     }
   }
+
 
   void _startAmplitudeSubscription() {
     _amplitudeSubscription?.cancel();
     _amplitudeSubscription = _recorder.onAmplitudeChanged(const Duration(milliseconds: 100)).listen(
       (amp) {
-        // Revenir à une plage dB plus large (-60 dBFS à 0 dBFS)
-        // --- AJUSTEMENT V35: Essai à -28.5dB ---
-        const double minDb = -28.5; // Était -27.5 (pas assez sensible), avant -30.0 (trop sensible)
+        // Utiliser une plage dB plus standard pour une meilleure dynamique
+        const double minDb = -60.0; // Élargir la plage dynamique (était -28.5)
         const double maxDb = 0.0;
         double currentDb = amp.current;
 
@@ -271,29 +316,75 @@ class RecordAudioRepository implements AudioRepository {
   }
 
   @override
-  Future<void> stopRecordingStream() async {
+  Future<String?> stopRecordingStream() async { // Mise à jour de la signature
     ConsoleLogger.info('stopRecordingStream appelé.');
-    await _amplitudeSubscription?.cancel(); // Arrêter l'écoute de l'amplitude
-    _amplitudeSubscription = null; // Réinitialiser
+    await _amplitudeSubscription?.cancel();
+    _amplitudeSubscription = null;
+    await _rawAudioSubscription?.cancel(); // Arrêter l'écoute du stream brut
+    _rawAudioSubscription = null;
 
     if (!_isRecording) {
-      ConsoleLogger.warning('Aucun enregistrement de stream en cours.');
-      return;
+      ConsoleLogger.warning('Aucun enregistrement (fichier ou stream) en cours.');
+      return null;
     }
 
+    String? savedPath; // Pour stocker le chemin à retourner
+
     try {
-      ConsoleLogger.info('Appel de _recorder.stop pour le stream...');
-      // L'appel à stop est le même pour le stream et le fichier avec le package 'record'
+      ConsoleLogger.info('Appel de _recorder.stop...');
       await _recorder.stop();
       _isRecording = false;
-      _currentRecordingPath = null; // Assurer qu'il n'y a pas de chemin actif
-      ConsoleLogger.success('Streaming d\'enregistrement arrêté.');
+      ConsoleLogger.success('Recorder arrêté.');
+
+      if (_isStreamingToFile && _fileSink != null) {
+        ConsoleLogger.info('Fermeture du fichier stream: $_currentRecordingPath');
+        await _fileSink!.close();
+        _fileSink = null;
+        savedPath = _currentRecordingPath; // Le chemin du fichier sauvegardé
+        _currentRecordingPath = null; // Réinitialiser pour le prochain enregistrement
+        _isStreamingToFile = false;
+        ConsoleLogger.success('Fichier stream fermé. Chemin retourné: $savedPath');
+
+        // Vérifier la taille du fichier sauvegardé
+        if (savedPath != null) {
+           final file = File(savedPath);
+           if (await file.exists()) {
+             final length = await file.length();
+             ConsoleLogger.info('Fichier stream sauvegardé trouvé à "$savedPath", taille: $length octets.');
+             if (length <= 44) { // Taille typique d'un en-tête WAV vide (si WAV était utilisé) ou très petit fichier PCM
+               ConsoleLogger.warning('Le fichier stream sauvegardé est très petit (taille: $length octets).');
+             }
+           } else {
+             ConsoleLogger.error('Le fichier stream sauvegardé "$savedPath" n\'existe pas après fermeture.');
+             savedPath = null; // Ne pas retourner un chemin invalide
+           }
+        }
+
+      } else {
+         ConsoleLogger.info('Pas de fichier stream à fermer/retourner.');
+         _currentRecordingPath = null; // Assurer la réinitialisation
+      }
+
+      // Fermer notre StreamController
+      await _streamController?.close();
+      _streamController = null;
+
+      return savedPath; // Retourner le chemin du fichier sauvegardé ou null
+
     } catch (e) {
-      ConsoleLogger.error('Erreur CATCHée lors de l\'appel à _recorder.stop pour le stream: $e');
-      _isRecording = false; // Assurer que l'état est correct même en cas d'erreur
+      ConsoleLogger.error('Erreur CATCHée lors de l\'appel à _recorder.stop ou fermeture fichier: $e');
+      // Nettoyage en cas d'erreur
+      await _fileSink?.close();
+      _fileSink = null;
+      await _streamController?.close();
+      _streamController = null;
+      _isRecording = false;
+      _isStreamingToFile = false;
+      _currentRecordingPath = null;
       rethrow;
     }
   }
+
 
   // Les méthodes pause/resume ne sont pas directement supportées par le package record
   @override
@@ -390,8 +481,11 @@ class RecordAudioRepository implements AudioRepository {
   @override
   Future<void> dispose() async {
     await _amplitudeSubscription?.cancel();
+    await _rawAudioSubscription?.cancel();
     await _recorder.dispose();
     await _player.dispose();
+    await _fileSink?.close(); // Assurer la fermeture du sink
+    await _streamController?.close(); // Assurer la fermeture du controller
     await _audioLevelController.close();
     ConsoleLogger.info('RecordAudioRepository disposé.');
   }

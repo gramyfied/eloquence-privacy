@@ -23,5 +23,6 @@ class AppRoutes {
   static const String exerciseConsonantContrast = '/exercise/consonant-contrast/:exerciseId'; // Nouvelle route pour Contraste Consonantique
   static const String exerciseFinalesNettes = '/exercise/finales-nettes/:exerciseId'; // Nouvelle route pour Finales Nettes
   static const String exerciseExpressiveIntonation = '/exercise/expressive-intonation/:exerciseId'; // AJOUT: Route pour Intonation Expressive
+  static const String exercisePitchVariation = '/exercise/pitch-variation/:exerciseId'; // AJOUT: Route pour Variation de Hauteur
   // Ajoutez d'autres routes spécifiques ici si nécessaire
 }

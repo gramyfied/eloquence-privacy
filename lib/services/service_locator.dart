@@ -29,6 +29,7 @@ import 'audio/example_audio_provider.dart';
 // import 'azure/azure_whisper_service.dart';
 import 'evaluation/articulation_evaluation_service.dart';
 import 'lexique/syllabification_service.dart'; // Ajout du service de syllabification
+import 'audio/audio_analysis_service.dart'; // Correction: Chemin correct
 
 final serviceLocator = GetIt.instance;
 
@@ -127,4 +128,8 @@ void setupServiceLocator() {
 
   // Enregistrer le service de syllabification
   serviceLocator.registerLazySingleton<SyllabificationService>(() => SyllabificationService());
+
+  // AJOUT: Enregistrer AudioAnalysisService (même si c'est un placeholder pour l'instant)
+  // TODO: Remplacer par la vraie implémentation quand elle sera prête
+  serviceLocator.registerLazySingleton<AudioAnalysisService>(() => AudioAnalysisService());
 }

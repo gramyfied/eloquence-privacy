@@ -15,7 +15,8 @@ abstract class AudioRepository {
   Future<String?> stopRecording(); // Pour l'enregistrement de fichier
 
   /// Arrête l'enregistrement du stream audio.
-  Future<void> stopRecordingStream(); // Pour l'enregistrement de stream
+  /// Retourne le chemin du fichier temporaire où le stream a été sauvegardé, si applicable.
+  Future<String?> stopRecordingStream(); // Pour l'enregistrement de stream
 
   /// Met en pause l'enregistrement (si supporté par l'implémentation).
   Future<void> pauseRecording();

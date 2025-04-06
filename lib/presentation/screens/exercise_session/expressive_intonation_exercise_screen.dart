@@ -19,6 +19,7 @@ import '../../widgets/microphone_button.dart';
 import '../../widgets/visual_effects/info_modal.dart';
 import '../../widgets/visual_effects/celebration_effect.dart';
 import '../../widgets/pitch_contour_visualizer.dart'; // Importer le widget de visualisation
+import '../../../services/audio/audio_analysis_service.dart'; // Import for PitchDataPoint
 
 class ExpressiveIntonationExerciseScreen extends StatefulWidget {
   final Exercise exercise;
@@ -66,6 +67,7 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
   bool _showCelebration = false;
   int _currentRound = 1;
   final int _totalRounds = 5;
+  String? _lastRecordedAudioPath; // Pour stocker le chemin du fichier audio
 
   // Stream Subscriptions
   StreamSubscription? _audioSubscription;
@@ -274,12 +276,16 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
 
     Map<String, dynamic> currentResults = {}; // Initialiser la map de résultats
 
+    String? recordedPath; // Variable pour stocker le chemin
     try {
       // 1. Arrêter l'enregistrement et l'analyse
-      await Future.wait([
-        _audioRepository!.stopRecordingStream(),
-        AudioSignalProcessor.stopAnalysis(),
-      ]);
+      // Récupérer le chemin en arrêtant le stream
+      recordedPath = await _audioRepository!.stopRecordingStream();
+      _lastRecordedAudioPath = recordedPath; // Stocker le chemin
+      print("[ExpressiveIntonation] Audio stream stopped. Saved to: $recordedPath");
+
+      // Arrêter l'analyse du signal après l'arrêt de l'enregistrement
+      await AudioSignalProcessor.stopAnalysis();
       _amplitudeSubscription?.cancel();
       _audioSubscription?.cancel();
       print("[ExpressiveIntonation] Recording and analysis stopped.");
@@ -292,24 +298,30 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
       final calculatedMetrics = _calculateMetrics();
       print("[ExpressiveIntonation] Calculated Audio Metrics: $calculatedMetrics");
 
-      // 3. Obtenir le feedback OpenAI en passant les métriques
+      // 3. Obtenir le feedback OpenAI en passant les métriques ET le chemin audio
       String feedbackMessage = "Analyse terminée."; // Message par défaut
       String currentError = _errorMessage; // Capturer l'erreur actuelle
 
       if (currentError.isEmpty && _openAIFeedbackService != null && _currentSentence != null) {
-        print("[ExpressiveIntonation] Getting AI feedback for emotion '$_targetIntention' with audio metrics...");
-        try {
-          feedbackMessage = await _openAIFeedbackService!.getIntonationFeedback(
-            audioPath: '',
-            targetEmotion: _targetIntention,
-            referenceSentence: _currentSentence!,
-            audioMetrics: calculatedMetrics,
-          );
-          print("[ExpressiveIntonation] AI Feedback received.");
-        } catch (aiError) {
-          print("[ExpressiveIntonation] Error getting AI feedback: $aiError");
-          feedbackMessage = "Erreur analyse OpenAI.";
-          currentError = feedbackMessage; // Reporter l'erreur OpenAI
+        if (_lastRecordedAudioPath == null || _lastRecordedAudioPath!.isEmpty) {
+          print("[ExpressiveIntonation] Error: No recorded audio path for AI feedback.");
+          feedbackMessage = "Erreur: Fichier audio manquant pour l'analyse IA.";
+          currentError = feedbackMessage;
+        } else {
+          print("[ExpressiveIntonation] Getting AI feedback for emotion '$_targetIntention' with audio path: $_lastRecordedAudioPath and metrics...");
+          try {
+            feedbackMessage = await _openAIFeedbackService!.getIntonationFeedback(
+              audioPath: _lastRecordedAudioPath!, // Utiliser le chemin stocké
+              targetEmotion: _targetIntention,
+              referenceSentence: _currentSentence!,
+              audioMetrics: calculatedMetrics,
+            );
+            print("[ExpressiveIntonation] AI Feedback received.");
+          } catch (aiError) {
+            print("[ExpressiveIntonation] Error getting AI feedback: $aiError");
+            feedbackMessage = "Erreur analyse OpenAI.";
+            currentError = feedbackMessage; // Reporter l'erreur OpenAI
+          }
         }
       } else if (currentError.isEmpty) {
          ConsoleLogger.warning("[ExpressiveIntonation] OpenAI service or sentence not available for feedback.");
@@ -452,7 +464,16 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
                   border: Border.all(color: Colors.white10),
                 ),
                 child: _pitchContour.isNotEmpty
-                  ? PitchContourVisualizer(pitchData: _pitchContour)
+                  ? PitchContourVisualizer(
+                      // Adapt to new signature - Provide placeholders/defaults
+                      targetPitchData: const [], // No target in this screen currently
+                      userPitchData: _pitchContour.map((f) => PitchDataPoint(0, f)).toList(), // Convert List<double> to List<PitchDataPoint> (time is arbitrary here)
+                      currentPitch: _pitchContour.lastOrNull, // Use last recorded pitch as current? Or null?
+                      minFreq: 80, // Example default
+                      maxFreq: 500, // Example default
+                      durationMs: 5000, // Example default duration
+                      // lineColor: AppTheme.primaryColor, // Use default userLineColor
+                    )
                   : Center(
                       child: Text(
                         _isLoading ? "Chargement..." : (_isRecording ? "Enregistrement..." : "Appuyez sur le micro pour commencer"),

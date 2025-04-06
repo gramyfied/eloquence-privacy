@@ -22,6 +22,9 @@ import '../../../services/evaluation/articulation_evaluation_service.dart';
 import '../../widgets/visual_effects/info_modal.dart';
 import '../../widgets/visual_effects/celebration_effect.dart';
 import '../../widgets/microphone_button.dart';
+// AJOUT: Import pour PitchDataPoint (nécessaire pour _safelyConvertMap/List si utilisé ailleurs)
+import '../../../services/audio/audio_analysis_service.dart';
+
 
 // Supprimé: Définition locale de WordEvaluationResult
 
@@ -149,48 +152,68 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
   /// S'abonne au stream de résultats d'AzureSpeechService
   void _subscribeToRecognitionResults() {
     _recognitionResultSubscription?.cancel(); // Annuler l'abonnement précédent s'il existe
-    // Correction: Utiliser recognitionStream au lieu de recognitionResultStream
     _recognitionResultSubscription = _azureSpeechService.recognitionStream.listen(
       (result) {
-        // Le type de 'result' est maintenant AzureSpeechEvent
-        // Adapter la logique pour utiliser result.type, result.text, result.errorMessage etc.
         ConsoleLogger.info('[UI] Événement de reconnaissance reçu: ${result.toString()}');
         if (mounted) {
-          // Gérer les différents types d'événements
           switch (result.type) {
             case AzureSpeechEventType.partial:
               // Optionnel: Mettre à jour l'UI avec le résultat partiel si souhaité
-              // setState(() { _lastRecognizedText = result.text ?? ''; });
               break;
             case AzureSpeechEventType.finalResult:
-              // Utiliser Future.microtask pour s'assurer que setState est terminé avant d'appeler _getOpenAiFeedback
-              // et pour éviter les erreurs potentielles liées à l'appel de setState pendant le build.
               Future.microtask(() {
-                if (!mounted) return; // Vérifier si le widget est toujours monté
+                if (!mounted) return;
 
-                // Correction: Utiliser la conversion sûre pour le résultat de prononciation
                 final Map<String, dynamic>? safePronunciationResult = _safelyConvertMap(result.pronunciationResult);
                 ConsoleLogger.info('[UI] Résultat Pronunciation Assessment reçu (converti): $safePronunciationResult');
 
-                // Analyser le résultat Azure et préparer les données pour OpenAI (utiliser safePronunciationResult)
-                double overallScore = (safePronunciationResult?['AccuracyScore'] as num?)?.toDouble() ?? 0.0;
-                double pronScore = (safePronunciationResult?['PronunciationScore'] as num?)?.toDouble() ?? 0.0;
-                double fluencyScore = (safePronunciationResult?['FluencyScore'] as num?)?.toDouble() ?? 0.0;
-                List<Map<String, dynamic>> wordsDetails = []; // Pour stocker les détails par "mot" (syllabe)
+                // --- Correction de l'extraction des scores ---
+                double overallScore = 0.0; // Score global (AccuracyScore)
+                double pronScore = 0.0;    // Score de prononciation (PronScore)
+                double fluencyScore = 0.0; // Score de fluidité
+                double completenessScore = 0.0; // Score de complétude
 
-                // --- Début de l'analyse détaillée (utiliser safePronunciationResult) ---
+                // Extraire les scores du premier élément NBest -> PronunciationAssessment
+                try {
+                  final List? nBestList = safePronunciationResult?['NBest'] as List?;
+                  if (nBestList != null && nBestList.isNotEmpty) {
+                    final Map<String, dynamic>? bestChoice = nBestList[0] as Map<String, dynamic>?;
+                    final Map<String, dynamic>? assessment = bestChoice?['PronunciationAssessment'] as Map<String, dynamic>?;
+                    if (assessment != null) {
+                      // Utiliser ?.toDouble() pour une conversion sûre
+                      overallScore = (assessment['AccuracyScore'] as num?)?.toDouble() ?? 0.0;
+                      pronScore = (assessment['PronScore'] as num?)?.toDouble() ?? 0.0;
+                      fluencyScore = (assessment['FluencyScore'] as num?)?.toDouble() ?? 0.0;
+                      completenessScore = (assessment['CompletenessScore'] as num?)?.toDouble() ?? 0.0;
+                       ConsoleLogger.success('Scores extraits: Accuracy=$overallScore, Pron=$pronScore, Fluency=$fluencyScore, Completeness=$completenessScore');
+                    } else {
+                       ConsoleLogger.warning("PronunciationAssessment non trouvé dans NBest[0]");
+                    }
+                  } else {
+                     ConsoleLogger.warning("NBest non trouvé ou vide dans le résultat");
+                  }
+                } catch (e) {
+                   ConsoleLogger.error("Erreur lors de l'extraction des scores: $e. Utilisation des valeurs par défaut (0.0).");
+                   overallScore = 0.0;
+                   pronScore = 0.0;
+                   fluencyScore = 0.0;
+                   completenessScore = 0.0;
+                }
+                // --- Fin de la correction de l'extraction ---
+
+                List<Map<String, dynamic>> wordsDetails = []; // Pour stocker les détails par "mot"
+
+                // --- Début de l'analyse détaillée des mots ---
                 if (safePronunciationResult != null && safePronunciationResult['Words'] is List) {
-                  // Utiliser la liste convertie (qui contient des Map<String, dynamic>?)
                   final List? words = safePronunciationResult['Words'] as List?;
                   if (words != null) {
                     for (var wordData in words) {
-                      // Chaque wordData devrait maintenant être une Map<String, dynamic>?
-                      if (wordData is Map<String, dynamic>) { // If block starts
+                      if (wordData is Map<String, dynamic>) {
                         String wordText = wordData['Word'] ?? '';
                         double wordAccuracy = (wordData['AccuracyScore'] as num?)?.toDouble() ?? 0.0;
                         List<String> phonemeErrors = [];
                         if (wordData['Phonemes'] is List) {
-                          final List? phonemes = wordData['Phonemes'] as List?; // Safe cast
+                          final List? phonemes = wordData['Phonemes'] as List?;
                           if (phonemes != null) {
                             for (var phonemeData in phonemes) {
                               if (phonemeData is Map<String, dynamic>) {
@@ -203,30 +226,30 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
                           }
                         }
                         wordsDetails.add({
-                          'syllabe': wordText,
+                          'syllabe': wordText, // Garder 'syllabe' pour la compatibilité affichage ? Ou renommer en 'mot' ?
                           'score': wordAccuracy,
                           'erreurs_phonemes': phonemeErrors.isNotEmpty ? phonemeErrors.join(', ') : 'Aucune',
                         });
-                      } // Correction: Closing brace for 'if (wordData is Map<String, dynamic>)' added back
-                    } // for loop ends
-                  } // if (words != null) ends
-                } // if (safePronunciationResult != null ...) ends
+                      }
+                    }
+                  }
+                }
                 // --- Fin de l'analyse détaillée ---
 
-                // Créer un feedback Azure plus détaillé (exemple)
-                String azureFeedback = 'Score Global: ${pronScore.toStringAsFixed(1)}, Précision: ${overallScore.toStringAsFixed(1)}, Fluidité: ${fluencyScore.toStringAsFixed(1)}.';
+                // Créer un feedback Azure plus détaillé avec les scores corrigés
+                String azureFeedback = 'Score Global: ${pronScore.toStringAsFixed(1)}, Précision: ${overallScore.toStringAsFixed(1)}, Fluidité: ${fluencyScore.toStringAsFixed(1)}, Complétude: ${completenessScore.toStringAsFixed(1)}.';
                 if (wordsDetails.isNotEmpty) {
-                   azureFeedback += '\nDétails par syllabe: ${wordsDetails.map((w) => "${w['syllabe']}(${w['score'].toStringAsFixed(0)})").join(', ')}';
+                   azureFeedback += '\nDétails par mot: ${wordsDetails.map((w) => "${w['syllabe']}(${w['score'].toStringAsFixed(0)})").join(', ')}';
                 }
                  ConsoleLogger.info('[ANALYSIS] Feedback Azure détaillé (pré-OpenAI): $azureFeedback');
-                 ConsoleLogger.info('[ANALYSIS] Détails mots/syllabes extraits: $wordsDetails');
+                 ConsoleLogger.info('[ANALYSIS] Détails mots extraits: $wordsDetails');
 
-                // Préparer le résultat de l'évaluation
+                // Préparer le résultat de l'évaluation avec les scores corrigés
                 final currentEvaluationResult = ArticulationEvaluationResult(
-                   score: overallScore,
-                   syllableClarity: pronScore, // Utiliser PronunciationScore
-                   consonantPrecision: overallScore, // Approximation
-                   endingClarity: overallScore, // Approximation
+                   score: overallScore, // Utiliser AccuracyScore comme score principal
+                   syllableClarity: pronScore, // Utiliser PronScore
+                   consonantPrecision: overallScore, // Approximation, pourrait être affiné
+                   endingClarity: completenessScore, // Utiliser CompletenessScore comme approximation
                    feedback: azureFeedback, // Feedback basé sur Azure pour l'instant
                    details: safePronunciationResult // Stocker les détails bruts convertis
                  );
@@ -234,23 +257,18 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
                 // Mettre à jour l'état dans le setState principal
                 final String rawRecognizedText = result.text ?? '';
                 setState(() {
-                  _lastRecognizedText = rawRecognizedText; // Garder le texte brut si nécessaire ailleurs
+                  _lastRecognizedText = rawRecognizedText;
                   _isProcessing = false;
                   _evaluationResult = currentEvaluationResult;
                 });
 
                 ConsoleLogger.info('[UI] Résultat final Azure traité. Lancement de la génération de feedback OpenAI.');
-                // Nettoyer le texte reconnu avant de l'envoyer à OpenAI (supprimer ponctuation et astérisques)
                 final String cleanedRecognizedText = rawRecognizedText.replaceAll(RegExp(r'[,\.!?\*]'), '').toLowerCase();
                 ConsoleLogger.info('Texte reconnu nettoyé pour OpenAI: "$cleanedRecognizedText"');
 
-                // Lancer OpenAI après la mise à jour de l'état, avec le texte nettoyé
-                // Note: _getOpenAiFeedback utilise _lastRecognizedText, nous devons le mettre à jour ou passer le texte nettoyé
-                // Mise à jour de _getOpenAiFeedback pour accepter le texte nettoyé en paramètre
-                _getOpenAiFeedback(currentEvaluationResult, cleanedRecognizedText); // Passer le texte nettoyé
+                _getOpenAiFeedback(currentEvaluationResult, cleanedRecognizedText);
 
-              }); // Future.microtask ends here
-              // _evaluatePhrase(result.text ?? ''); // Ne plus appeler _evaluatePhrase ici
+              });
               break;
             case AzureSpeechEventType.error:
               ConsoleLogger.error('[UI] Erreur de reconnaissance reçue: ${result.errorCode} - ${result.errorMessage}');
@@ -260,21 +278,17 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
                    feedback: 'Erreur de reconnaissance: ${result.errorMessage}', error: result.errorMessage
                  );
                  _isProcessing = false;
-                 _isExerciseCompleted = true; // Marquer comme complété en cas d'erreur
+                 _isExerciseCompleted = true;
               });
-              _completeExercise(); // Afficher l'erreur
+              _completeExercise();
               break;
             case AzureSpeechEventType.status:
                ConsoleLogger.info('[UI] Statut reçu: ${result.statusMessage}');
-               // Mettre à jour l'UI en fonction du statut si nécessaire
-               // Ex: setState(() { _statusMessage = result.statusMessage; });
               break;
           }
         }
       },
       onError: (error) {
-        // L'erreur du stream lui-même est gérée par .handleError dans AzureSpeechService
-        // Ici, on gère les erreurs applicatives transmises comme des événements
         ConsoleLogger.error('[UI] Erreur applicative reçue via stream: $error');
         if (mounted && error is AzureSpeechEvent && error.type == AzureSpeechEventType.error) {
            setState(() {
@@ -287,7 +301,6 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
            });
            _completeExercise();
         } else if (mounted) {
-           // Gérer d'autres types d'erreurs du stream si nécessaire
            setState(() {
              _evaluationResult = ArticulationEvaluationResult(
                score: 0, syllableClarity: 0, consonantPrecision: 0, endingClarity: 0,
@@ -301,10 +314,8 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
       },
       onDone: () {
         ConsoleLogger.info('[UI] Stream de reconnaissance terminé.');
-        // Gérer la fin du stream si nécessaire
-        if (mounted && _isProcessing) { // Si on attendait encore un résultat
+        if (mounted && _isProcessing) {
            setState(() { _isProcessing = false; });
-           // Peut-être afficher un message si aucun résultat final n'a été reçu ?
         }
       }
     );
@@ -314,17 +325,15 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
 
   @override
   void dispose() {
-    // Annuler les abonnements aux streams
     _audioStreamSubscription?.cancel();
     _recognitionResultSubscription?.cancel();
-    // Assurer l'arrêt de l'enregistrement ou de la lecture si l'écran est quitté
     if (_isRecording) {
-      _audioRepository.stopRecording();
-      // Correction: Utiliser stopRecognition
+      // Correction: Utiliser stopRecordingStream qui retourne String?
+      _audioRepository.stopRecordingStream();
       _azureSpeechService.stopRecognition();
     }
-    _audioRepository.stopPlayback(); // Arrêter la lecture d'exemple
-    // Pas besoin de disposer les services récupérés via GetIt ici
+    // Correction: Utiliser stopPlayback de AudioRepository
+    _audioRepository.stopPlayback();
     super.dispose();
   }
 
@@ -346,9 +355,6 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
     }
   }
 
-  // Supprimer _playSyllableSequenceAudio car _syllables n'existe plus
-
-
   /// Démarre ou arrête l'enregistrement et le streaming vers Azure
   Future<void> _toggleRecording() async {
     if (_isExerciseCompleted || _isPlayingExample || _isProcessing) return;
@@ -356,38 +362,31 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
     if (!_isRecording) {
       // Démarrer l'enregistrement et le streaming
       try {
-        // 1. Vérifier et demander la permission microphone
         if (!await _requestMicrophonePermission()) {
            ConsoleLogger.warning('Permission microphone refusée ou non accordée.');
            ScaffoldMessenger.of(context).showSnackBar(
              const SnackBar(content: Text('Permission microphone requise.'), backgroundColor: Colors.orange),
            );
-           return; // Ne pas continuer si la permission n'est pas accordée
+           return;
         }
 
          ConsoleLogger.recording('Démarrage de l\'enregistrement streamé...');
 
-         // 2. Vérifier explicitement que le service Azure est initialisé
          if (!_azureSpeechService.isInitialized) {
            ConsoleLogger.error('Tentative d\'enregistrement alors qu\'AzureSpeechService n\'est pas initialisé.');
            ScaffoldMessenger.of(context).showSnackBar(
              const SnackBar(content: Text('Service de reconnaissance non prêt. Veuillez patienter.'), backgroundColor: Colors.orange),
            );
-           return; // Ne pas continuer
+           return;
          }
 
-         // 3. Démarrer le stream audio depuis le repository
          final audioStream = await _audioRepository.startRecordingStream();
 
-         // Enregistrer l'heure de début
          _recordingStartTime = DateTime.now();
-         _exerciseStartTime = DateTime.now(); // AJOUT: Enregistrer début exercice
+         _exerciseStartTime = DateTime.now();
 
-        // 4. Démarrer la reconnaissance streaming Azure AVEC le texte de référence syllabique
         await _azureSpeechService.startRecognition(
-          referenceText: _referenceTextForAzure, // Passer le texte référence
-          // Assurez-vous que votre AzureSpeechService gère ce paramètre
-          // et configure PronunciationAssessmentConfig correctement.
+          referenceText: _referenceTextForAzure,
         );
 
         setState(() {
@@ -397,26 +396,17 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
           if (!_isExerciseStarted) _isExerciseStarted = true;
         });
 
-        // Écouter le stream audio et envoyer les chunks à Azure
-        _audioStreamSubscription?.cancel(); // Annuler l'ancien abonnement si existant
+        _audioStreamSubscription?.cancel();
         _audioStreamSubscription = audioStream.listen(
           (data) {
-            // Envoyer les données audio au service Azure (via Platform Channel)
-            // S'assurer que le service est prêt avant d'envoyer (optionnel mais plus sûr)
-            // if (_azureSpeechService.isInitialized) { // Ajouter une propriété isInitialized si besoin
                _azureSpeechService.sendAudioChunk(data);
-            // }
-            // ConsoleLogger.info('Chunk audio envoyé (${data.length} bytes)'); // Garder commenté pour éviter trop de logs
           },
           onError: (error) {
             ConsoleLogger.error('Erreur du stream audio: $error');
-            // Gérer l'erreur, peut-être arrêter la reconnaissance ?
-            _stopRecordingAndRecognition(); // Arrêter proprement
+            _stopRecordingAndRecognition();
           },
           onDone: () {
             ConsoleLogger.info('Stream audio terminé.');
-            // Indiquer à Azure que l'envoi est terminé (si nécessaire par l'API/SDK natif)
-            // Peut-être appeler stopRecognition ici si ce n'est pas déjà fait
           },
         );
 
@@ -426,7 +416,6 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Erreur enregistrement: $e'), backgroundColor: Colors.red),
           );
-          // Assurer que l'état est propre
           setState(() {
             _isRecording = false;
             _isProcessing = false;
@@ -434,9 +423,6 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
         }
       }
      } else {
-       // Arrêter l'enregistrement et la reconnaissance
-
-       // --> AJOUTER LA VÉRIFICATION ICI <--
        if (_recordingStartTime != null &&
            DateTime.now().difference(_recordingStartTime!) < _minRecordingDuration) {
          ConsoleLogger.warning('Tentative d\'arrêt trop rapide. Ignoré.');
@@ -447,16 +433,13 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
              backgroundColor: Colors.orangeAccent,
            ),
          );
-         return; // Ne pas arrêter si trop court
+         return;
        }
-       // --> FIN DE L'AJOUT <--
-
        await _stopRecordingAndRecognition();
       }
   }
 
   /// Vérifie et demande la permission microphone si nécessaire.
-  /// Retourne true si la permission est accordée, false sinon.
   Future<bool> _requestMicrophonePermission() async {
     var status = await Permission.microphone.status;
     if (status.isGranted) {
@@ -467,8 +450,6 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
         return true;
       } else {
         ConsoleLogger.error('Permission microphone refusée par l\'utilisateur.');
-        // Optionnel: Afficher un message plus persistant ou ouvrir les paramètres de l'application
-        // openAppSettings();
         return false;
       }
     }
@@ -479,24 +460,19 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
        ConsoleLogger.recording('Arrêt de l\'enregistrement streamé...');
        setState(() {
          _isRecording = false;
-         _isProcessing = true; // Indiquer qu'on attend le résultat final d'Azure
-         _recordingStartTime = null; // <-- Réinitialiser ici
+         _isProcessing = true;
+         _recordingStartTime = null;
        });
        try {
-        // Annuler l'abonnement au stream audio local
         await _audioStreamSubscription?.cancel();
         _audioStreamSubscription = null;
 
-        // Arrêter l'enregistrement dans le repository
-        // stopRecording retourne maintenant String?
-        await _audioRepository.stopRecording(); // La valeur de retour n'est pas utile ici
+        // Correction: Utiliser stopRecordingStream
+        await _audioRepository.stopRecordingStream();
 
-        // Arrêter la reconnaissance côté Azure (indique la fin de l'audio)
-        // Correction: Utiliser stopRecognition
         await _azureSpeechService.stopRecognition();
 
         ConsoleLogger.info('Enregistrement et reconnaissance arrêtés. Attente du résultat final...');
-        // Le résultat final arrivera via le _recognitionResultSubscription
 
       } catch (e) {
         ConsoleLogger.error('Erreur lors de l\'arrêt de l\'enregistrement/reconnaissance: $e');
@@ -504,30 +480,25 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
            ScaffoldMessenger.of(context).showSnackBar(
              SnackBar(content: Text('Erreur arrêt: $e'), backgroundColor: Colors.red),
            );
-           setState(() { _isProcessing = false; }); // Réinitialiser si erreur à l'arrêt
+           setState(() { _isProcessing = false; });
          }
       }
   }
 
   /// Obtient le feedback coaching d'OpenAI basé sur l'évaluation Azure
-  // Correction: Ajouter le paramètre cleanedRecognizedText
   Future<void> _getOpenAiFeedback(ArticulationEvaluationResult? azureResult, String cleanedRecognizedText) async {
     if (azureResult == null) {
       ConsoleLogger.warning('Tentative d\'appel OpenAI sans résultat Azure.');
-      _completeExercise(); // Finaliser avec le feedback Azure seul
+      _completeExercise();
       return;
     }
 
-    setState(() { _isProcessing = true; _openAiFeedback = 'Génération du feedback...'; }); // Indiquer le traitement OpenAI
+    setState(() { _isProcessing = true; _openAiFeedback = 'Génération du feedback...'; });
 
-    // Préparer les arguments pour le service OpenAI, avec vérifications de type
     final Map<String, dynamic> metrics = {
       'score_global_accuracy': (azureResult.score is num ? azureResult.score : 0.0),
-      'score_prononciation': (azureResult.syllableClarity is num ? azureResult.syllableClarity : 0.0), // Approximation
-      // Correction: Utiliser le texte nettoyé pour les métriques OpenAI
+      'score_prononciation': (azureResult.syllableClarity is num ? azureResult.syllableClarity : 0.0),
       'texte_reconnu': cleanedRecognizedText,
-      // TODO: Extraire et ajouter des métriques plus fines depuis azureResult.details si disponible
-      // Par exemple: erreurs par syllabe, phonèmes mal prononcés, etc.
     };
      if (azureResult.error != null) {
        metrics['erreur_azure'] = azureResult.error;
@@ -535,139 +506,63 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
 
     ConsoleLogger.info('Appel à OpenAI generateFeedback...');
     try {
-      // Correction: Utiliser le texte nettoyé pour l'appel OpenAI
-      // Correction: Nettoyer aussi le texte attendu pour la comparaison (supprimer ponctuation et astérisques)
       final String cleanedExpectedText = _textToRead.replaceAll(RegExp(r'[,\.!?\*]'), '').toLowerCase();
       final feedback = await _openAIFeedbackService.generateFeedback(
-        exerciseType: 'Répétition Syllabique', // Type d'exercice
-        exerciseLevel: _difficultyToString(widget.exercise.difficulty), // Niveau
-        spokenText: cleanedRecognizedText, // Texte reconnu et nettoyé
-        expectedText: cleanedExpectedText, // Texte attendu nettoyé
-        metrics: metrics, // Métriques extraites/calculées
+        exerciseType: 'Répétition Syllabique',
+        exerciseLevel: _difficultyToString(widget.exercise.difficulty),
+        spokenText: cleanedRecognizedText,
+        expectedText: cleanedExpectedText,
+        metrics: metrics,
       );
       ConsoleLogger.success('Feedback OpenAI reçu: "$feedback"');
       setState(() {
         _openAiFeedback = feedback;
-        // Optionnel: Mettre à jour le feedback dans _evaluationResult si souhaité
         _evaluationResult = _evaluationResult?.copyWith(feedback: feedback);
       });
 
-      // Jouer le feedback OpenAI via TTS
       if (feedback.isNotEmpty && !feedback.startsWith('Erreur')) {
         ConsoleLogger.info('Lecture du feedback OpenAI via TTS...');
-        // Assurer qu'aucune autre lecture n'est en cours
         await _audioRepository.stopPlayback();
         await _exampleAudioProvider.playExampleFor(feedback);
-        // Pas besoin d'attendre la fin ici, la lecture se fait en arrière-plan
       }
 
     } catch (e) {
       ConsoleLogger.error('Erreur lors de la récupération du feedback OpenAI: $e');
       setState(() {
         _openAiFeedback = 'Erreur lors de la génération du feedback.';
-        // Garder le feedback Azure comme fallback
         _evaluationResult = _evaluationResult?.copyWith(feedback: _evaluationResult?.feedback ?? 'Évaluation Azure terminée.');
       });
     } finally {
-       // Finaliser l'exercice après avoir reçu (ou échoué à recevoir) le feedback OpenAI
        _completeExercise();
     }
   }
 
-
-  /* // Ancienne fonction d'évaluation, mise en commentaire car l'évaluation vient d'Azure
-  /// Évalue la phrase reconnue (reçue du stream Azure)
-  Future<void> _evaluatePhrase(String recognizedText) async {
-    // Ne pas évaluer si le texte reconnu est vide ou si on est déjà en train d'évaluer
-    // ou si l'exercice est déjà marqué comme complété (pour éviter double évaluation si résultat arrive tard)
-    if (recognizedText.isEmpty || _isProcessing || _isExerciseCompleted) return;
-
-    setState(() { _isProcessing = true; }); // Indiquer le début de l'évaluation
-
-    ConsoleLogger.evaluation('Début évaluation phrase (Azure): "$recognizedText" vs "$_textToRead"');
-    final stopwatch = Stopwatch()..start();
-
-    try {
-      // Utiliser le service d'évaluation (qui pourrait utiliser Azure Pronunciation Assessment ou une logique locale)
-      ConsoleLogger.evaluation('Appel à _evaluationService.evaluateRecording...');
-      // Note: evaluateRecording prend un audioFilePath, ce qui n'est pas pertinent ici.
-      // Il faudra peut-être adapter l'interface/implémentation d'ArticulationEvaluationService
-      // pour accepter directement le texte reconnu ou utiliser une autre méthode.
-      // Pour l'instant, on passe une valeur factice pour audioFilePath.
-      final ArticulationEvaluationResult evaluationResult = await _evaluationService.evaluateRecording(
-        audioFilePath: "streaming_audio", // Chemin factice
-        expectedWord: _textToRead,
-        recognizedText: recognizedText, // Passer le texte d'Azure
-        exerciseLevel: _difficultyToString(widget.exercise.difficulty),
-      );
-      stopwatch.stop();
-      ConsoleLogger.evaluation('Retour de evaluateRecording après ${stopwatch.elapsedMilliseconds}ms');
-
-      // Assigner directement le résultat
-      _evaluationResult = evaluationResult;
-
-      ConsoleLogger.success('Évaluation phrase: Score ${evaluationResult.score.toStringAsFixed(1)}');
-      if (evaluationResult.error != null) {
-        ConsoleLogger.warning('- Erreur évaluation: ${evaluationResult.error}');
-      }
-
-      _completeExercise();
-
-    } catch (e) {
-      stopwatch.stop();
-      ConsoleLogger.error('Erreur dans _evaluatePhrase après ${stopwatch.elapsedMilliseconds}ms: $e');
-      setState(() {
-        _evaluationResult = ArticulationEvaluationResult(
-          score: 0, syllableClarity: 0, consonantPrecision: 0, endingClarity: 0,
-          feedback: 'Erreur d\'évaluation', error: e.toString()
-        );
-        _isExerciseCompleted = true; // Marquer comme complété même en cas d'erreur d'évaluation
-      });
-       _completeExercise(); // Afficher l'erreur
-    } finally {
-       if (mounted) {
-         // Ne remettre _isProcessing à false que si l'exercice n'est pas déjà marqué comme complété
-         // pour éviter des états incohérents si _completeExercise a déjà été appelé
-         if (!_isExerciseCompleted) {
-            setState(() { _isProcessing = false; });
-         }
-       }
-    }
-  }
-  */
-
   /// Finalise l'exercice et affiche les résultats globaux
   void _completeExercise() {
-     // Ne pas compléter plusieurs fois si des résultats arrivent en décalé
      if (_isExerciseCompleted) return;
      ConsoleLogger.info('Finalisation de l\'exercice d\'articulation (mot/phrase)');
 
      setState(() {
        _isExerciseCompleted = true;
-       _isProcessing = false; // Assurer que l'indicateur de traitement est arrêté
+       _isProcessing = false;
        _showCelebration = (_evaluationResult?.score ?? 0) > 70;
      });
 
-     // Préparer les résultats finaux en utilisant _evaluationResult
      final finalResults = {
        'score': _evaluationResult?.score ?? 0,
-       'commentaires': _evaluationResult?.feedback ?? 'Évaluation terminée.', // Utiliser le feedback du résultat
+       'commentaires': _evaluationResult?.feedback ?? 'Évaluation terminée.',
        'texte_reconnu': _lastRecognizedText,
-       'erreur': _evaluationResult?.error, // Propager l'erreur éventuelle
-       // Ajouter d'autres métriques si disponibles
+       'erreur': _evaluationResult?.error,
        'clarté_syllabique': _evaluationResult?.syllableClarity ?? 0,
        'précision_consonnes': _evaluationResult?.consonantPrecision ?? 0,
        'netteté_finales': _evaluationResult?.endingClarity ?? 0,
-       // Ajouter le feedback OpenAI s'il est disponible
        'feedback_openai': _openAiFeedback.isNotEmpty ? _openAiFeedback : null,
      };
 
-     // Mettre à jour le feedback dans les résultats si OpenAI a fourni quelque chose
      if (_openAiFeedback.isNotEmpty && !_openAiFeedback.startsWith('Erreur')) {
        finalResults['commentaires'] = _openAiFeedback;
      }
 
-     // AJOUT: Enregistrer les résultats dans Supabase
      _saveSessionToSupabase(finalResults);
 
      _showCompletionDialog(finalResults);
@@ -685,48 +580,40 @@ class _ArticulationExerciseScreenState extends State<ArticulationExerciseScreen>
         ? DateTime.now().difference(_exerciseStartTime!).inSeconds
         : 0;
 
-    // Convertir l'enum Difficulty en int (ajuster si nécessaire)
     int difficultyInt;
     switch (widget.exercise.difficulty) {
       case ExerciseDifficulty.facile: difficultyInt = 1; break;
       case ExerciseDifficulty.moyen: difficultyInt = 2; break;
       case ExerciseDifficulty.difficile: difficultyInt = 3; break;
-      default: difficultyInt = 0; // Ou une autre valeur par défaut
+      default: difficultyInt = 0;
     }
 
-    // Préparer les données pour l'insertion
     final sessionData = {
       'user_id': userId,
-      'exercise_id': widget.exercise.id, // Assurez-vous que Exercise a un 'id'
-      'category': widget.exercise.category.id, // Correction: Enregistrer l'ID de la catégorie
-      'scenario': widget.exercise.title, // Utiliser le titre comme scénario
+      'exercise_id': widget.exercise.id,
+      'category': widget.exercise.category.id,
+      'scenario': widget.exercise.title,
       'duration': durationSeconds,
       'difficulty': difficultyInt,
-      'score': (results['score'] as num?)?.toInt() ?? 0, // Score global (Accuracy?)
-      'pronunciation_score': _evaluationResult?.syllableClarity, // Utilise PronunciationScore
-      'accuracy_score': _evaluationResult?.score, // Utilise AccuracyScore
+      'score': (results['score'] as num?)?.toInt() ?? 0,
+      'pronunciation_score': _evaluationResult?.syllableClarity,
+      'accuracy_score': _evaluationResult?.score,
       'fluency_score': (_evaluationResult?.details?['FluencyScore'] as num?)?.toDouble(),
       'completeness_score': (_evaluationResult?.details?['CompletenessScore'] as num?)?.toDouble(),
       'prosody_score': (_evaluationResult?.details?['ProsodyScore'] as num?)?.toDouble(),
       'transcription': results['texte_reconnu'],
-      'feedback': results['commentaires'], // Feedback final (OpenAI ou Azure)
-      'articulation_subcategory': null, // Laisser null pour l'instant
-      // 'audio_url': null, // Pas d'URL d'audio pour le moment
-      // created_at et updated_at sont gérés par Supabase
+      'feedback': results['commentaires'],
+      'articulation_subcategory': null,
     };
 
-    // Filtrer les valeurs nulles pour éviter les erreurs d'insertion si la colonne n'accepte pas NULL
     sessionData.removeWhere((key, value) => value == null);
 
     ConsoleLogger.info('[Supabase] Tentative d\'enregistrement de la session...');
     try {
       await Supabase.instance.client.from('sessions').insert(sessionData);
       ConsoleLogger.success('[Supabase] Session enregistrée avec succès.');
-      // Optionnel: Mettre à jour les statistiques utilisateur ici ou via une fonction Supabase
-      // await _updateUserStatistics(userId, results);
     } catch (e) {
       ConsoleLogger.error('[Supabase] Erreur lors de l\'enregistrement de la session: $e');
-      // Gérer l'erreur (ex: afficher un message à l'utilisateur ?)
     }
   }
   // FIN AJOUT

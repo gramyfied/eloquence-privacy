@@ -29,6 +29,7 @@ import '../presentation/screens/exercise_session/syllabic_precision_exercise_scr
 import '../presentation/screens/exercise_session/consonant_contrast_exercise_screen.dart'; // AJOUT: Import pour contraste consonantique
 import '../presentation/screens/exercise_session/finales_nettes_exercise_screen.dart'; // AJOUT: Import pour Finales Nettes
 import '../presentation/screens/exercise_session/expressive_intonation_exercise_screen.dart'; // AJOUT: Import pour Intonation Expressive
+import '../presentation/screens/exercise_session/pitch_variation_exercise_screen.dart'; // AJOUT: Import pour Variation de Hauteur
 
 
 /// Crée et configure le router de l'application
@@ -419,6 +420,29 @@ GoRouter createRouter(AuthRepository authRepository) {
         },
       ),
 
+      // Variation de Hauteur (Nouvelle route)
+      GoRoute(
+        path: AppRoutes.exercisePitchVariation, // Utilise la constante définie dans AppRoutes
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          // Extraire l'exercice de 'extra', fournir une valeur par défaut si null
+          final exercise = state.extra as Exercise? ?? Exercise(
+              id: exerciseId ?? 'pitch-variation',
+              title: 'Variation de Hauteur',
+              objective: 'Contrôlez le pitch vocal pour une expression dynamique',
+              instructions: 'Suivez les cibles de hauteur affichées.',
+              category: ExerciseCategory(id: 'clarity-expressivity', name: 'Clarté et Expressivité', description: '', type: ExerciseCategoryType.clarteExpressivite, iconPath: ''), // Catégorie par défaut
+              difficulty: ExerciseDifficulty.moyen,
+              evaluationParameters: {}
+          );
+
+          return PitchVariationExerciseScreen(
+             exercise: exercise,
+             // Note: Pas de callback onExerciseCompleted ici car la navigation est gérée dans le Cubit/BlocListener
+          );
+        },
+      ),
+
 
      ],
      errorBuilder: (context, state) => Scaffold(
@@ -546,6 +570,9 @@ Widget _buildCategoriesScreen(BuildContext context, List<ExerciseCategory> categ
              break;
           case 'intonation-expressive': // AJOUT: Cas pour le nouvel exercice
              targetRoute = AppRoutes.exerciseExpressiveIntonation.replaceFirst(':exerciseId', exerciseId);
+             break;
+          case 'variation-hauteur': // AJOUT: Cas pour Variation de Hauteur
+             targetRoute = AppRoutes.exercisePitchVariation.replaceFirst(':exerciseId', exerciseId);
              break;
           // Le cas default doit être le dernier (et unique)
           default:
@@ -711,17 +738,17 @@ List<Exercise> _getDefaultExercisesForCategory(ExerciseCategory category) {
             'variation': 0.4,
           },
         ),
-        Exercise(
+        Exercise( // AJOUT: Exercice Variation de Hauteur
           id: 'variation-hauteur',
           title: 'Variation de Hauteur',
           objective: 'Contrôlez le pitch vocal pour une expression dynamique',
-          instructions: 'Lisez le texte en variant consciemment la hauteur de votre voix.',
-          textToRead: 'Une voix qui monte et descend comme une mélodie captive l\'oreille, tandis qu\'une voix monotone endort même le plus intéressé des auditeurs.',
+          instructions: 'Suivez les cibles de hauteur affichées à l\'écran.', // Instructions simplifiées pour l'aperçu
+          textToRead: '', // Pas de texte à lire pour cet exercice
           difficulty: ExerciseDifficulty.difficile,
           category: category,
           evaluationParameters: {
-            'pitch_variation': 0.7,
-            'expressivity': 0.3,
+            'pitch_control': 0.8, // Métrique principale
+            'stability': 0.2,
           },
         ),
       ];
