@@ -72,9 +72,16 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
                 // Configuration de l'évaluation
                 // Note: Assurez-vous que le JSON est valide et correspond à vos besoins.
                 // Échapper les guillemets dans referenceText si nécessaire.
-                val escapedReferenceText = referenceText.replace("\"", "\\\"")
-                val jsonConfig = """{"referenceText":"$escapedReferenceText","gradingSystem":"HundredMark","granularity":"Phoneme","enableMiscue":"True"}"""
-                pronunciationAssessmentConfig = PronunciationAssessmentConfig.fromJSON(jsonConfig)
+                // Correction: Utiliser le constructeur au lieu de fromJSON
+                pronunciationAssessmentConfig = PronunciationAssessmentConfig(
+                    referenceText,
+                    PronunciationAssessmentGradingSystem.HundredMark,
+                    PronunciationAssessmentGranularity.Phoneme,
+                    true // enableMiscue
+                )
+                // Ajouter d'autres configurations si nécessaire via les setters, ex:
+                // pronunciationAssessmentConfig?.setJsonResult() // Pour obtenir le JSON brut si besoin
+
                 Log.d(TAG, "Pronunciation assessment config created.")
 
                 // Configuration audio
@@ -176,10 +183,16 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
          speechRecognizer?.recognized?.addEventListener { _, e ->
             Log.d(TAG, "Event: RecognizedSpeech. Reason: ${e.result.reason}")
             if (e.result.reason == ResultReason.RecognizedSpeech) {
-                val pronunciationResult = PronunciationAssessmentResult.fromResult(e.result)
-                Log.i(TAG, "Pronunciation assessment successful. Score: ${pronunciationResult.accuracyScore}")
-                val mappedResult = mapPronunciationResult(pronunciationResult)
-                deferred.complete(mappedResult)
+                // Correction: Utiliser getPronunciationAssessmentResult() sur l'objet result
+                val pronunciationResult = e.result.pronunciationAssessmentResult
+                if (pronunciationResult != null) {
+                    Log.i(TAG, "Pronunciation assessment successful. Score: ${pronunciationResult.accuracyScore}")
+                    val mappedResult = mapPronunciationResult(pronunciationResult)
+                    deferred.complete(mappedResult)
+                } else {
+                    Log.e(TAG, "Pronunciation assessment result is null despite RecognizedSpeech reason.")
+                    deferred.completeExceptionally(Exception("Pronunciation assessment result is null."))
+                }
             } else if (e.result.reason == ResultReason.NoMatch) {
                 Log.w(TAG, "No speech could be recognized.")
                 deferred.complete(null) // Compléter avec null si pas de correspondance
