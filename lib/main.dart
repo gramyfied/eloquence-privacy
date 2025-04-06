@@ -55,32 +55,32 @@ void main() async {
   // Charger le lexique de syllabification
   await serviceLocator<SyllabificationService>().loadLexicon();
 
-  // Initialiser Azure Speech Service au démarrage
-  try {
-    final azureSpeechService = serviceLocator<AzureSpeechService>();
-    final azureKey = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'];
-    final azureRegion = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'];
-    if (azureKey != null && azureRegion != null) {
-      bool initialized = await azureSpeechService.initialize(
-        subscriptionKey: azureKey,
-        region: azureRegion,
-      );
-      if (initialized) {
-        print('🟢 [MAIN] AzureSpeechService initialisé avec succès.');
-      } else {
-        print('🔴 [MAIN] Échec de l\'initialisation d\'AzureSpeechService.');
-        // Gérer l'échec global si nécessaire (ex: afficher un message persistant)
-      }
-    } else {
-      print('🔴 [MAIN] Clés Azure manquantes dans .env pour AzureSpeechService.');
-      // Gérer l'absence de clés globalement
-    }
-  } catch (e) {
-    print('🔴 [MAIN] Erreur critique lors de l\'initialisation d\'AzureSpeechService: $e');
-    // Gérer l'erreur critique
-  }
+  // --- Supprimer l'initialisation de l'ancien AzureSpeechService ---
+  // L'initialisation se fait maintenant via InitializeAzureSpeechUseCase dans ExerciseNotifier
+  // try {
+  //   final azureSpeechService = serviceLocator<AzureSpeechService>();
+  //   final azureKey = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'];
+  //   final azureRegion = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'];
+  //   if (azureKey != null && azureRegion != null) {
+  //     bool initialized = await azureSpeechService.initialize(
+  //       subscriptionKey: azureKey,
+  //       region: azureRegion,
+  //     );
+  //     if (initialized) {
+  //       print('🟢 [MAIN] AzureSpeechService initialisé avec succès.');
+  //     } else {
+  //       print('🔴 [MAIN] Échec de l\'initialisation d\'AzureSpeechService.');
+  //     }
+  //   } else {
+  //     print('🔴 [MAIN] Clés Azure manquantes dans .env pour AzureSpeechService.');
+  //   }
+  // } catch (e) {
+  //   print('🔴 [MAIN] Erreur critique lors de l\'initialisation d\'AzureSpeechService: $e');
+  // }
+  // --- Fin de la suppression ---
 
-  // Initialiser Azure TTS Service au démarrage
+
+  // Initialiser Azure TTS Service au démarrage (Garder si utilisé pour ExampleAudioProvider)
   try {
     final azureTtsService = serviceLocator<AzureTtsService>();
     final azureKey = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'];
