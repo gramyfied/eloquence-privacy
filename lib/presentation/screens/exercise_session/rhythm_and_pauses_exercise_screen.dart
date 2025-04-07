@@ -389,9 +389,10 @@ class _RhythmAndPausesExerciseScreenState
      ConsoleLogger.info('[RhythmScreen] Subscribing to Audio Stream...');
      _audioSubscription = audioStream.listen(
        (data) {
-         if (_isRecording && _azureSpeechService.isInitialized) {
-           _azureSpeechService.sendAudioChunk(data);
-         }
+         // Ne plus envoyer les chunks audio manuellement, le SDK natif gère le micro
+         // if (_isRecording && _azureSpeechService.isInitialized) {
+         //   _azureSpeechService.sendAudioChunk(data);
+         // }
        },
        onError: (error) {
          ConsoleLogger.error('[RhythmScreen] Audio Stream Error: $error');

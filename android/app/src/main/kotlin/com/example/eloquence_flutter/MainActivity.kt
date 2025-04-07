@@ -24,9 +24,9 @@ class MainActivity: FlutterActivity() {
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // Enregistrer le handler Pigeon
-        // Le contexte et le binaryMessenger sont passés ici.
-        AzureSpeechHandler.setUp(flutterEngine.dartExecutor.binaryMessenger, this.applicationContext)
+        // Enregistrer le handler Pigeon ET l'EventChannel
+        // Utiliser la nouvelle méthode registerWith
+        AzureSpeechHandler.registerWith(flutterEngine.dartExecutor.binaryMessenger, this.applicationContext)
 
         // Conserver le MethodChannel pour les permissions pour l'instant
         // Note: Il est souvent préférable de gérer les permissions côté Flutter avec permission_handler

@@ -6,11 +6,12 @@ import '../../../domain/entities/exercise.dart';
 import '../../../domain/repositories/audio_repository.dart';
 import '../../../services/service_locator.dart';
 import '../../../services/azure/azure_speech_service.dart';
+import '../../../services/openai/openai_feedback_service.dart'; // AJOUT: Importer OpenAI Service
 import '../../widgets/microphone_button.dart';
 import '../../widgets/visual_effects/info_modal.dart';
 import '../../widgets/visual_effects/celebration_effect.dart';
 import '../../../services/audio/example_audio_provider.dart';
-// Imports pour AudioSignalProcessor et OpenAIFeedbackService retirés
+// Imports pour AudioSignalProcessor retirés
 
 class ExerciseScreen extends StatefulWidget {
   final Exercise exercise;
@@ -36,7 +37,11 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   bool _isRecording = false;
   AudioRepository? _audioRepository;
   AzureSpeechService? _azureSpeechService;
+  OpenAIFeedbackService? _openAIService; // AJOUT: Service OpenAI
   Stream<double>? _audioLevelStream;
+  bool _isLoadingText = true; // AJOUT: État de chargement du texte
+  String? _loadingError; // AJOUT: Erreur de chargement
+  String _generatedTextToRead = ''; // AJOUT: Stocker le texte généré
 
   // Azure state variables
   String _recognizedText = '';
@@ -63,11 +68,55 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     print('[ExerciseScreen initState] START - Widget HashCode: ${widget.hashCode}');
     _audioRepository = serviceLocator<AudioRepository>();
     _azureSpeechService = serviceLocator<AzureSpeechService>();
+    _openAIService = serviceLocator<OpenAIFeedbackService>(); // Obtenir le service OpenAI
     _exampleAudioProvider = serviceLocator<ExampleAudioProvider>();
     print('[ExerciseScreen initState] Retrieved _azureSpeechService instance with HashCode: ${_azureSpeechService.hashCode}');
 
     _audioLevelStream = _audioRepository?.audioLevelStream;
-    _subscribeToRecognitionStream();
+    _initializeAndSubscribe(); // Appeler la nouvelle fonction d'initialisation
+  }
+
+  // AJOUT: Nouvelle fonction pour initialiser le contenu et s'abonner
+  Future<void> _initializeAndSubscribe() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingText = true;
+      _loadingError = null;
+    });
+
+    try {
+      // Vérifier si Azure est initialisé
+      if (_azureSpeechService == null || !_azureSpeechService!.isInitialized) {
+        throw Exception('Azure Speech Service non initialisé.');
+      }
+
+      // Générer la phrase via OpenAI
+      _generatedTextToRead = await _openAIService!.generateArticulationSentence(
+        // Adapter les paramètres si nécessaire pour la stabilité vocale
+        minWords: 10,
+        maxWords: 18,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _isLoadingText = false;
+      });
+
+      // S'abonner au stream de reconnaissance APRÈS avoir généré le texte
+      _subscribeToRecognitionStream();
+      print('[ExerciseScreen] Initialisation terminée, texte généré: "$_generatedTextToRead"');
+
+    } catch (e) {
+      print('[ExerciseScreen] Erreur initialisation/génération texte: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingText = false;
+          _loadingError = "Erreur chargement exercice: $e";
+          _generatedTextToRead = "Erreur lors du chargement du texte."; // Texte d'erreur
+        });
+      }
+    }
   }
 
   // Initialisation et souscription à AudioSignalProcessor retirées
@@ -166,15 +215,16 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
      print('[ExerciseScreen] Subscribing to received Audio Stream...');
      _audioSubscription = audioStream.listen(
        (data) {
-         if (mounted && _isRecording) {
-           Future(() {
-             if (mounted && _isRecording) {
-               if (_azureSpeechService != null && _azureSpeechService!.isInitialized) {
-                 _azureSpeechService!.sendAudioChunk(data);
-               }
-             }
-           });
-         }
+         // Ne plus envoyer les chunks audio manuellement
+         // if (mounted && _isRecording) {
+         //   Future(() {
+         //     if (mounted && _isRecording) {
+         //       if (_azureSpeechService != null && _azureSpeechService!.isInitialized) {
+         //         _azureSpeechService!.sendAudioChunk(data);
+         //       }
+         //     }
+         //   });
+         // }
        },
        onError: (error) {
          Future(() {
@@ -315,10 +365,14 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   }
 
   Widget _buildTextToReadSection() {
-     final textToDisplay = widget.exercise.textToRead;
-
-     if (textToDisplay == null || textToDisplay.isEmpty) {
-       return const Text("Aucun texte à lire pour cet exercice.", style: TextStyle(color: Colors.orangeAccent));
+     // Utiliser le texte généré ou afficher l'état de chargement/erreur
+     String textToDisplay;
+     if (_isLoadingText) {
+       textToDisplay = "Génération du texte...";
+     } else if (_loadingError != null) {
+       textToDisplay = _loadingError!;
+     } else {
+       textToDisplay = _generatedTextToRead;
      }
 
      return Column(
@@ -338,9 +392,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
            child: Text(
                   textToDisplay,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
-                    color: Colors.white,
+                    color: _loadingError != null ? AppTheme.accentRed : Colors.white, // Couleur d'erreur si besoin
                     height: 1.5,
                   ),
                 ),
@@ -482,9 +536,10 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   }
 
   Future<void> _startRecordingLogic() async {
-    final referenceTextForAzure = widget.exercise.textToRead;
-    if (referenceTextForAzure == null || referenceTextForAzure.isEmpty) {
-       print("[ExerciseScreen] Erreur: Tentative de démarrer la reconnaissance sans texte de référence valide.");
+    // Utiliser le texte généré
+    final referenceTextForAzure = _generatedTextToRead;
+    if (_isLoadingText || _loadingError != null || referenceTextForAzure.isEmpty || referenceTextForAzure.startsWith("Erreur")) {
+       print("[ExerciseScreen] Erreur: Tentative de démarrer la reconnaissance sans texte valide généré.");
        setState(() {
           _isRecording = false;
           _isAzureProcessing = false;

@@ -91,8 +91,9 @@ void setupServiceLocator() {
   // Azure Services (TTS retiré, SpeechService gardé pour l'instant si PronunciationEvaluationResult est utilisé ailleurs)
   // TODO: Vérifier si AzureSpeechService est encore nécessaire après la refactorisation complète.
   // Si non, supprimer cet enregistrement.
+  // Mettre à jour pour injecter IAzureSpeechRepository
   serviceLocator.registerLazySingleton<AzureSpeechService>(
-    () => AzureSpeechService()
+    () => AzureSpeechService(serviceLocator<IAzureSpeechRepository>())
   );
 
   // OpenAI Service (Azure OpenAI) - Gardé pour référence future

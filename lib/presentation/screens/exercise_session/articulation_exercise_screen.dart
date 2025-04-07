@@ -13,7 +13,8 @@ import '../../widgets/microphone_button.dart';
 import '../../providers/exercise_provider.dart';
 import '../../providers/exercise_state.dart';
 import '../../providers/audio_providers.dart';
-// Ajout pour serviceLocator si besoin
+import '../../../services/openai/openai_feedback_service.dart'; // Importer le service OpenAI
+import '../../../services/service_locator.dart'; // Importer serviceLocator
 
 /// Écran d'exercice d'articulation utilisant Riverpod
 class ArticulationExerciseScreen extends ConsumerStatefulWidget {
@@ -32,20 +33,57 @@ class ArticulationExerciseScreen extends ConsumerStatefulWidget {
 
 class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExerciseScreen> {
   late ExampleAudioProvider _exampleAudioProvider;
+  late OpenAIFeedbackService _openAIService; // Ajouter le service OpenAI
   bool _isPlayingExample = false;
+  bool _isLoadingText = true; // Ajouter un état de chargement pour le texte
+  String? _loadingError; // Pour afficher les erreurs de chargement
 
   @override
   void initState() {
     super.initState();
     _exampleAudioProvider = ref.read(exampleAudioProvider);
+    _openAIService = serviceLocator<OpenAIFeedbackService>(); // Obtenir le service
 
-    Future.microtask(() {
-      final language = 'fr-FR';
-      // Utiliser le champ correct 'textToRead' et fournir une valeur par défaut plus sûre
-      final textToRead = widget.exercise.textToRead ?? "Texte d'exercice non trouvé.";
-      ConsoleLogger.info('[ArticulationScreen] Preparing exercise with text: "$textToRead"');
-      ref.read(exerciseStateProvider.notifier).prepareExercise(textToRead, language);
+    // Appeler la génération de texte de manière asynchrone
+    _initializeExerciseContent();
+  }
+
+  Future<void> _initializeExerciseContent() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingText = true;
+      _loadingError = null;
     });
+
+    try {
+      // Générer la phrase via OpenAI
+      final generatedSentence = await _openAIService.generateArticulationSentence(
+        // Optionnel: ajouter targetSounds si pertinent pour l'exercice
+        // targetSounds: "s, z, ch",
+        minWords: 8,
+        maxWords: 15,
+      );
+
+      if (!mounted) return;
+
+      // Préparer l'exercice avec la phrase générée
+      final language = 'fr-FR';
+      ConsoleLogger.info('[ArticulationScreen] Preparing exercise with generated text: "$generatedSentence"');
+      ref.read(exerciseStateProvider.notifier).prepareExercise(generatedSentence, language);
+
+      setState(() => _isLoadingText = false);
+
+    } catch (e) {
+      ConsoleLogger.error('[ArticulationScreen] Erreur génération phrase: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingText = false;
+          _loadingError = "Erreur chargement texte: $e";
+          // Préparer avec un texte d'erreur pour que l'UI ne plante pas
+          ref.read(exerciseStateProvider.notifier).prepareExercise("Erreur chargement texte.", 'fr-FR');
+        });
+      }
+    }
   }
 
   @override
@@ -338,7 +376,8 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
   Widget _buildMainContent(ExerciseState state) {
     final bool isRecording = state.status == ExerciseStatus.recording;
     final bool isProcessing = state.status == ExerciseStatus.processing || state.status == ExerciseStatus.initializing;
-    final String textToRead = state.referenceText ?? "Chargement...";
+    // Utiliser l'état de chargement local
+    final String textToRead = _isLoadingText ? "Génération du texte..." : (state.referenceText ?? "Erreur texte.");
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -356,13 +395,19 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
                 height: 1.4,
               ),
             ),
-            const SizedBox(height: 16 + 28 * 1.5),
+            const SizedBox(height: 16 + 28 * 1.5), // Conserver l'espacement
             const SizedBox(height: 32),
-            Icon(
-              isRecording ? Icons.mic : (isProcessing ? Icons.hourglass_top : Icons.mic_none),
-              size: 80,
-              color: isRecording ? AppTheme.accentRed : (isProcessing ? Colors.orangeAccent : AppTheme.primaryColor.withOpacity(0.5)),
-            ),
+            // Afficher un indicateur de chargement si nécessaire
+            if (_isLoadingText)
+              const CircularProgressIndicator()
+            else if (_loadingError != null)
+              Text(_loadingError!, style: const TextStyle(color: AppTheme.accentRed))
+            else // Sinon afficher l'icône normale
+              Icon(
+                isRecording ? Icons.mic : (isProcessing ? Icons.hourglass_top : Icons.mic_none),
+                size: 80,
+                color: isRecording ? AppTheme.accentRed : (isProcessing ? Colors.orangeAccent : AppTheme.primaryColor.withOpacity(0.5)),
+              ),
             const SizedBox(height: 20),
           ],
         ),

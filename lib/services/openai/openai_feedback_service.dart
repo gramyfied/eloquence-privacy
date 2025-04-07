@@ -580,6 +580,140 @@ $metricsString
     }
   }
 
+  /// Génère une liste de mots avec des finales spécifiques pour l'exercice "Finales Nettes".
+  Future<List<Map<String, dynamic>>> generateFinalesNettesWords({
+    required String exerciseLevel,
+    int wordCount = 6, // Nombre de mots à générer
+    List<String>? targetEndings, // Optionnel: finales spécifiques à cibler
+    String language = 'fr-FR',
+  }) async {
+    ConsoleLogger.info('🤖 [OPENAI] Génération de mots pour Finales Nettes...');
+    ConsoleLogger.info('🤖 [OPENAI] - Niveau: $exerciseLevel');
+    ConsoleLogger.info('🤖 [OPENAI] - Nombre de mots: $wordCount');
+    if (targetEndings != null) {
+      ConsoleLogger.info('🤖 [OPENAI] - Finales cibles: ${targetEndings.join(', ')}');
+    }
+
+    // Construire le prompt
+    String prompt = '''
+Génère une liste de $wordCount mots en français ($language) adaptés pour un exercice de "Finales Nettes" de niveau "$exerciseLevel".
+Objectif: Pratiquer la prononciation claire et distincte des syllabes ou sons finaux des mots.
+Contraintes:
+- Choisis des mots courants dans un contexte professionnel ou quotidien.
+- La complexité des mots doit correspondre au niveau "$exerciseLevel".
+''';
+    if (targetEndings != null && targetEndings.isNotEmpty) {
+      prompt += '- Inclus si possible des mots se terminant par les sons/graphies suivants : ${targetEndings.join(', ')}.\n';
+    } else {
+      prompt += '- Varie les types de finales (ex: -ent, -able, -tion, -oir, -if, -age, -isme, consonnes finales comme -t, -d, -s, -r, -l).\n';
+    }
+    prompt += '''
+- Pour chaque mot, identifie clairement la "finale cible" (les 1 à 3 dernières lettres ou la dernière syllabe phonétique pertinente pour l'exercice).
+
+Format de réponse attendu (strictement JSON):
+[
+  {"word": "exemple", "targetEnding": "ple"},
+  {"word": "important", "targetEnding": "ant"},
+  {"word": "possible", "targetEnding": "ible"},
+  ...
+]
+
+Ne fournis que le JSON, sans aucune introduction, explication ou formatage supplémentaire.
+''';
+
+    // Vérifier la configuration Azure OpenAI
+    if (apiKey.isEmpty || endpoint.isEmpty || deploymentName.isEmpty) {
+      ConsoleLogger.warning('🤖 [AZURE OPENAI] Informations Azure OpenAI manquantes. Utilisation de mots par défaut pour Finales Nettes.');
+      return [
+        {"word": "important", "targetEnding": "ant"},
+        {"word": "développement", "targetEnding": "ment"},
+        {"word": "processus", "targetEnding": "sus"},
+        {"word": "possible", "targetEnding": "ible"},
+        {"word": "objectif", "targetEnding": "if"},
+        {"word": "décide", "targetEnding": "ide"},
+      ];
+    }
+
+    // Appeler l'API Azure OpenAI
+    try {
+      ConsoleLogger.info('Appel de l\'API Azure OpenAI pour génération de mots Finales Nettes');
+      final url = Uri.parse('$endpoint/openai/deployments/$deploymentName/chat/completions?api-version=$apiVersion');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': apiKey,
+        },
+        body: jsonEncode({
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'Tu es un expert en linguistique française spécialisé dans la création de matériel pour exercices de diction, en particulier pour travailler la clarté des finales de mots. Tu réponds uniquement en format JSON.',
+            },
+            {
+              'role': 'user',
+              'content': prompt,
+            },
+          ],
+          'temperature': 0.7,
+          'max_tokens': 400, // Augmenter un peu pour être sûr
+          'response_format': {'type': 'json_object'},
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseBody = utf8.decode(response.bodyBytes);
+        try {
+          final decodedBody = jsonDecode(responseBody);
+          final String? content = decodedBody?['choices']?[0]?['message']?['content']?.toString();
+
+          if (content == null || content.isEmpty) {
+            throw Exception('Contenu du message vide ou manquant.');
+          }
+          final cleanedContent = content.replaceAll(RegExp(r'^```json\s*|\s*```$'), '').trim();
+          final List<dynamic> wordsList = jsonDecode(cleanedContent);
+
+          final List<Map<String, dynamic>> resultList = [];
+          for (var item in wordsList) {
+            if (item is Map && item.containsKey('word') && item.containsKey('targetEnding')) {
+              resultList.add({'word': item['word'].toString(), 'targetEnding': item['targetEnding'].toString()});
+            } else {
+               ConsoleLogger.warning('Format d\'item JSON invalide ignoré pour Finales Nettes: $item');
+            }
+          }
+
+          if (resultList.isNotEmpty && resultList.length >= wordCount ~/ 2) { // Accepter si au moins la moitié des mots sont générés
+             ConsoleLogger.success('🤖 [OPENAI] Mots pour Finales Nettes générés et parsés avec succès: ${resultList.length} mots.');
+             return resultList.take(wordCount).toList(); // Renvoyer le nombre demandé
+          } else {
+             ConsoleLogger.error('🤖 [OPENAI] La liste JSON générée pour Finales Nettes est vide ou invalide.');
+             throw Exception('La liste JSON générée est vide ou invalide.');
+          }
+        } catch (e) {
+          ConsoleLogger.error('🤖 [OPENAI] Erreur parsing JSON de la réponse pour Finales Nettes: $e');
+          ConsoleLogger.error('🤖 [OPENAI] Réponse brute: $responseBody');
+          throw Exception('Erreur parsing JSON: $e');
+        }
+      } else {
+        ConsoleLogger.error('🤖 [OPENAI] Erreur API lors de la génération de mots Finales Nettes: ${response.statusCode}, ${response.body}');
+        throw Exception('Erreur API OpenAI: ${response.statusCode}');
+      }
+    } catch (e) {
+      ConsoleLogger.error('🤖 [OPENAI] Erreur lors de la génération de mots Finales Nettes: $e');
+      // Retourner une liste par défaut en cas d'erreur
+      return [
+        {"word": "important", "targetEnding": "ant"},
+        {"word": "développement", "targetEnding": "ment"},
+        {"word": "processus", "targetEnding": "sus"},
+        {"word": "possible", "targetEnding": "ible"},
+        {"word": "objectif", "targetEnding": "if"},
+        {"word": "décide", "targetEnding": "ide"},
+      ];
+    }
+  }
+
+
   /// Génère une liste de mots avec leur décomposition syllabique pour l'exercice de précision syllabique.
   Future<List<Map<String, dynamic>>> generateSyllabicWords({
     required String exerciseLevel,

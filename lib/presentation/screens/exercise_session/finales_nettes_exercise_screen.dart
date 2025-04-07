@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart'; // Pour kDebugMode
 import 'package:go_router/go_router.dart'; // Importer GoRouter
 import '../../../app/theme.dart';
 import '../../../app/routes.dart'; // Importer AppRoutes
+import '../../../core/utils/console_logger.dart'; // AJOUT: Importer ConsoleLogger
 import '../../../domain/entities/exercise.dart';
 import '../../../infrastructure/repositories/record_audio_repository.dart'; // Chemin corrigé
 import '../../../services/azure/azure_speech_service.dart';
@@ -49,16 +50,9 @@ class _FinalesNettesExerciseScreenState extends State<FinalesNettesExerciseScree
   String? _errorMessage;
   int _currentWordIndex = 0;
 
-  // Liste des mots pour l'exercice (à externaliser plus tard si nécessaire)
-  final List<WordTarget> _wordList = [
-    WordTarget(word: 'important', targetEnding: 'ant'),
-    WordTarget(word: 'développement', targetEnding: 'ment'),
-    WordTarget(word: 'processus', targetEnding: 'sus'),
-    WordTarget(word: 'possible', targetEnding: 'ible'),
-    WordTarget(word: 'objectif', targetEnding: 'if'),
-    WordTarget(word: 'décide', targetEnding: 'ide'),
-    // Ajouter d'autres mots ici
-  ];
+  // Remplacer la liste codée en dur par une liste vide initialement
+  List<WordTarget> _wordList = [];
+  bool _isLoading = true; // Ajouter un état de chargement pour la génération
 
   // Stockage des résultats pour la session
   final List<Map<String, dynamic>> _sessionResults = [];
@@ -70,24 +64,66 @@ class _FinalesNettesExerciseScreenState extends State<FinalesNettesExerciseScree
     // Utiliser le type correct pour serviceLocator
     _audioRecorderService = serviceLocator<RecordAudioRepository>();
     _azureSpeechService = serviceLocator<AzureSpeechService>();
-    _openAIService = serviceLocator<OpenAIFeedbackService>(); // Initialiser le service OpenAI
+    _openAIService = serviceLocator<OpenAIFeedbackService>();
 
-    // S'assurer qu'Azure est initialisé (peut nécessiter une logique plus robuste)
-    if (!_azureSpeechService.isInitialized) {
-      // Gérer le cas où Azure n'est pas prêt (peut-être naviguer en arrière ou afficher une erreur)
-      _errorMessage = "Le service Azure n'est pas initialisé.";
-      if (kDebugMode) {
-        print("ERREUR: AzureSpeechService non initialisé dans FinalesNettesExerciseScreen.");
+    // Appeler l'initialisation asynchrone
+    _initializeExercise();
+  }
+
+  // --- Initialization ---
+  Future<void> _initializeExercise() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      ConsoleLogger.info('Initialisation Exercice: Finales Nettes');
+
+      // S'assurer qu'Azure est initialisé (peut nécessiter une logique plus robuste)
+      if (!_azureSpeechService.isInitialized) {
+        throw Exception('Azure Speech Service non initialisé.');
       }
-      // Afficher l'erreur à l'utilisateur immédiatement
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {}); // Pour afficher le message d'erreur
-        }
-      });
-    }
 
-    _setupRecognitionListener();
+      // Générer les mots via OpenAI
+      final generatedWordsData = await _openAIService.generateFinalesNettesWords(
+        exerciseLevel: _difficultyToString(widget.exercise.difficulty),
+        // wordCount: 6, // Utiliser la valeur par défaut ou ajuster
+      );
+
+      // Convertir les données générées en objets WordTarget
+      final generatedWordList = generatedWordsData.map((data) {
+        return WordTarget(
+          word: data['word'] as String? ?? '',
+          targetEnding: data['targetEnding'] as String? ?? '',
+        );
+      }).where((wt) => wt.word.isNotEmpty && wt.targetEnding.isNotEmpty).toList();
+
+      if (generatedWordList.isEmpty) {
+        // Gérer le cas où la génération a échoué ou renvoyé une liste vide/invalide
+        throw Exception("Impossible de générer les mots pour l'exercice.");
+      }
+
+      // Mettre à jour l'état avec les mots générés
+      if (mounted) {
+        setState(() {
+          _wordList = generatedWordList;
+          _currentWordIndex = 0; // Réinitialiser l'index
+          _isLoading = false;
+          _errorMessage = null; // Effacer les erreurs précédentes
+        });
+      }
+
+      _setupRecognitionListener(); // S'abonner au stream *après* avoir obtenu les mots
+      ConsoleLogger.info('Exercice Finales Nettes initialisé avec ${_wordList.length} mots générés.');
+
+    } catch (e) {
+      ConsoleLogger.error('Erreur initialisation Finales Nettes: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Erreur initialisation: $e';
+          _isLoading = false;
+          _wordList = []; // Assurer que la liste est vide en cas d'erreur
+        });
+      }
+    }
   }
 
   @override
@@ -367,7 +403,8 @@ class _FinalesNettesExerciseScreenState extends State<FinalesNettesExerciseScree
       final concatenatedChunk = bytesBuilder.toBytes();
 
       if (concatenatedChunk.isNotEmpty) {
-        _azureSpeechService.sendAudioChunk(concatenatedChunk);
+        // Ne plus envoyer les chunks audio manuellement
+        // _azureSpeechService.sendAudioChunk(concatenatedChunk);
         // if (kDebugMode) print("[FinalesNettes] Sent ${concatenatedChunk.length} concatenated bytes.");
       }
     } catch (e, stackTrace) {
@@ -635,8 +672,51 @@ class _FinalesNettesExerciseScreenState extends State<FinalesNettesExerciseScree
   }
 
 
+  // Helper pour convertir la difficulté en String (peut être externalisé)
+  String _difficultyToString(ExerciseDifficulty difficulty) {
+    switch (difficulty) {
+      case ExerciseDifficulty.facile: return 'Facile';
+      case ExerciseDifficulty.moyen: return 'Moyen';
+      case ExerciseDifficulty.difficile: return 'Difficile';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Gérer l'état de chargement initial
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: AppTheme.darkBackground,
+        appBar: AppBar(title: Text(widget.exercise.title), backgroundColor: AppTheme.darkBackground),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    // Gérer l'état d'erreur initial (si la liste de mots n'a pas pu être chargée)
+    if (_wordList.isEmpty) {
+       return Scaffold(
+         backgroundColor: AppTheme.darkBackground,
+         appBar: AppBar(
+           title: Text(widget.exercise.title, style: const TextStyle(color: Colors.white)),
+           backgroundColor: AppTheme.darkBackground,
+           leading: IconButton(
+             icon: const Icon(Icons.arrow_back, color: Colors.white),
+             onPressed: () => Navigator.of(context).pop(),
+           ),
+         ),
+         body: Center(
+           child: Padding(
+             padding: const EdgeInsets.all(20.0),
+             child: Text(
+               'Erreur: Impossible de charger les mots pour cet exercice.\n${_errorMessage ?? ''}',
+               style: const TextStyle(color: AppTheme.accentRed, fontSize: 16),
+               textAlign: TextAlign.center,
+             ),
+           ),
+         ),
+       );
+    }
+
+    // Si chargement OK et liste de mots non vide, construire l'UI normale
     final currentTarget = _wordList[_currentWordIndex];
     // Obtenir le thème pour les styles de texte
     final textTheme = Theme.of(context).textTheme;
