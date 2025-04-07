@@ -140,7 +140,10 @@ class _EffortlessProjectionExerciseScreenState extends State<EffortlessProjectio
         _instructionText = "Dites la phrase \"$_phraseToSay\"\navec projection (${(_targetVolumeMin * 100).toInt()}-${(_targetVolumeMax * 100).toInt()}%),\nsans crier ni forcer.";
         break;
     }
-    // Pas besoin de setState ici si appelé depuis initState ou après un autre setState
+    // Mettre à jour l'état pour refléter les changements d'instruction
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   /// Joue une démo audio (si disponible)
@@ -371,10 +374,11 @@ class _EffortlessProjectionExerciseScreenState extends State<EffortlessProjectio
       ConsoleLogger.success('Feedback OpenAI Projection reçu: "$feedback"');
       setState(() { _openAiFeedback = feedback; });
 
-      if (feedback.isNotEmpty && !feedback.startsWith('Erreur')) {
-        await _audioRepository.stopPlayback();
-        await _exampleAudioProvider.playExampleFor(feedback);
-      }
+      // Ne plus lire automatiquement le feedback ici
+      // if (feedback.isNotEmpty && !feedback.startsWith('Erreur')) {
+      //   await _audioRepository.stopPlayback();
+      //   await _exampleAudioProvider.playExampleFor(feedback);
+      // }
 
     } catch (e) {
       ConsoleLogger.error('Erreur feedback OpenAI Projection: $e');
@@ -441,10 +445,6 @@ class _EffortlessProjectionExerciseScreenState extends State<EffortlessProjectio
     final uuidRegex = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
     if (!uuidRegex.hasMatch(exerciseId)) {
       ConsoleLogger.error('[Supabase] ID d\'exercice invalide ($exerciseId), ce n\'est pas un UUID. Sauvegarde annulée. Vérifiez si l\'exercice provient des données par défaut.');
-      // Optionnel: Afficher un message à l'utilisateur ?
-      // ScaffoldMessenger.of(context).showSnackBar(
-      //    SnackBar(content: Text('Erreur interne: ID exercice invalide.'), backgroundColor: Colors.red),
-      // );
       return; // Ne pas tenter la sauvegarde avec un ID invalide
     }
 
@@ -509,7 +509,6 @@ class _EffortlessProjectionExerciseScreenState extends State<EffortlessProjectio
                  secondaryColor: AppTheme.accentYellow, // Utiliser Jaune comme alternative
                  durationSeconds: 3,
                  onComplete: () {
-                   // Action à effectuer après l'animation (optionnel)
                    ConsoleLogger.info('Animation Célébration Projection terminée.');
                  },
                ),
@@ -583,36 +582,37 @@ class _EffortlessProjectionExerciseScreenState extends State<EffortlessProjectio
             ],
           );
         },
-      );
-    }
-  }
-
-  /// Affiche la modale d'information
-  void _showInfoModal() {
-    ConsoleLogger.info('Affichage info modal pour: ${widget.exercise.title}');
-    showDialog(
-      context: context,
-      builder: (context) => InfoModal(
-        title: widget.exercise.title,
-        description: widget.exercise.objective ?? "Apprenez à projeter votre voix efficacement sans forcer.",
-        benefits: [
-          'Portée vocale accrue sans fatigue.',
-          'Voix plus impactante et audible.',
-          'Prévention de la tension et des dommages vocaux.',
-          'Confiance renforcée lors de prises de parole.',
-        ],
-        instructions: "Suivez les instructions pour chaque activité (voyelle, phrase).\n"
-            "Visez la zone de volume indiquée sur la jauge.\n"
-            "Surveillez l'indicateur de tension : il doit rester bas.\n"
-            "L'objectif est de trouver le bon équilibre entre volume et détente.",
-        backgroundColor: AppTheme.impactPresenceColor,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
+       );
+     }
+   }
+ 
+   /// Affiche la modale d'information
+   void _showInfoModal() {
+     ConsoleLogger.info('Affichage info modal pour: ${widget.exercise.title}');
+     showDialog(
+       context: context,
+       builder: (context) => InfoModal(
+         title: widget.exercise.title,
+         description: widget.exercise.objective ?? "Apprenez à projeter votre voix efficacement sans forcer.",
+         benefits: [
+           'Portée vocale accrue sans fatigue.',
+           'Voix plus impactante et audible.',
+           'Prévention de la tension et des dommages vocaux.',
+           'Confiance renforcée lors de prises de parole.',
+         ],
+         // Ajout des arguments manquants
+         instructions: "Suivez les instructions pour chaque activité (voyelle, phrase).\n"
+             "Visez la zone de volume indiquée sur la jauge.\n"
+             "Surveillez l'indicateur de tension : il doit rester bas.\n"
+             "L'objectif est de trouver le bon équilibre entre volume et détente.",
+         backgroundColor: AppTheme.impactPresenceColor,
+       ),
+     );
+   }
+ 
+   @override
+   Widget build(BuildContext context) {
+    return Scaffold( // Correction: Ajout du Scaffold manquant
       backgroundColor: AppTheme.darkBackground,
       appBar: AppBar( /* ... AppBar identique ... */
          backgroundColor: Colors.transparent,
@@ -648,21 +648,19 @@ class _EffortlessProjectionExerciseScreenState extends State<EffortlessProjectio
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
-        ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            flex: 4,
-            child: _buildMainContent(),
-          ),
-          Expanded(
-            flex: 2,
-            child: _buildInstructionAndFeedbackArea(),
-          ),
-          _buildControls(),
-        ],
-      ),
+         ),
+       ),
+       body: SingleChildScrollView( // Ajout du SingleChildScrollView
+         child: Column(
+           children: [
+             // Suppression des Expanded, la taille sera déterminée par le contenu
+             _buildMainContent(),
+             _buildInstructionAndFeedbackArea(),
+             _buildControls(),
+             const SizedBox(height: 20), // Ajout d'un peu d'espace en bas pour le défilement
+           ],
+         ),
+       ),
     );
   }
 
@@ -680,74 +678,73 @@ class _EffortlessProjectionExerciseScreenState extends State<EffortlessProjectio
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w500, color: Colors.white),
           ),
-          const SizedBox(height: 32),
+           const SizedBox(height: 32),
 
-          // TODO: Remplacer par le vrai Visualiseur Combiné Volume/Tension
-          Expanded(
-            child: Container(
-               padding: const EdgeInsets.all(16),
-               decoration: BoxDecoration(
-                 color: Colors.white.withOpacity(0.05),
-                 borderRadius: BorderRadius.circular(12),
-               ),
-               child: Column(
-                 mainAxisAlignment: MainAxisAlignment.center,
-                 children: [
-                   Text(
-                     'Visualiseur Volume & Tension (Placeholder)',
-                     style: TextStyle(color: Colors.white54),
+           // TODO: Remplacer par le vrai Visualiseur Combiné Volume/Tension
+           // Suppression de Expanded ici pour permettre au SingleChildScrollView de gérer la taille
+           Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+               color: Colors.white.withOpacity(0.05),
+               borderRadius: BorderRadius.circular(12),
+             ),
+             child: Column(
+               mainAxisAlignment: MainAxisAlignment.center,
+               children: [
+                 Text(
+                   'Visualiseur Volume & Tension (Placeholder)',
+                   style: TextStyle(color: Colors.white54),
+                 ),
+                 const SizedBox(height: 20),
+                 // Jauge Volume (simplifiée)
+                 LinearProgressIndicator(
+                   value: _currentVolumeNormalized,
+                   backgroundColor: Colors.grey.shade700,
+                   valueColor: AlwaysStoppedAnimation<Color>(
+                     _currentVolumeNormalized >= _targetVolumeMin && _currentVolumeNormalized <= _targetVolumeMax
+                         ? AppTheme.accentGreen // Dans la cible
+                         : AppTheme.impactPresenceColor, // Hors cible
                    ),
-                   const SizedBox(height: 20),
-                   // Jauge Volume (simplifiée)
-                   LinearProgressIndicator(
-                     value: _currentVolumeNormalized,
-                     backgroundColor: Colors.grey.shade700,
-                     valueColor: AlwaysStoppedAnimation<Color>(
-                       _currentVolumeNormalized >= _targetVolumeMin && _currentVolumeNormalized <= _targetVolumeMax
-                           ? AppTheme.accentGreen // Dans la cible
-                           : AppTheme.impactPresenceColor, // Hors cible
-                     ),
-                     minHeight: 20,
-                   ),
-                   Row(
-                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                     children: [
-                       Text('${(_targetVolumeMin*100).toInt()}%', style: TextStyle(color: Colors.white70)),
-                       Text('Volume', style: TextStyle(color: Colors.white)),
-                       Text('${(_targetVolumeMax*100).toInt()}%', style: TextStyle(color: Colors.white70)),
-                     ],
-                   ),
-                   const SizedBox(height: 30),
-                   // Indicateur Tension (simplifié)
-                   Row(
-                     mainAxisAlignment: MainAxisAlignment.center,
-                     children: [
-                       Text('Tension: ', style: TextStyle(color: Colors.white)),
-                       Container(
-                         width: 100, height: 20,
-                         decoration: BoxDecoration(
-                           borderRadius: BorderRadius.circular(10),
-                           gradient: LinearGradient(
-                             colors: [AppTheme.accentGreen, AppTheme.accentYellow, AppTheme.accentRed],
-                             stops: [0.0, _maxAllowedTension, 1.0],
-                           ),
-                         ),
-                         child: Stack(
-                           children: [
-                             Positioned(
-                               left: (_currentTensionLevel * 100).clamp(0.0, 96.0), // 96 pour visibilité
-                               child: Container(width: 4, height: 20, color: Colors.white),
-                             )
-                           ],
+                   minHeight: 20,
+                 ),
+                 Row(
+                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                   children: [
+                     Text('${(_targetVolumeMin*100).toInt()}%', style: TextStyle(color: Colors.white70)),
+                     Text('Volume', style: TextStyle(color: Colors.white)),
+                     Text('${(_targetVolumeMax*100).toInt()}%', style: TextStyle(color: Colors.white70)),
+                   ],
+                 ),
+                 const SizedBox(height: 30),
+                 // Indicateur Tension (simplifié)
+                 Row(
+                   mainAxisAlignment: MainAxisAlignment.center,
+                   children: [
+                     Text('Tension: ', style: TextStyle(color: Colors.white)),
+                     Container(
+                       width: 100, height: 20,
+                       decoration: BoxDecoration(
+                         borderRadius: BorderRadius.circular(10),
+                         gradient: LinearGradient(
+                           colors: [AppTheme.accentGreen, AppTheme.accentYellow, AppTheme.accentRed],
+                           stops: [0.0, _maxAllowedTension, 1.0],
                          ),
                        ),
-                       Text(' (${(_currentTensionLevel*100).toStringAsFixed(0)}%)', style: TextStyle(color: _currentTensionLevel > _maxAllowedTension ? AppTheme.accentRed : Colors.white)),
-                     ],
-                   ),
-                 ],
-               ),
-            ),
-          ),
+                       child: Stack(
+                         children: [
+                           Positioned(
+                             left: (_currentTensionLevel * 100).clamp(0.0, 96.0), // 96 pour visibilité
+                             child: Container(width: 4, height: 20, color: Colors.white),
+                           )
+                         ],
+                       ),
+                     ),
+                     Text(' (${(_currentTensionLevel*100).toStringAsFixed(0)}%)', style: TextStyle(color: _currentTensionLevel > _maxAllowedTension ? AppTheme.accentRed : Colors.white)),
+                   ],
+                 ),
+               ],
+             ),
+          ), // Correction: Suppression de la parenthèse fermante en trop de l'ancien Expanded
           const SizedBox(height: 24),
         ],
       ),
@@ -789,7 +786,7 @@ class _EffortlessProjectionExerciseScreenState extends State<EffortlessProjectio
   }
 
   // --- Fonctions utilitaires ---
-  String _difficultyToString(ExerciseDifficulty difficulty) { /* ... */
+  String _difficultyToString(ExerciseDifficulty difficulty) {
     switch (difficulty) {
       case ExerciseDifficulty.facile: return 'Facile';
       case ExerciseDifficulty.moyen: return 'Moyen';
@@ -797,7 +794,7 @@ class _EffortlessProjectionExerciseScreenState extends State<EffortlessProjectio
       default: return 'Inconnu';
     }
   }
-  int _difficultyToDbInt(ExerciseDifficulty difficulty) { /* ... */
+  int _difficultyToDbInt(ExerciseDifficulty difficulty) {
      switch (difficulty) {
       case ExerciseDifficulty.facile: return 1;
       case ExerciseDifficulty.moyen: return 2;
@@ -808,4 +805,3 @@ class _EffortlessProjectionExerciseScreenState extends State<EffortlessProjectio
   // String _zoneToString(ResonanceZone zone) { /* ... */ // Supprimé car non pertinent ici
   // }
 }
-

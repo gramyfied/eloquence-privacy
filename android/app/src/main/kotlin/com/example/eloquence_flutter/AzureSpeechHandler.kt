@@ -316,12 +316,14 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
                              if (bestResult.pronunciationAssessment != null || bestResult.words != null) {
                                  Log.i(TAG, "Pronunciation assessment successful (from JSON). Accuracy: ${bestResult.pronunciationAssessment?.accuracyScore}")
                                  val mappedResult = mapPronunciationResultFromJson(bestResult)
-                                 // Envoyer l'événement final via EventChannel
+                                 // Envoyer l'événement final via EventChannel AVEC le JSON
                                  sendEvent(mapOf(
                                      "type" to "finalResult",
-                                     "text" to bestResult.display, // Ou lexical/itn selon besoin
-                                     "pronunciationResult" to jsonResult // Envoyer le JSON brut pour parsing côté Dart si besoin
-                                     // Alternative: Envoyer l'objet mappé si sérialisable ou convertir en Map
+                                     // Inclure le payload avec le texte et le JSON
+                                     "payload" to mapOf(
+                                         "text" to bestResult.display, // Ou lexical/itn selon besoin
+                                         "pronunciationResult" to jsonResult // Envoyer le JSON brut
+                                     )
                                  ))
                                  deferred.complete(mappedResult) // Compléter le Deferred pour l'appel Pigeon
                              } else {
@@ -331,11 +333,13 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
                              }
                          } else {
                               Log.w(TAG, "Recognition status in JSON is not Success or NBest is empty. Status: ${parsedResult.recognitionStatus}")
-                              // Envoyer un événement final sans score
+                              // Envoyer un événement final sans score, mais avec la structure payload
                               sendEvent(mapOf(
                                   "type" to "finalResult",
-                                  "text" to parsedResult.displayText, // Utiliser DisplayText s'il existe
-                                  "pronunciationResult" to null // Indiquer pas de score
+                                  "payload" to mapOf(
+                                      "text" to parsedResult.displayText, // Utiliser DisplayText s'il existe
+                                      "pronunciationResult" to null // Indiquer pas de score
+                                  )
                               ))
                               deferred.complete(null) // Compléter le Deferred Pigeon avec null
                          }
@@ -348,12 +352,14 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
              } else if (deferred.isActive && e.result.reason == ResultReason.NoMatch) {
                  Log.w(TAG, "[DEBUG] NoMatch reason detected.") // DEBUG LOG ADDED
                  Log.w(TAG, "No speech could be recognized (Reason: NoMatch).")
-                 // Envoyer un événement final indiquant NoMatch
+                 // Envoyer un événement final indiquant NoMatch, avec la structure payload
                  sendEvent(mapOf(
                      "type" to "finalResult",
-                     "text" to null,
-                     "pronunciationResult" to null,
-                     "error" to "NoMatch" // Indiquer la raison
+                     "payload" to mapOf(
+                         "text" to null,
+                         "pronunciationResult" to null,
+                         "error" to "NoMatch" // Indiquer la raison dans le payload
+                     )
                  ))
                  deferred.complete(null) // Compléter le Deferred Pigeon avec null
              }
@@ -363,8 +369,16 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
          speechRecognizer?.canceled?.addEventListener { _, e ->
               Log.e(TAG, "[DEBUG] Canceled Event Triggered. Reason: ${e.reason}, ErrorCode: ${e.errorCode}, Details: ${e.errorDetails}") // DEBUG LOG ADDED
              Log.e(TAG, "Event: Canceled. Reason: ${e.reason}, ErrorDetails: ${e.errorDetails}")
-             // Envoyer l'erreur via EventChannel
-             sendError(e.errorCode.name, "Reconnaissance annulée: ${e.reason}", e.errorDetails)
+             // Envoyer l'erreur via EventChannel (structure différente pour les erreurs)
+             sendEvent(mapOf(
+                 "type" to "error",
+                 "payload" to mapOf(
+                     "code" to e.errorCode.name,
+                     "message" to "Reconnaissance annulée: ${e.reason}",
+                     "details" to e.errorDetails
+                 )
+             ))
+             // sendError(e.errorCode.name, "Reconnaissance annulée: ${e.reason}", e.errorDetails) // Ancienne méthode
              if (deferred.isActive) {
                  // Si arrêt manuel (flag ou raison), compléter le Deferred Pigeon avec null
                  if (_isStoppingManually || e.reason == CancellationReason.CancelledByUser) {
@@ -381,8 +395,11 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
          speechRecognizer?.sessionStopped?.addEventListener { _, e ->
              Log.w(TAG, "[DEBUG] SessionStopped Event Triggered. SessionId: ${e.sessionId}") // DEBUG LOG ADDED
              Log.w(TAG, "Event: SessionStopped. SessionId: ${e.sessionId}")
-             // Envoyer un événement de statut via EventChannel
-             sendEvent(mapOf("type" to "status", "statusMessage" to "Recognition session stopped"))
+             // Envoyer un événement de statut via EventChannel, avec payload
+             sendEvent(mapOf(
+                 "type" to "status",
+                 "payload" to mapOf("statusMessage" to "Recognition session stopped")
+             ))
              if (deferred.isActive) {
                  Log.w(TAG, "Session stopped before final result. Completing deferred with null (assuming manual stop or timeout).")
                  // Considérer l'arrêt de session comme résultant en 'null' pour le Deferred Pigeon
@@ -394,15 +411,21 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
           speechRecognizer?.sessionStarted?.addEventListener { _, e ->
               Log.d(TAG, "[DEBUG] SessionStarted Event Triggered. SessionId: ${e.sessionId}") // DEBUG LOG ADDED
               Log.d(TAG, "Event: SessionStarted. SessionId: ${e.sessionId}")
-              // Envoyer un événement de statut via EventChannel
-              sendEvent(mapOf("type" to "status", "statusMessage" to "Recognition session started"))
+              // Envoyer un événement de statut via EventChannel, avec payload
+              sendEvent(mapOf(
+                  "type" to "status",
+                  "payload" to mapOf("statusMessage" to "Recognition session started")
+              ))
           }
 
           // Événement de reconnaissance partielle (pour débogage ET EventChannel)
           speechRecognizer?.recognizing?.addEventListener { _, e ->
               Log.d(TAG, "[DEBUG] Recognizing Event Triggered. Text: ${e.result.text}") // DEBUG LOG ADDED
-              // Envoyer l'événement partiel via EventChannel
-              sendEvent(mapOf("type" to "partial", "text" to e.result.text))
+              // Envoyer l'événement partiel via EventChannel, avec payload
+              sendEvent(mapOf(
+                  "type" to "partial",
+                  "payload" to mapOf("text" to e.result.text)
+              ))
           }
      }
 

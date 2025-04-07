@@ -44,6 +44,18 @@ class AuthNotifier extends ChangeNotifier {
       if (wasLoggedIn != _isLoggedIn) {
         notifyListeners(); // Notifier GoRouter du changement
       }
+    },
+    onError: (error) {
+      // Gérer les erreurs potentielles du stream d'authentification lui-même
+      print("🔴 [AuthNotifier] Erreur dans le stream onAuthStateChange: $error");
+      // Décider si l'état doit être mis à false en cas d'erreur ?
+      // Pour l'instant, on loggue juste l'erreur. Une erreur ici pourrait
+      // indiquer un problème plus profond avec la connexion Supabase.
+      // Si l'état précédent était connecté, on pourrait envisager de le passer à déconnecté.
+      // if (_isLoggedIn) {
+      //   _isLoggedIn = false;
+      //   notifyListeners();
+      // }
     });
   }
 

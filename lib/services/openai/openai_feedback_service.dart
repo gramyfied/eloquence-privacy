@@ -805,10 +805,37 @@ Ne fournis que le JSON, sans aucune introduction, explication ou formatage suppl
           final cleanedContent = content.replaceAll(RegExp(r'^```json\s*|\s*```$'), '').trim();
           ConsoleLogger.info('🤖 [OPENAI] Contenu nettoyé: "$cleanedContent"');
 
-          // Tenter de décoder le contenu nettoyé directement comme une liste JSON
-          ConsoleLogger.info('🤖 [OPENAI] Tentative de décodage du contenu nettoyé comme List...');
-          final List<dynamic> wordsList = jsonDecode(cleanedContent); // Décoder comme List
-          ConsoleLogger.info('🤖 [OPENAI] Contenu décodé comme List avec succès (${wordsList.length} éléments).');
+          // Tenter de décoder le contenu nettoyé de manière plus robuste
+          ConsoleLogger.info('🤖 [OPENAI] Tentative de décodage robuste du contenu nettoyé...');
+          final dynamic decodedJson = jsonDecode(cleanedContent);
+          List<dynamic>? wordsList;
+
+          if (decodedJson is List) {
+            // Cas 1: Le JSON est directement une liste
+            ConsoleLogger.info('🤖 [OPENAI] Contenu décodé directement comme List.');
+            wordsList = decodedJson;
+          } else if (decodedJson is Map<String, dynamic>) {
+            // Cas 2: Le JSON est une Map, chercher la clé 'words' ou 'mots'
+            ConsoleLogger.info('🤖 [OPENAI] Contenu décodé comme Map. Recherche de "words" ou "mots"...');
+            final dynamic wordsData = decodedJson['words'] ?? decodedJson['mots'];
+            if (wordsData is List) {
+              ConsoleLogger.info('🤖 [OPENAI] Liste trouvée sous la clé "${decodedJson.containsKey('words') ? 'words' : 'mots'}".');
+              wordsList = wordsData;
+            } else {
+              ConsoleLogger.warning('🤖 [OPENAI] Clé "words" ou "mots" trouvée mais ne contient pas une List. Contenu: $wordsData');
+            }
+          } else {
+             ConsoleLogger.error('🤖 [OPENAI] Contenu JSON décodé n\'est ni une List ni une Map. Type: ${decodedJson.runtimeType}');
+          }
+
+          // Vérifier si une liste valide a été trouvée
+          if (wordsList == null) {
+             ConsoleLogger.error('🤖 [OPENAI] Impossible d\'extraire une liste de mots valide du JSON.');
+             ConsoleLogger.error('🤖 [OPENAI] Contenu JSON nettoyé: $cleanedContent');
+             throw Exception('Format JSON invalide: impossible d\'extraire la liste de mots.');
+          }
+
+          ConsoleLogger.info('🤖 [OPENAI] Liste de mots extraite avec succès (${wordsList.length} éléments).');
 
           // Valider la structure de chaque élément dans la liste extraite
           final List<Map<String, dynamic>> resultList = [];

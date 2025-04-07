@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart'; // Ajouté
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart'; // Pour initialiser les locales intl
+import 'package:hive_flutter/hive_flutter.dart'; // Ajouté pour Hive
 
 import 'app/app.dart';
 // import 'app/router.dart'; // L'import du router n'est pas nécessaire ici
@@ -48,6 +49,10 @@ void main() async {
 
   // Initialiser les locales pour intl
   await initializeDateFormatting('fr_FR', null);
+
+  // Initialiser Hive pour le cache local
+  await Hive.initFlutter();
+  print('🟢 [MAIN] Hive initialisé pour le cache local.');
 
   // Configurer l'injection de dépendances
   setupServiceLocator();

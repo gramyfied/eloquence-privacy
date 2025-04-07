@@ -57,10 +57,11 @@ class _VolumeControlExerciseScreenState extends State<VolumeControlExerciseScree
   // Variables pour l'analyse de volume
   double _currentVolumeNormalized = 0.0; // Volume actuel normalisé (0-1)
   // Ajustements V40: Élargir la plage 'Moyen' pour faciliter le maintien
+  // Ajustement V41: Augmenter le min de 'Doux' pour réduire la sensibilité
   final Map<VolumeLevel, Map<String, double>> _volumeThresholds = {
-    VolumeLevel.doux: {'min': 0.25, 'max': 0.50}, // 25% - 50% (Largeur 25%) - Inchangé
-    VolumeLevel.moyen: {'min': 0.50, 'max': 0.70}, // 50% - 70% (Largeur 20%) - Anciennement 0.50-0.65
-    VolumeLevel.fort: {'min': 0.70, 'max': 1.0},  // 70% - 100% (Largeur 30%) - Anciennement 0.65-1.0
+    VolumeLevel.doux: {'min': 0.30, 'max': 0.50}, // 30% - 50% (Largeur 20%) - Anciennement 0.25-0.50
+    VolumeLevel.moyen: {'min': 0.50, 'max': 0.70}, // 50% - 70% (Largeur 20%) - Inchangé depuis V40
+    VolumeLevel.fort: {'min': 0.70, 'max': 1.0},  // 70% - 100% (Largeur 30%) - Inchangé depuis V40
   };
   final List<double> _recordedVolumes = []; // Stocker les volumes pendant l'enregistrement
   // Stocker les résultats par niveau
@@ -199,16 +200,23 @@ class _VolumeControlExerciseScreenState extends State<VolumeControlExerciseScree
 
         // Écouter le stream de niveau audio
         _audioMeteringSubscription?.cancel();
+        const double _minDetectionThreshold = 0.15; // Seuil minimal pour enregistrer le volume pour l'évaluation
         _audioMeteringSubscription = _audioRepository.audioLevelStream.listen(
           (level) { // La donnée reçue est directement le niveau (double)
             // TODO: Vérifier si le niveau est déjà normalisé (0-1) ou s'il faut le normaliser
             double normalizedVolume = level; // Supposons qu'il est déjà normalisé pour l'instant
-            _recordedVolumes.add(normalizedVolume);
+
+            // Mettre à jour le visualiseur avec le volume réel, même s'il est faible
             if (mounted) {
               setState(() {
                 _currentVolumeNormalized = normalizedVolume;
-                // TODO: Mettre à jour le feedback visuel en temps réel ici
+                // TODO: Mettre à jour le feedback visuel en temps réel ici (si différent du visualiseur)
               });
+            }
+
+            // N'enregistrer le volume pour l'évaluation que s'il dépasse le seuil de détection
+            if (normalizedVolume >= _minDetectionThreshold) {
+              _recordedVolumes.add(normalizedVolume);
             }
           },
           onError: (error) {
@@ -467,15 +475,16 @@ class _VolumeControlExerciseScreenState extends State<VolumeControlExerciseScree
         metrics: metrics,
       );
       ConsoleLogger.success('Feedback OpenAI reçu: "$feedback"');
-      setState(() { _openAiFeedback = feedback; });
+       setState(() { _openAiFeedback = feedback; });
 
-      // Jouer le feedback OpenAI via TTS
-      if (feedback.isNotEmpty && !feedback.startsWith('Erreur')) {
-        await _audioRepository.stopPlayback();
-        await _exampleAudioProvider.playExampleFor(feedback);
-      }
+       // --- Lecture automatique supprimée ---
+       // if (feedback.isNotEmpty && !feedback.startsWith('Erreur')) {
+       //   await _audioRepository.stopPlayback();
+       //   await _exampleAudioProvider.playExampleFor(feedback);
+       // }
+       // --- Fin suppression ---
 
-    } catch (e) {
+     } catch (e) {
       ConsoleLogger.error('Erreur feedback OpenAI: $e');
       setState(() { _openAiFeedback = 'Erreur lors de la génération du feedback.'; });
     } finally {
@@ -680,7 +689,32 @@ class _VolumeControlExerciseScreenState extends State<VolumeControlExerciseScree
                         else
                           Text('Aucun détail disponible.', style: TextStyle(fontSize: 14, color: Colors.white70)),
                         const SizedBox(height: 12),
-                        Text('Feedback IA:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                        Row( // Row pour le titre et le bouton
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Feedback IA:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                            // Bouton pour lire le feedback
+                            if (_openAiFeedback.isNotEmpty && !_openAiFeedback.startsWith('Erreur'))
+                              IconButton(
+                                icon: Icon(Icons.volume_up, color: AppTheme.primaryColor),
+                                tooltip: 'Écouter le feedback',
+                                onPressed: () async {
+                                  ConsoleLogger.info('Lecture manuelle du feedback IA demandé.');
+                                  try {
+                                    await _audioRepository.stopPlayback(); // Arrêter toute lecture en cours
+                                    await _exampleAudioProvider.playExampleFor(_openAiFeedback);
+                                  } catch (e) {
+                                    ConsoleLogger.error('Erreur lecture feedback IA: $e');
+                                    // Afficher un message d'erreur si nécessaire
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Erreur lecture audio: $e'), backgroundColor: Colors.red),
+                                    );
+                                  }
+                                },
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 4), // Espace réduit après le titre/bouton
                         Text(results['commentaires'] ?? 'Aucun feedback généré.', style: TextStyle(fontSize: 14, color: Colors.white)),
                       ],
                     ),

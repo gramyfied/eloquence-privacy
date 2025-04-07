@@ -14,6 +14,7 @@ import '../../../app/routes.dart';
 import '../../../domain/entities/exercise.dart';
 import '../../../domain/repositories/audio_repository.dart';
 import '../../../domain/repositories/exercise_repository.dart';
+import '../../../services/azure/azure_speech_service.dart'; // Ajouter cet import
 import '../../../services/azure/azure_tts_service.dart';
 import '../../../services/openai/openai_feedback_service.dart';
 import '../../../services/service_locator.dart';
@@ -61,12 +62,13 @@ class _SyllabicPrecisionExerciseScreenState
   late final AzureTtsService _ttsService;
   late final ExerciseRepository _exerciseRepository;
   late final OpenAIFeedbackService _openAIFeedbackService;
+  late final AzureSpeechService _azureSpeechService; // Ajouter le service Azure Speech
 
   // Platform Channels
-  static const _methodChannelName = "com.eloquence.app/azure_speech";
-  static const _eventChannelName = "com.eloquence.app/azure_speech_events";
-  final MethodChannel _methodChannel = const MethodChannel(_methodChannelName);
-  final EventChannel _eventChannel = const EventChannel(_eventChannelName);
+  // static const _methodChannelName = "com.eloquence.app/azure_speech"; // Supprimé
+  static const _eventChannelName = "com.eloquence.app/azure_speech_events"; // Garder pour les événements
+  // final MethodChannel _methodChannel = const MethodChannel(_methodChannelName); // Supprimé
+  final EventChannel _eventChannel = const EventChannel(_eventChannelName); // Garder pour les événements
   StreamSubscription? _eventSubscription;
   StreamSubscription<Uint8List>? _audioStreamSubscription;
 
@@ -89,7 +91,7 @@ class _SyllabicPrecisionExerciseScreenState
   void dispose() {
     _eventSubscription?.cancel();
     _audioStreamSubscription?.cancel();
-    _processingTimeoutTimer?.cancel();
+    _processingTimeoutTimer?.cancel(); // Annuler le timer ici est toujours important
     _setDatabaseSafeMode(false); // Mettre enable_unsafe_mode à false pour revenir en SAFE
     super.dispose();
   }
@@ -99,6 +101,7 @@ class _SyllabicPrecisionExerciseScreenState
     _ttsService = serviceLocator<AzureTtsService>();
     _exerciseRepository = serviceLocator<ExerciseRepository>();
     _openAIFeedbackService = serviceLocator<OpenAIFeedbackService>();
+    _azureSpeechService = serviceLocator<AzureSpeechService>(); // Récupérer le service
   }
 
   void _setupAzureChannelListener() {
@@ -112,73 +115,119 @@ class _SyllabicPrecisionExerciseScreenState
          print("[Flutter Event Listener] Received event: type=$type, payload=$payload");
 
          // Vérifier le nouveau verrou avant de traiter le résultat final
-         if (type == 'final' && payload is Map && !_wordProcessed) {
-           _wordProcessed = true; // Activer le verrou pour ce mot
-           _processingTimeoutTimer?.cancel(); // Annuler le timer de timeout s'il est actif
-           final Map<dynamic, dynamic> finalPayload = payload;
-           final dynamic pronunciationResultJsonInput = finalPayload['pronunciationResult'];
+         if (type == 'finalResult' && payload is Map && !_wordProcessed) { // Assurez-vous que 'finalResult' correspond à ce qui est envoyé par Kotlin
+           // ANNULER le timer ici car nous avons reçu un résultat final valide.
+           _processingTimeoutTimer?.cancel();
+           _processingTimeoutTimer = null;
+           print("[Flutter Event Listener] Timeout timer cancelled on finalResult event reception.");
 
-          print("[Flutter Event Listener] Pronunciation Result JSON: $pronunciationResultJsonInput");
+           // Ajouter un try-catch pour le traitement du payload
+           try {
+             _wordProcessed = true; // Activer le verrou pour ce mot
+             final Map<dynamic, dynamic> finalPayload = payload;
+             final dynamic pronunciationResultJsonInput = finalPayload['pronunciationResult'];
 
-          // Mettre à jour l'état pour arrêter l'indicateur de traitement
-          if (mounted) {
-             setState(() { _isProcessing = false; });
-          } else {
-              return; // Ne rien faire si le widget n'est plus monté
+             print("[Flutter Event Listener] Pronunciation Result JSON: $pronunciationResultJsonInput");
+
+             // Mettre à jour l'état pour arrêter l'indicateur de traitement
+             if (mounted) {
+               setState(() { _isProcessing = false; });
+             } else {
+               print("[Flutter Event Listener] Widget unmounted before processing final result. Aborting.");
+               return; // Ne rien faire si le widget n'est plus monté
+             }
+
+             // Parser le résultat en utilisant le modèle typé
+             final AzurePronunciationAssessmentResult? parsedResult =
+                 AzurePronunciationAssessmentResult.tryParse(pronunciationResultJsonInput);
+
+             final evaluationResult = _performSyllabicAnalysis(
+                 parsedResult, _currentWord, _currentSyllables); // Passer l'objet parsé
+             print("Résultat de l'analyse pour '$_currentWord': $evaluationResult");
+
+             // Passer l'objet parsé à _saveWordResult via la map retournée par _performSyllabicAnalysis
+             _saveWordResult(evaluationResult); // Pas de await ici
+             _resultReceived = true; // Marquer que le résultat est arrivé
+
+             // Arrêter la reconnaissance native car nous avons un résultat final valide
+             print("[Flutter Event Listener] Résultat final traité, arrêt de la reconnaissance native via service...");
+             _azureSpeechService.stopRecognition().catchError((e) { // Utiliser le service
+               print("[Flutter Event Listener] Erreur lors de l'appel stopRecognition (via service) après résultat final: $e");
+             });
+
+             // Le résultat final a été reçu et traité avec succès.
+             // Programmer le passage au mot suivant après la fin du frame actuel.
+             if (mounted) {
+                 print("[Flutter Event Listener] Traitement du résultat final réussi, programmation du passage au mot suivant.");
+                 WidgetsBinding.instance.addPostFrameCallback((_) {
+                   // Vérifier à nouveau si le widget est monté dans le callback
+                   if (mounted) {
+                     try {
+                       _nextWord();
+                       _resultReceived = false; // Réinitialiser pour le prochain mot
+                     } catch (e, s) {
+                       print("🔴 Erreur lors de l'exécution différée de _nextWord: $e\n$s");
+                       // Gérer l'erreur si nécessaire (ex: afficher un message)
+                     }
+                   } else {
+                      print("[Flutter Event Listener] Widget démonté avant l'exécution différée de _nextWord.");
+                   }
+                 });
+             } else {
+                 print("[Flutter Event Listener] Widget démonté après traitement, impossible de programmer _nextWord.");
+             }
+             // _wordProcessed sera réinitialisé dans _startRecording pour le prochain mot.
+           } catch (e, s) {
+             // Capturer et logger toute erreur pendant le traitement du payload
+             print("🔴 [Flutter Event Listener] Erreur lors du traitement du payload 'final': $e");
+             print(s); // Afficher la stack trace
+             _wordProcessed = false; // Réinitialiser le verrou en cas d'erreur de traitement
+             _resultReceived = false; // Réinitialiser aussi
+             _currentlyProcessingWord = null; // Réinitialiser le mot attendu
+             if (mounted) {
+               setState(() { _isProcessing = false; }); // Assurer que l'indicateur s'arrête
+               ScaffoldMessenger.of(context).showSnackBar(
+                 SnackBar(content: Text('Erreur traitement résultat: ${e.toString()}')),
+               );
+             }
            }
-
-           // Parser le résultat en utilisant le modèle typé
-           final AzurePronunciationAssessmentResult? parsedResult =
-               AzurePronunciationAssessmentResult.tryParse(pronunciationResultJsonInput);
-
-           final evaluationResult = _performSyllabicAnalysis(
-               parsedResult, _currentWord, _currentSyllables); // Passer l'objet parsé
-           print("Résultat de l'analyse pour '$_currentWord': $evaluationResult");
-
-            // Passer l'objet parsé à _saveWordResult via la map retournée par _performSyllabicAnalysis
-            _saveWordResult(evaluationResult); // Pas de await ici
-            _resultReceived = true; // Marquer que le résultat est arrivé
-
-            // Arrêter la reconnaissance native car nous avons un résultat final valide
-            print("[Flutter Event Listener] Résultat final traité, arrêt de la reconnaissance native...");
-            _methodChannel.invokeMethod('stopRecognition').catchError((e) {
-              print("[Flutter Event Listener] Erreur lors de l'appel stopRecognition après résultat final: $e");
-            });
-
-            // Si l'enregistrement a déjà été arrêté manuellement (_isRecording est false),
-            // alors on peut passer au mot suivant ici.
-            if (mounted && !_isRecording) {
-              print("[Flutter Event Listener] Enregistrement déjà arrêté, passage au mot suivant.");
-              _nextWord();
-              _resultReceived = false; // Réinitialiser pour le prochain mot
-            }
-            // Ne pas réinitialiser _wordProcessed ici, le faire dans _startRecording
 
           } else if (type == 'final' && _wordProcessed) {
              print("[Flutter Event Listener] Ignored duplicate final event for this word.");
          } else if (type == 'error' && payload is Map) {
-           _processingTimeoutTimer?.cancel(); // Annuler le timer en cas d'erreur
-           _wordProcessed = false; // Réinitialiser en cas d'erreur
+           // ANNULER le timer ici car une erreur est survenue.
+           _processingTimeoutTimer?.cancel();
+           _processingTimeoutTimer = null;
+           print("[Flutter Event Listener] Timeout timer cancelled on error event reception.");
+           _wordProcessed = true; // Marquer comme traité pour que le timer ne fasse rien
            _resultReceived = false; // Réinitialiser aussi
            _currentlyProcessingWord = null; // Réinitialiser le mot attendu
            final Map<dynamic, dynamic> errorPayload = payload;
-          final String? message = errorPayload['message'] as String?;
-          print("[Flutter Event Listener] Error: ${errorPayload['code']}, message=$message");
+           // Extraire les informations d'erreur du payload
+           final String? errorCode = errorPayload['code'] as String?;
+           final String? errorMessage = errorPayload['message'] as String?;
+           // final dynamic errorDetails = errorPayload['details']; // Non utilisé pour l'instant
+
+           print("[Flutter Event Listener] Error: $errorCode, message=$errorMessage");
+
           if (mounted) {
             setState(() {
               _isRecording = false; // Arrêter l'enregistrement visuellement
               _isProcessing = false; // Arrêter l'indicateur de traitement
             });
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Erreur Azure: ${message ?? "Erreur inconnue"}')),
+              SnackBar(content: Text('Erreur Azure: ${errorMessage ?? "Erreur inconnue"}')), // Utiliser errorMessage ici
             );
           }
         }
       },
       onError: (error) {
        print("[Flutter Event Listener] Error receiving event: $error");
-       _processingTimeoutTimer?.cancel(); // Annuler le timer en cas d'erreur
-       _wordProcessed = false; // Réinitialiser
+       // ANNULER le timer ici car une erreur est survenue dans le stream.
+       _processingTimeoutTimer?.cancel();
+       _processingTimeoutTimer = null;
+       print("[Flutter Event Listener] Timeout timer cancelled on stream error.");
+       _wordProcessed = true; // Marquer comme traité pour que le timer ne fasse rien
        _resultReceived = false; // Réinitialiser aussi
        _currentlyProcessingWord = null; // Réinitialiser
        if (mounted) {
@@ -193,8 +242,9 @@ class _SyllabicPrecisionExerciseScreenState
       },
       onDone: () {
        print("[Flutter Event Listener] Event stream closed.");
-       _processingTimeoutTimer?.cancel(); // Annuler le timer si le stream se ferme
-       _wordProcessed = false; // Réinitialiser
+       // Annuler le timer si le stream se ferme est toujours une bonne idée
+       _processingTimeoutTimer?.cancel();
+       _wordProcessed = true; // Marquer comme traité
        _resultReceived = false; // Réinitialiser aussi
        _currentlyProcessingWord = null; // Réinitialiser
        if (mounted) {
@@ -305,8 +355,9 @@ class _SyllabicPrecisionExerciseScreenState
      _currentlyProcessingWord = _currentWord; // Définir le mot attendu pour ce nouvel enregistrement
 
       try {
-        print("[Flutter] Appel startRecognition sur MethodChannel avec referenceText: $_currentWord");
-       await _methodChannel.invokeMethod('startRecognition', {'referenceText': _currentWord});
+        print("[Flutter] Appel startRecognition via AzureSpeechService avec referenceText: $_currentWord");
+        // Utiliser le service AzureSpeechService au lieu du MethodChannel direct
+        await _azureSpeechService.startRecognition(referenceText: _currentWord);
 
       final audioStream = await _audioRepository.startRecordingStream();
       if (mounted) {
@@ -314,25 +365,46 @@ class _SyllabicPrecisionExerciseScreenState
       }
       print("[Flutter] Enregistrement audio stream démarré pour: $_currentWord");
 
+      // Démarrer le timer de timeout global pour ce mot
+      _processingTimeoutTimer?.cancel(); // Annuler tout timer précédent
+      print("[Flutter _startRecording] Démarrage du timer de timeout global (30s) pour '$_currentWord'.");
+      _processingTimeoutTimer = Timer(const Duration(seconds: 30), () {
+        // Vérification cruciale : le mot a-t-il déjà été traité (résultat ou erreur reçu) ?
+        if (_wordProcessed) {
+           print("🔴 [Flutter Timeout] Callback exécuté pour '$_currentWord', mais mot déjà traité. Ignoré.");
+           return;
+        }
+        // Si le mot n'a PAS été traité, alors c'est un vrai timeout.
+        print("🔴 [Flutter Timeout] Timeout global pour '$_currentWord'. Arrêt forcé.");
+        _wordProcessed = true; // Marquer comme traité pour éviter double traitement
+
+        if (mounted && (_isRecording || _isProcessing)) { // Vérifier si toujours actif
+          print("🔴 [Flutter Timeout] Conditions remplies: mounted=${mounted}, isRecording=${_isRecording}, isProcessing=${_isProcessing}, processingWord=${_currentlyProcessingWord}");
+          setState(() {
+             _isRecording = false;
+            _isProcessing = false;
+            _resultReceived = false; // Assurer la réinitialisation
+            _currentlyProcessingWord = null;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Timeout: Aucun résultat reçu dans le temps imparti.')),
+          );
+          // Forcer l'arrêt de la reconnaissance native
+          _azureSpeechService.stopRecognition().catchError((e) => print("🔴 Erreur stopRecognition (timeout global): $e"));
+          // Peut-être appeler _nextWord() ici pour débloquer l'UI ? Ou afficher un message ?
+          // Pour l'instant, on arrête juste.
+        } else {
+           print("🔴 [Flutter Timeout] Conditions NON remplies ou widget démonté.");
+        }
+      });
+
       // Pas de détection de silence ici
 
       _audioStreamSubscription?.cancel();
       _audioStreamSubscription = audioStream.listen(
         (audioChunk) {
-          // Ajouter un log pour vérifier si ce callback est appelé
-          print("[Flutter] Audio chunk received, size: ${audioChunk.length}. Attempting to send via MethodChannel...");
-          try {
-            // Envoyer le chunk audio au code natif
-            _methodChannel.invokeMethod('sendAudioChunk', audioChunk).catchError((e) {
-              // Gérer les erreurs asynchrones de l'appel invokeMethod
-              print("[Flutter] Erreur ASYNCHRONE lors de l'envoi du chunk audio: $e");
-              if (mounted) _stopRecording(); // Arrêter si l'envoi échoue
-            });
-          } catch (e) {
-            // Gérer les erreurs synchrones potentielles de l'appel invokeMethod
-            print("[Flutter] Erreur SYNCHRONE lors de l'appel invokeMethod('sendAudioChunk'): $e");
-            if (mounted) _stopRecording(); // Arrêter si l'appel échoue
-          }
+          // L'envoi de chunks n'est plus nécessaire avec Pigeon/Repository
+          // print("[Flutter] Audio chunk received, size: ${audioChunk.length}. Sending handled natively.");
         },
         onError: (error) {
           print("[Flutter] Erreur du stream audio: $error");
@@ -342,7 +414,8 @@ class _SyllabicPrecisionExerciseScreenState
               SnackBar(content: Text('Erreur enregistrement: $error')),
             );
           }
-          _methodChannel.invokeMethod('stopRecognition').catchError((e) => print("Erreur stopRecognition: $e"));
+          // Arrêter via le service en cas d'erreur du stream audio
+          _azureSpeechService.stopRecognition().catchError((e) => print("Erreur stopRecognition (stream error via service): $e"));
         },
         onDone: () {
           print("[Flutter] Stream audio terminé.");
@@ -369,9 +442,9 @@ class _SyllabicPrecisionExerciseScreenState
       return;
     }
 
-    _processingTimeoutTimer?.cancel(); // Annuler tout timer existant
+    // _processingTimeoutTimer?.cancel(); // Annuler le timer global ici n'est plus nécessaire, le listener s'en charge
 
-    bool shouldStartProcessing = false;
+    // bool shouldStartProcessing = false; // Supprimer la logique du timer secondaire
     if (mounted) {
       // Mettre à jour l'état immédiatement pour arrêter l'indicateur d'enregistrement
       // et démarrer l'indicateur de traitement SEULEMENT si le mot n'a pas déjà été traité
@@ -379,7 +452,7 @@ class _SyllabicPrecisionExerciseScreenState
         _isRecording = false; // Toujours arrêter l'enregistrement visuellement
         if (!_wordProcessed) {
           _isProcessing = true;
-          shouldStartProcessing = true; // Marquer pour démarrer le timer plus tard
+          // shouldStartProcessing = true; // Marquer pour démarrer le timer plus tard // Supprimé
         } else {
           // Si le mot a déjà été traité (par l'event listener), s'assurer que _isProcessing est false
           _isProcessing = false;
@@ -388,28 +461,7 @@ class _SyllabicPrecisionExerciseScreenState
       });
     }
 
-    // Démarrer le timer de timeout seulement si nous venons de passer en mode traitement
-    if (shouldStartProcessing) {
-      print("[Flutter _stopRecording] Démarrage du timer de timeout (30s).");
-      _processingTimeoutTimer = Timer(const Duration(seconds: 30), () {
-        print("[Flutter Timeout] Aucun résultat final reçu après 30s (après arrêt manuel).");
-        if (mounted && _isProcessing) { // Vérifier si toujours en traitement
-          setState(() {
-            _isProcessing = false; // Arrêter l'indicateur
-            _wordProcessed = false; // Réinitialiser au cas où
-            _resultReceived = false; // Réinitialiser aussi
-            _currentlyProcessingWord = null;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Timeout: Aucun résultat reçu du service vocal.')),
-          );
-          // Tenter d'arrêter la reconnaissance native en cas de timeout
-          _methodChannel.invokeMethod('stopRecognition').catchError((e) => print("Erreur stopRecognition (timeout): $e"));
-        }
-      });
-    } else {
-      print("[Flutter _stopRecording] Pas de timer démarré car le mot était déjà traité ou le widget n'est pas monté.");
-    }
+    // Supprimer toute la logique de démarrage du timer secondaire dans _stopRecording
 
     // Tenter d'arrêter les streams et la reconnaissance native
     try {
@@ -420,19 +472,10 @@ class _SyllabicPrecisionExerciseScreenState
       await _audioRepository.stopRecordingStream();
       print("[Flutter] Enregistrement audio stream arrêté.");
 
-      // Appeler stopRecognition ici. Si l'event listener l'a déjà appelé,
-      // le code natif devrait gérer l'appel redondant.
-      print("[Flutter _stopRecording] Appel stopRecognition sur MethodChannel...");
-      await _methodChannel.invokeMethod('stopRecognition');
-       print("[Flutter] Appel stopRecognition terminé.");
-
-       // // Vérifier si le résultat est déjà arrivé PENDANT qu'on arrêtait
-       // // et que le widget est toujours monté
-       // // -> Déplacé dans le handler de l'événement 'final' pour plus de fiabilité
-       // if (_resultReceived && mounted) {
-       //   print("[Flutter _stopRecording] Résultat reçu pendant l'arrêt, passage au mot suivant.");
-       //   _nextWord();
-       // }
+      // Appeler stopRecognition ici via le service.
+      print("[Flutter _stopRecording] Appel stopRecognition via AzureSpeechService...");
+      await _azureSpeechService.stopRecognition();
+      print("[Flutter] Appel stopRecognition (via service) terminé.");
 
      } catch (e) {
        print("[Flutter] Erreur lors de l'arrêt de l'enregistrement/reconnaissance: $e");
