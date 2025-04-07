@@ -17,6 +17,7 @@ import '../../widgets/visual_effects/info_modal.dart';
 import '../../../domain/entities/azure_pronunciation_assessment.dart';
 import '../../../core/utils/console_logger.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../services/azure/azure_speech_service.dart'; // <<< AJOUTÉ
 
 // TODO: Implémenter la logique complète de l'exercice, notamment _processAzureResult
 
@@ -49,12 +50,13 @@ class _ConsonantContrastExerciseScreenState
   late final AudioRepository _audioRepository;
   late final AzureTtsService _ttsService;
   late final OpenAIFeedbackService _openAIFeedbackService;
+  late final AzureSpeechService _azureSpeechService; // <<< AJOUTÉ
 
   // --- Platform Channels ---
-  static const _methodChannelName = "com.eloquence.app/azure_speech";
-  static const _eventChannelName = "com.eloquence.app/azure_speech_events";
-  final MethodChannel _methodChannel = const MethodChannel(_methodChannelName);
-  final EventChannel _eventChannel = const EventChannel(_eventChannelName);
+  // static const _methodChannelName = "com.eloquence.app/azure_speech"; // <<< SUPPRIMÉ
+  static const _eventChannelName = "com.eloquence.app/azure_speech_events"; // Garder pour les événements
+  // final MethodChannel _methodChannel = const MethodChannel(_methodChannelName); // <<< SUPPRIMÉ
+  final EventChannel _eventChannel = const EventChannel(_eventChannelName); // Garder pour les événements
   StreamSubscription? _eventSubscription;
   StreamSubscription<Uint8List>? _audioStreamSubscription;
   Timer? _processingTimeoutTimer;
@@ -82,6 +84,7 @@ class _ConsonantContrastExerciseScreenState
     _audioRepository = serviceLocator<AudioRepository>();
     _ttsService = serviceLocator<AzureTtsService>();
     _openAIFeedbackService = serviceLocator<OpenAIFeedbackService>();
+    _azureSpeechService = serviceLocator<AzureSpeechService>(); // <<< AJOUTÉ
   }
 
   void _setupAzureChannelListenerIfNeeded() {
@@ -95,7 +98,8 @@ class _ConsonantContrastExerciseScreenState
 
         ConsoleLogger.info("[ConsonantContrast Listener] Received event: type=$type");
 
-        if (type == 'final' && payload is Map && !_resultReceived) {
+        // Utiliser 'finalResult' comme type d'événement final envoyé par le nouveau code natif
+        if (type == 'finalResult' && payload is Map && !_resultReceived) { // <<< MODIFIÉ ('final' -> 'finalResult')
           _resultReceived = true;
           _wordProcessed = true;
           _processingTimeoutTimer?.cancel();
@@ -104,12 +108,14 @@ class _ConsonantContrastExerciseScreenState
 
           _processAzureResult(payload['pronunciationResult']);
 
-          if (mounted && !_isRecording) {
-             ConsoleLogger.info("[ConsonantContrast Listener] Recording stopped, moving to next pair.");
-             _nextPair();
-          }
+          // Supprimer l'appel redondant à _nextPair() ici. 
+          // Il est déjà appelé à la fin de _processAzureResult si nécessaire.
+          // if (mounted && !_isRecording) {
+          //    ConsoleLogger.info("[ConsonantContrast Listener] Recording stopped, moving to next pair.");
+          //    _nextPair(); // <<< SUPPRIMÉ
+          // }
 
-        } else if (type == 'final' && _resultReceived) {
+        } else if (type == 'finalResult' && _resultReceived) { // <<< MODIFIÉ ('final' -> 'finalResult')
            ConsoleLogger.warning("[ConsonantContrast Listener] Ignored duplicate final event.");
         } else if (type == 'error' && payload is Map) {
           _processingTimeoutTimer?.cancel();
@@ -190,9 +196,9 @@ class _ConsonantContrastExerciseScreenState
     }
 
     try {
-      ConsoleLogger.info("[ConsonantContrast] Calling startRecognition with reference: '$referenceText'");
-      // TODO: S'assurer que la configuration Azure est correcte pour l'analyse phonétique détaillée
-      await _methodChannel.invokeMethod('startRecognition', {'referenceText': referenceText});
+      ConsoleLogger.info("[ConsonantContrast] Calling startRecognition via AzureSpeechService with reference: '$referenceText'");
+      // Utiliser le service AzureSpeechService au lieu du MethodChannel direct
+      await _azureSpeechService.startRecognition(referenceText: referenceText); // <<< MODIFIÉ
 
       final audioStream = await _audioRepository.startRecordingStream();
       if (mounted) setState(() => _isRecording = true);
@@ -201,10 +207,7 @@ class _ConsonantContrastExerciseScreenState
       _audioStreamSubscription?.cancel();
       _audioStreamSubscription = audioStream.listen(
         (audioChunk) {
-          _methodChannel.invokeMethod('sendAudioChunk', audioChunk).catchError((e) {
-            ConsoleLogger.error("[ConsonantContrast] ASYNC error sending audio chunk: $e");
-            if (mounted) _stopRecording();
-          });
+          // Ne plus envoyer les chunks audio via le channel, géré nativement // <<< MODIFIÉ (suppression invokeMethod)
         },
         onError: (error) {
           ConsoleLogger.error("[ConsonantContrast] Audio stream error: $error");
@@ -218,9 +221,15 @@ class _ConsonantContrastExerciseScreenState
       );
 
     } catch (e) {
-      ConsoleLogger.error("[ConsonantContrast] Error starting recording/recognition: $e");
+      // Capturer spécifiquement MissingPluginException pour un message plus clair
+      if (e is MissingPluginException) {
+         ConsoleLogger.error("[ConsonantContrast] MissingPluginException: Assurez-vous que le code natif est correctement configuré et enregistré.");
+         _showError("Erreur de communication native (Plugin manquant).");
+      } else {
+        ConsoleLogger.error("[ConsonantContrast] Error starting recording/recognition: $e");
+        _showError("Erreur démarrage enregistrement: ${e.toString()}");
+      }
       if (mounted) setState(() => _isRecording = false);
-      _showError("Erreur démarrage enregistrement: ${e.toString()}");
     }
   }
 
@@ -241,7 +250,7 @@ class _ConsonantContrastExerciseScreenState
         if (wasRecording && !_resultReceived) {
           _isProcessing = true;
           ConsoleLogger.info("[ConsonantContrast] Recording stopped manually, processing started.");
-          // Démarrer un timer de sécurité au cas où l'événement 'final' n'arriverait jamais
+          // Démarrer un timer de sécurité au cas où l'événement 'finalResult' n'arriverait jamais
           _processingTimeoutTimer = Timer(const Duration(seconds: 15), () { // Timeout plus court
              if (mounted && _isProcessing) {
                ConsoleLogger.error("[ConsonantContrast Timeout] No final result after 15s.");
@@ -249,8 +258,8 @@ class _ConsonantContrastExerciseScreenState
                setState(() => _isProcessing = false);
                _wordProcessed = false; // Réinitialiser pour permettre nouvel essai
                _resultReceived = false;
-               // Essayer d'arrêter la reco Azure au cas où
-               _methodChannel.invokeMethod('stopRecognition').catchError((e) => print("Erreur stopRecognition (timeout): $e"));
+               // Essayer d'arrêter la reco Azure au cas où via le service
+               _azureSpeechService.stopRecognition().catchError((e) => print("Erreur stopRecognition (timeout): $e")); // <<< MODIFIÉ
              }
           });
         } else {
@@ -269,10 +278,10 @@ class _ConsonantContrastExerciseScreenState
       await _audioRepository.stopRecordingStream();
       ConsoleLogger.info("[ConsonantContrast] Audio recording stream stopped via repository.");
 
-      // Appeler stopRecognition pour signaler à Azure la fin de l'audio
-      ConsoleLogger.info("[ConsonantContrast] Calling stopRecognition on MethodChannel...");
-      await _methodChannel.invokeMethod('stopRecognition');
-      ConsoleLogger.info("[ConsonantContrast] stopRecognition call completed.");
+      // Appeler stopRecognition via le service
+      ConsoleLogger.info("[ConsonantContrast] Calling stopRecognition via AzureSpeechService...");
+      await _azureSpeechService.stopRecognition(); // <<< MODIFIÉ
+      ConsoleLogger.info("[ConsonantContrast] stopRecognition call via service completed.");
 
       // Si le résultat est arrivé PENDANT l'arrêt, on passe au suivant (géré par le listener maintenant)
       if (_resultReceived && mounted) {
@@ -374,14 +383,20 @@ class _ConsonantContrastExerciseScreenState
       }
 
       _openAiFeedback = await _getOpenAiFeedback();
+      // Masquer l'indicateur AVANT d'appeler _showResults
+      if (mounted) setState(() => _isProcessing = false); 
       _showResults(averageScore.round(), _openAiFeedback);
 
     } catch (e) {
       _showError("Erreur lors de la finalisation: $e");
-      _showResults(0, "Erreur lors de la génération du feedback.");
-    } finally {
+       // Assurer que l'indicateur est masqué aussi en cas d'erreur avant showResults
       if (mounted) setState(() => _isProcessing = false);
-    }
+      _showResults(0, "Erreur lors de la génération du feedback.");
+    } 
+    // 'finally' n'est plus nécessaire car setState est géré dans try/catch
+    // finally {
+    //   if (mounted) setState(() => _isProcessing = false);
+    // }
   }
 
    Future<String> _getOpenAiFeedback() async {
@@ -400,8 +415,9 @@ class _ConsonantContrastExerciseScreenState
 
   void _showResults(int finalScore, String feedback) {
     if (!mounted) return;
-    Future.delayed(Duration.zero, () {
-      if (!mounted) return;
+    // Utiliser addPostFrameCallback pour s'assurer que la navigation se fait après le build
+    WidgetsBinding.instance.addPostFrameCallback((_) { 
+      if (!mounted) return; // Vérifier à nouveau si le widget est monté dans le callback
       final resultsData = {
         'score': finalScore,
         'commentaires': feedback,
@@ -411,6 +427,7 @@ class _ConsonantContrastExerciseScreenState
         AppRoutes.exerciseResult,
         extra: {'exercise': widget.exercise, 'results': resultsData},
       );
+      ConsoleLogger.info("[ConsonantContrast _showResults] Navigation to results screen attempted."); // AJOUT LOG
     });
   }
 
@@ -476,7 +493,8 @@ class _ConsonantContrastExerciseScreenState
         systemOverlayStyle: SystemUiOverlayStyle.light,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          // Essayer avec Navigator.of(context).pop()
+          onPressed: () => Navigator.of(context).pop(), 
           color: Colors.white,
         ),
         title: Text(

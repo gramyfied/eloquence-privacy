@@ -56,11 +56,16 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
   String _targetIntention = "Neutre";
   String _errorMessage = '';
   String? _aiFeedback; // Feedback stocké dans l'état principal
-  List<double> _pitchContour = [];
+  // Correction 1: Utiliser List<PitchDataPoint>
+  List<PitchDataPoint> _pitchContourPoints = [];
   List<double> _jitterValues = [];
   List<double> _shimmerValues = [];
   List<double> _amplitudeValues = [];
-  Map<String, double>? _lastAudioMetrics; // Pour stocker les métriques calculées
+  Map<String, double>? _lastAudioMetrics; // Pour stocker les métriques du DERNIER tour
+  // Ajout: Stockage des résultats de tous les tours
+  final List<Map<String, double>> _allRoundMetrics = [];
+  final List<String> _allRoundFeedbacks = [];
+  final List<double> _allRoundScores = [];
   bool _isExerciseCompleted = false; // Indique si l'enregistrement est terminé
   bool _showCelebration = false;
   int _currentRound = 1;
@@ -119,11 +124,15 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
     _analysisSubscription = AudioSignalProcessor.analysisResultStream.listen(
       (result) {
         if (mounted && _isRecording) {
-          setState(() {
-            if (result.f0 > 50 && result.f0 < 500) {
-               _pitchContour.add(result.f0);
-            }
-            if (result.jitter.isFinite && result.jitter > 0) {
+          // AJOUT: Log pour vérifier la réception de F0
+          // print("[ExpressiveIntonation] Received F0: ${result.f0}");
+           setState(() {
+             // Correction 2: Créer correctement PitchDataPoint
+             if (result.f0 > 50 && result.f0 < 500 && result.f0.isFinite) {
+                final timestamp = DateTime.now().millisecondsSinceEpoch; // timestamp est int
+                _pitchContourPoints.add(PitchDataPoint(timestamp, result.f0.toDouble())); // f0 est double
+             }
+             if (result.jitter.isFinite && result.jitter > 0) {
                _jitterValues.add(result.jitter);
             }
              if (result.shimmer.isFinite && result.shimmer > 0) {
@@ -156,24 +165,21 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
       if (_currentRound < _totalRounds) {
         _currentRound++;
       } else {
-        // Fin de la session, appeler onExerciseCompleted avec les derniers résultats
-        final finalResults = {
-          'score': _calculateOverallScore(_lastAudioMetrics),
-          'commentaires': _aiFeedback ?? 'Session terminée.',
-          'details': _lastAudioMetrics ?? {},
-          'erreur': _errorMessage.isNotEmpty ? _errorMessage : null,
-        };
-        print("[ExpressiveIntonation] Session terminée. Appel de onExerciseCompleted avec: $finalResults");
-        widget.onExerciseCompleted(finalResults);
-        return; // Important de sortir ici pour ne pas réinitialiser
+        // C'est la fin du dernier tour, mais on ne termine pas ici.
+        // La terminaison se fera via le bouton "Terminer la session" dans le dialogue final.
+        print("[ExpressiveIntonation] Dernier tour terminé. Le dialogue final gérera la complétion.");
+        // On ne fait rien de spécial ici, le dialogue du dernier tour s'affichera.
+        // On ne réinitialise PAS pour un nouveau tour.
+        return; // Sortir pour ne pas réinitialiser
       }
     }
-    // Réinitialisation pour le nouveau tour (ou le premier tour)
+    // Réinitialisation pour le tour suivant (ou le premier tour)
     setState(() {
       _isLoading = true; _errorMessage = ''; _currentSentence = null;
       _targetIntention = 'Chargement...'; _isExerciseCompleted = false;
       _showCelebration = false; _aiFeedback = null; _lastAudioMetrics = null;
-      _pitchContour = []; _jitterValues = []; _shimmerValues = []; _amplitudeValues = [];
+      // Correction 3: Vider _pitchContourPoints
+      _pitchContourPoints = []; _jitterValues = []; _shimmerValues = []; _amplitudeValues = [];
     });
     try {
       final random = Random();
@@ -249,7 +255,8 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
       _isRecording = true; _errorMessage = ''; _isLoading = false;
       _isExerciseCompleted = false; _showCelebration = false;
       _aiFeedback = null; _lastAudioMetrics = null;
-      _pitchContour = []; _jitterValues = []; _shimmerValues = []; _amplitudeValues = [];
+      // Correction 4: Vider _pitchContourPoints
+      _pitchContourPoints = []; _jitterValues = []; _shimmerValues = []; _amplitudeValues = [];
     });
     try {
       await AudioSignalProcessor.startAnalysis();
@@ -326,21 +333,26 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
          feedbackMessage = "Service de feedback non disponible.";
       }
 
-      // Préparer les résultats pour le callback et l'état
+      // Préparer les résultats pour le dialogue et l'état
+      final currentScore = _calculateOverallScore(calculatedMetrics);
       currentResults = {
-        'score': _calculateOverallScore(calculatedMetrics), // Calculer un score global
+        'score': currentScore,
         'commentaires': feedbackMessage,
         'details': calculatedMetrics,
         'erreur': currentError.isNotEmpty ? currentError : null,
       };
 
-      // 4. Mettre à jour l'état final AVANT d'appeler showDialog
+      // 4. Stocker les résultats du tour actuel et mettre à jour l'état
       if (mounted) {
+        _allRoundMetrics.add(calculatedMetrics);
+        _allRoundFeedbacks.add(feedbackMessage);
+        _allRoundScores.add(currentScore);
+
         setState(() {
-          _aiFeedback = feedbackMessage; // Stocker le feedback
-          _lastAudioMetrics = calculatedMetrics; // Stocker les métriques
+          _aiFeedback = feedbackMessage; // Feedback du tour actuel pour affichage immédiat
+          _lastAudioMetrics = calculatedMetrics; // Métriques du tour actuel pour affichage immédiat
           _isLoading = false; // Arrêter le loader
-          _isExerciseCompleted = true;
+          _isExerciseCompleted = true; // Fin de l'enregistrement/analyse pour CE tour
           _errorMessage = currentError; // Mettre à jour l'erreur si nécessaire
           _showCelebration = currentError.isEmpty && feedbackMessage.toLowerCase().contains('bien'); // Déterminer la célébration
         });
@@ -374,22 +386,45 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
   }
 
   // Méthode pour calculer les métriques (appelée depuis _stopRecordingAndAnalyze)
-  Map<String, double> _calculateMetrics() {
-      Map<String, double> metrics = {};
-      if (_pitchContour.isNotEmpty) {
-        metrics['meanF0'] = _pitchContour.reduce((a, b) => a + b) / _pitchContour.length;
-        metrics['minF0'] = _pitchContour.reduce(math.min);
-        metrics['maxF0'] = _pitchContour.reduce(math.max);
-        metrics['rangeF0'] = metrics['maxF0']! - metrics['minF0']!;
-        final mean = metrics['meanF0']!;
-        final variance = _pitchContour.length > 1
-            ? _pitchContour.map((p) => math.pow(p - mean, 2)).reduce((a, b) => a + b) / _pitchContour.length
-            : 0.0;
-        metrics['stdevF0'] = math.sqrt(variance);
-      }
-      // Correction: Utiliser _jitterValues directement après filtrage
-      final validJitterValues = _jitterValues.where((j) => j.isFinite && j > 0).toList();
-      if (validJitterValues.isNotEmpty) {
+   Map<String, double> _calculateMetrics() {
+       Map<String, double> metrics = {};
+       // Correction 5: Utiliser p.pitch et ajouter null checks
+       final pitchValues = _pitchContourPoints.map((p) => p.pitch).toList();
+       if (pitchValues.isNotEmpty) {
+         metrics['meanF0'] = pitchValues.reduce((a, b) => a + b) / pitchValues.length;
+         metrics['minF0'] = pitchValues.reduce(math.min);
+         metrics['maxF0'] = pitchValues.reduce(math.max);
+
+         final maxF0 = metrics['maxF0'];
+         final minF0 = metrics['minF0'];
+         // Vérifier la nullité avant la soustraction pour rangeF0
+         if (maxF0 != null && minF0 != null) {
+           metrics['rangeF0'] = maxF0 - minF0;
+         } else {
+           metrics['rangeF0'] = 0.0; // Valeur par défaut si null
+         }
+
+         final mean = metrics['meanF0'];
+         // Vérifier la nullité avant le calcul de variance/stdevF0
+         if (mean != null) {
+           final variance = pitchValues.length > 1
+               ? pitchValues.map((p) => math.pow(p - mean, 2)).reduce((a, b) => a + b) / pitchValues.length
+               : 0.0;
+           metrics['stdevF0'] = math.sqrt(variance);
+         } else {
+           metrics['stdevF0'] = 0.0; // Valeur par défaut si null
+         }
+       } else {
+         // Assigner des valeurs par défaut si pitchValues est vide
+         metrics['meanF0'] = 0.0;
+         metrics['minF0'] = 0.0;
+         metrics['maxF0'] = 0.0;
+         metrics['rangeF0'] = 0.0;
+         metrics['stdevF0'] = 0.0;
+       }
+
+       final validJitterValues = _jitterValues.where((j) => j.isFinite && j > 0).toList();
+       if (validJitterValues.isNotEmpty) {
          metrics['meanJitter'] = validJitterValues.reduce((a, b) => a + b) / validJitterValues.length;
       }
       final validShimmerValues = _shimmerValues.where((s) => s.isFinite && s > 0).toList();
@@ -461,14 +496,14 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
                   borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
                   border: Border.all(color: Colors.white10),
                 ),
-                child: _pitchContour.isNotEmpty
-                  ? PitchContourVisualizer(
-                      // Adapt to new signature - Provide placeholders/defaults
-                      targetPitchData: const [], // No target in this screen currently
-                      userPitchData: _pitchContour.map((f) => PitchDataPoint(0, f)).toList(), // Convert List<double> to List<PitchDataPoint> (time is arbitrary here)
-                      currentPitch: _pitchContour.lastOrNull, // Use last recorded pitch as current? Or null?
-                      minFreq: 80, // Example default
-                      maxFreq: 500, // Example default
+                 // Correction 6: Utiliser _pitchContourPoints et p.pitch
+                 child: _pitchContourPoints.isNotEmpty
+                   ? PitchContourVisualizer(
+                       targetPitchData: const [], // Pas de cible pour l'instant
+                       userPitchData: _pitchContourPoints, // Passer directement la liste de PitchDataPoint
+                       currentPitch: _pitchContourPoints.lastOrNull?.pitch, // Utiliser la dernière valeur pitch
+                       minFreq: 80, // Ajuster si nécessaire
+                       maxFreq: 500, // Ajuster si nécessaire
                       durationMs: 5000, // Example default duration
                       // lineColor: AppTheme.primaryColor, // Use default userLineColor
                     )
@@ -622,20 +657,14 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
 
 
   // Afficher le dialogue avec les résultats finaux (feedback et métriques)
-  // MODIFIÉ: Accepter les résultats en argument
-  void _showCompletionDialog([Map<String, dynamic>? results]) {
-    // Utiliser les résultats passés ou ceux de l'état si null (cas d'erreur avant calcul)
-    final currentResults = results ?? {
-      'score': _calculateOverallScore(_lastAudioMetrics),
-      'commentaires': _errorMessage.isNotEmpty ? _errorMessage : (_aiFeedback ?? 'Analyse terminée.'),
-      'details': _lastAudioMetrics ?? {},
-      'erreur': _errorMessage.isNotEmpty ? _errorMessage : null,
-    };
+  // Afficher le dialogue avec les résultats du tour actuel
+  void _showCompletionDialog(Map<String, dynamic> currentRoundResults) {
 
-    final String commentaires = currentResults['commentaires'] as String? ?? 'Analyse terminée.';
-    final bool success = currentResults['erreur'] == null && commentaires.toLowerCase().contains('bien');
-    final String metricsText = _formatMetrics(currentResults['details'] as Map<String, double>?);
-    bool showCelebration = success; // Gérer la célébration localement
+    final String commentaires = currentRoundResults['commentaires'] as String? ?? 'Analyse terminée.';
+    final bool success = currentRoundResults['erreur'] == null && commentaires.toLowerCase().contains('bien');
+    final String metricsText = _formatMetrics(currentRoundResults['details'] as Map<String, double>?);
+    final bool isLastRound = _currentRound == _totalRounds;
+    bool showCelebration = success;
 
     showDialog(
         context: context,
@@ -684,16 +713,19 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
                       onPressed: () {
-                        Navigator.of(context).pop();
-                        if (_currentRound < _totalRounds) {
+                        Navigator.of(context).pop(); // Fermer le dialogue actuel
+                        if (!isLastRound) {
+                          // Passer au tour suivant
                           _initializeExercise(nextRound: true);
                         } else {
-                          // MODIFIÉ: Appeler onExerciseCompleted avec les résultats finaux
-                          widget.onExerciseCompleted(currentResults);
+                          // C'est le dernier tour, calculer et envoyer les résultats finaux
+                          final overallResults = _calculateOverallSessionResults();
+                          print("[ExpressiveIntonation] Fin de session. Résultats globaux: $overallResults");
+                          widget.onExerciseCompleted(overallResults);
                         }
                       },
                       child: Text(
-                        _currentRound < _totalRounds ? 'Tour Suivant' : 'Terminer la session',
+                        isLastRound ? 'Terminer la session' : 'Tour Suivant',
                         style: const TextStyle(color: Colors.white)
                       ),
                     ),

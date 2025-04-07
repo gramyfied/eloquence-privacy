@@ -2,22 +2,62 @@ import Flutter
 import MicrosoftCognitiveServicesSpeech // Assurez-vous que ce pod est bien ajouté dans votre Podfile
 import AVFoundation // Pour la gestion de session audio et permissions
 
-// Classe conforme au protocole généré par Pigeon (AzureSpeechApi)
-class AzureSpeechHandler: NSObject, AzureSpeechApi {
+// 1. Conform to FlutterStreamHandler
+class AzureSpeechHandler: NSObject, FlutterStreamHandler, AzureSpeechApi {
 
     private var speechConfig: SPXSpeechConfiguration?
     private var speechRecognizer: SPXSpeechRecognizer?
     private var pronunciationAssessmentConfig: SPXPronunciationAssessmentConfiguration?
     private var audioConfig: SPXAudioConfiguration? // Garder référence pour nettoyage
-    // Stocke le completion handler de l'appel Flutter en cours
+    // Stocke le completion handler de l'appel Flutter en cours (Pigeon)
     private var assessmentCompletion: ((Result<PronunciationAssessmentResult?, Error>) -> Void)?
 
-    // Méthode statique pour l'enregistrement avec Flutter, appelée depuis AppDelegate
+    // 2. Add eventSink variable
+    private var eventSink: FlutterEventSink?
+
+    // 3. Modify setUp to include EventChannel setup
     static func setUp(messenger: FlutterBinaryMessenger) {
         let api = AzureSpeechHandler()
         AzureSpeechApiSetup.setUp(binaryMessenger: messenger, api: api)
         print("[AzureSpeechHandler] AzureSpeechApi Pigeon Handler set up.")
+
+        // 4. Set up EventChannel
+        let eventChannel = FlutterEventChannel(name: "com.eloquence.app/azure_speech_events", binaryMessenger: messenger)
+        eventChannel.setStreamHandler(api) // 'api' instance handles the stream
+        print("[AzureSpeechHandler] FlutterEventChannel set up.")
     }
+
+    // --- FlutterStreamHandler Methods ---
+    // 5. Implement onListen
+    func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+        print("[AzureSpeechHandler] onListen called by Flutter.")
+        self.eventSink = events
+        // Optionally send an initial status event?
+        // self.sendEvent(type: "status", data: ["statusMessage": "Event channel connected"])
+        return nil
+    }
+
+    // 6. Implement onCancel
+    func onCancel(withArguments arguments: Any?) -> FlutterError? {
+        print("[AzureSpeechHandler] onCancel called by Flutter.")
+        self.eventSink = nil
+        return nil
+    }
+
+    // 7. Helper to send events
+    private func sendEvent(type: String, data: [String: Any?] = [:]) {
+        guard let sink = eventSink else {
+            print("[AzureSpeechHandler WARN] Attempted to send event but eventSink is nil.")
+            return
+        }
+        var eventData = data
+        eventData["type"] = type
+        // Ensure sending on main thread if sink requires it
+        DispatchQueue.main.async {
+            sink(eventData)
+        }
+    }
+    // --- End FlutterStreamHandler Methods ---
 
     // Implémentation de l'initialisation
     func initialize(subscriptionKey: String, region: String, completion: @escaping (Result<Void, Error>) -> Void) {
@@ -87,14 +127,20 @@ class AzureSpeechHandler: NSObject, AzureSpeechApi {
 
                     // Démarrer la reconnaissance continue
                     print("[AzureSpeechHandler] Starting continuous recognition...")
-                    print("[AzureSpeechHandler DEBUG] Attempting to start continuous recognition...") // DEBUG LOG ADDED
                     try self.speechRecognizer!.startContinuousRecognition()
                     print("[AzureSpeechHandler] Continuous recognition started.")
+                    // 8. Send status event after starting
+                    self.sendEvent(type: "status", data: ["statusMessage": "Recognition session started"])
 
                 } catch {
                     print("[AzureSpeechHandler] Failed to start pronunciation assessment: \(error)")
                     self.stopAndCleanupRecognizer() // Nettoyer en cas d'erreur de démarrage
-                    // Assurer que le completion handler est appelé même en cas d'erreur ici
+                    // Send error via EventChannel
+                    self.sendEvent(type: "error", data: [
+                        "code": "START_FAILED",
+                        "message": "Failed to start assessment: \(error.localizedDescription)"
+                    ])
+                    // Call Pigeon completion handler with failure
                     if let currentCompletion = self.assessmentCompletion {
                          currentCompletion(.failure(error))
                          self.assessmentCompletion = nil // Consommer le handler
@@ -107,6 +153,9 @@ class AzureSpeechHandler: NSObject, AzureSpeechApi {
     // Implémentation de l'arrêt
     func stopRecognition(completion: @escaping (Result<Void, Error>) -> Void) {
         print("[AzureSpeechHandler] Stopping recognition requested.")
+        // 9. Send status event
+        self.sendEvent(type: "status", data: ["statusMessage": "Recognition stop requested by user"])
+
         // Exécuter sur un thread global pour ne pas bloquer Flutter
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self, let recognizer = self.speechRecognizer else {
@@ -115,7 +164,7 @@ class AzureSpeechHandler: NSObject, AzureSpeechApi {
                 return
             }
 
-            // Annuler le completion handler en cours s'il existe
+            // Annuler le completion handler en cours s'il existe (Pigeon)
             if let currentCompletion = self.assessmentCompletion {
                 let error = NSError(domain: "AzureSpeechHandler", code: -99, userInfo: [NSLocalizedDescriptionKey: "Recognition stopped manually by user."])
                 // Appeler sur le thread principal si nécessaire pour interagir avec Flutter
@@ -129,13 +178,20 @@ class AzureSpeechHandler: NSObject, AzureSpeechApi {
                 print("[AzureSpeechHandler] Calling stopContinuousRecognition...")
                 try recognizer.stopContinuousRecognition()
                 print("[AzureSpeechHandler] Continuous recognition stopped successfully via stopRecognition.")
-                // Le nettoyage se fait via les listeners ou ici
-                DispatchQueue.main.async { // Assurer le nettoyage sur le thread principal si nécessaire
-                    self.stopAndCleanupRecognizer()
+                // The sessionStopped event handler will send the final status/error event
+                // and perform cleanup.
+                DispatchQueue.main.async {
+                    // Cleanup might happen slightly later via event handler,
+                    // but Pigeon completion needs to be called.
                     completion(.success(()))
                 }
             } catch {
                 print("[AzureSpeechHandler] Error stopping recognition: \(error)")
+                // Send error via EventChannel
+                self.sendEvent(type: "error", data: [
+                    "code": "STOP_FAILED",
+                    "message": "Failed to stop recognition: \(error.localizedDescription)"
+                ])
                  DispatchQueue.main.async { // Assurer le nettoyage même en cas d'erreur
                     self.stopAndCleanupRecognizer()
                     completion(.failure(error))
@@ -150,30 +206,75 @@ class AzureSpeechHandler: NSObject, AzureSpeechApi {
 
         // Résultat reconnu (final pour une phrase/segment)
         recognizer.addRecognizedEventHandler { [weak self] _, event in
-            print("[AzureSpeechHandler DEBUG] Recognized Event Triggered. Reason: \(event.result.reason), Text: \(event.result.text ?? "N/A")") // DEBUG LOG ADDED
-            guard let self = self, let currentCompletion = self.assessmentCompletion else { return }
-            self.assessmentCompletion = nil // Important: Consommer le handler pour éviter double appel
+            print("[AzureSpeechHandler DEBUG] Recognized Event Triggered. Reason: \(event.result.reason), Text: \(event.result.text ?? "N/A")")
+            guard let self = self else { return }
 
-            print("[AzureSpeechHandler] Event: RecognizedSpeech. Reason: \(event.result.reason)")
+            let recognizedText = event.result.text ?? ""
+            var pronunciationJsonString: String? = nil
+            var mappedResultForPigeon: PronunciationAssessmentResult? = nil // For Pigeon completion
 
             if event.result.reason == .recognizedSpeech {
                 guard let pronunciationResult = SPXPronunciationAssessmentResult(event.result) else {
                     print("[AzureSpeechHandler] Failed to create PronunciationAssessmentResult from event result.")
                     let error = NSError(domain: "AzureSpeechHandler", code: -3, userInfo: [NSLocalizedDescriptionKey: "Failed to parse assessment result."])
-                    currentCompletion(.failure(error))
+                    // 10. Send error via EventChannel
+                    self.sendEvent(type: "error", data: ["code": "PARSE_ASSESSMENT_ERROR", "message": error.localizedDescription])
+                    // Call Pigeon completion handler with failure
+                    if let currentCompletion = self.assessmentCompletion {
+                        currentCompletion(.failure(error))
+                        self.assessmentCompletion = nil
+                    }
                     DispatchQueue.main.async { self.stopAndCleanupRecognizer() }
                     return
                 }
                 print("[AzureSpeechHandler] Pronunciation assessment successful. Score: \(pronunciationResult.accuracyScore)")
-                let mappedResult = self.mapPronunciationResult(nativeResult: pronunciationResult)
-                currentCompletion(.success(mappedResult))
+
+                // 11. Serialize assessment result to JSON String for EventChannel
+                pronunciationJsonString = self.serializeAssessmentResultToJson(pronunciationResult)
+                if pronunciationJsonString == nil {
+                     print("[AzureSpeechHandler WARN] Failed to serialize pronunciation result properties to JSON string.")
+                } else {
+                     print("[AzureSpeechHandler DEBUG] Serialized PronunciationResult JSON: \(pronunciationJsonString!)") // DEBUG
+                }
+
+                // Map for Pigeon completion
+                mappedResultForPigeon = self.mapPronunciationResult(nativeResult: pronunciationResult)
+
+                // 12. Send finalResult via EventChannel
+                self.sendEvent(type: "finalResult", data: [
+                    "text": recognizedText,
+                    "pronunciationResult": pronunciationJsonString // Send JSON string
+                    // "prosodyResult": nil // Add if needed later
+                ])
+
+                // Call Pigeon completion handler with success
+                if let currentCompletion = self.assessmentCompletion {
+                    currentCompletion(.success(mappedResultForPigeon))
+                    self.assessmentCompletion = nil
+                }
+
             } else if event.result.reason == .noMatch {
                 print("[AzureSpeechHandler] No speech could be recognized.")
-                currentCompletion(.success(nil)) // Compléter avec nil si pas de correspondance
+                // 13. Send finalResult with empty text and no assessment
+                 self.sendEvent(type: "finalResult", data: [
+                     "text": "",
+                     "pronunciationResult": nil
+                 ])
+                // Call Pigeon completion handler with nil success
+                if let currentCompletion = self.assessmentCompletion {
+                    currentCompletion(.success(nil))
+                    self.assessmentCompletion = nil
+                }
             } else {
-                 // Autres raisons possibles, traiter comme une erreur ?
+                 print("[AzureSpeechHandler] Recognition ended with unexpected reason: \(event.result.reason)")
                  let error = NSError(domain: "AzureSpeechHandler", code: -4, userInfo: [NSLocalizedDescriptionKey: "Recognition ended with unexpected reason: \(event.result.reason)"])
-                 currentCompletion(.failure(error))
+                 // 14. Send error via EventChannel
+                 self.sendEvent(type: "error", data: ["code": "UNEXPECTED_REASON", "message": error.localizedDescription])
+                 // Call Pigeon completion handler with failure
+                 if let currentCompletion = self.assessmentCompletion {
+                     currentCompletion(.failure(error))
+                     self.assessmentCompletion = nil
+                 }
             }
             // Nettoyer après un résultat final
             DispatchQueue.main.async { self.stopAndCleanupRecognizer() }
@@ -181,41 +282,58 @@ class AzureSpeechHandler: NSObject, AzureSpeechApi {
 
         // Annulation
         recognizer.addCanceledEventHandler { [weak self] _, event in
-             print("[AzureSpeechHandler DEBUG] Canceled Event Triggered. Reason: \(event.reason), ErrorCode: \(event.errorCode), Details: \(event.errorDetails ?? "N/A")") // DEBUG LOG ADDED
-             guard let self = self, let currentCompletion = self.assessmentCompletion else { return }
-             self.assessmentCompletion = nil
+             print("[AzureSpeechHandler DEBUG] Canceled Event Triggered. Reason: \(event.reason), ErrorCode: \(event.errorCode), Details: \(event.errorDetails ?? "N/A")")
+             guard let self = self else { return }
 
-            print("[AzureSpeechHandler] Event: Canceled. Reason: \(event.reason), ErrorDetails: \(event.errorDetails ?? "No details")")
-            let errorDetails = "Recognition canceled: \(event.reason) - \(event.errorDetails ?? "No details")"
-            let error = NSError(domain: "AzureSpeechHandler", code: Int(event.errorCode.rawValue), userInfo: [NSLocalizedDescriptionKey: errorDetails])
-            currentCompletion(.failure(error))
-            DispatchQueue.main.async { self.stopAndCleanupRecognizer() }
+             let errorDetails = "Recognition canceled: \(event.reason) - \(event.errorDetails ?? "No details")"
+             let errorCodeString = "\(event.errorCode)" // Convert enum to string code
+             let error = NSError(domain: "AzureSpeechHandler", code: Int(event.errorCode.rawValue), userInfo: [NSLocalizedDescriptionKey: errorDetails])
+
+             // 15. Send error via EventChannel
+             self.sendEvent(type: "error", data: ["code": errorCodeString, "message": errorDetails])
+
+             // Call Pigeon completion handler with failure
+             if let currentCompletion = self.assessmentCompletion {
+                 currentCompletion(.failure(error))
+                 self.assessmentCompletion = nil
+             }
+             DispatchQueue.main.async { self.stopAndCleanupRecognizer() }
         }
 
         // Session arrêtée
         recognizer.addSessionStoppedEventHandler { [weak self] _, event in
-            print("[AzureSpeechHandler DEBUG] SessionStopped Event Triggered. SessionId: \(event.sessionId)") // DEBUG LOG ADDED
+            print("[AzureSpeechHandler DEBUG] SessionStopped Event Triggered. SessionId: \(event.sessionId)")
             print("[AzureSpeechHandler] Event: SessionStopped. SessionId: \(event.sessionId)")
-             guard let self = self else { return }
-            // Si le completion handler est toujours là, c'est que la session s'est arrêtée avant un résultat final
+            guard let self = self else { return }
+
+            // 16. Send status event
+            self.sendEvent(type: "status", data: ["statusMessage": "Recognition session stopped"])
+
+            // If Pigeon completion handler is still present, it means stop happened before final result
             if let currentCompletion = self.assessmentCompletion {
                  self.assessmentCompletion = nil
-                 print("[AzureSpeechHandler] Session stopped before final result. Completing with error.")
+                 print("[AzureSpeechHandler] Session stopped before final result. Completing Pigeon with error.")
                  let error = NSError(domain: "AzureSpeechHandler", code: -5, userInfo: [NSLocalizedDescriptionKey: "Session stopped unexpectedly before a final result."])
+                 // Error already sent via EventChannel in Canceled handler if applicable,
+                 // but Pigeon needs completion.
                  currentCompletion(.failure(error))
             }
-            // Nettoyer dans tous les cas d'arrêt de session
+            // Cleanup happens here
             DispatchQueue.main.async { self.stopAndCleanupRecognizer() }
         }
 
         // Session démarrée (pour info)
-         recognizer.addSessionStartedEventHandler { _, event in
+         recognizer.addSessionStartedEventHandler { [weak self] _, event in
              print("[AzureSpeechHandler] Event: SessionStarted. SessionId: \(event.sessionId)")
+             // 17. Send status event
+             self?.sendEvent(type: "status", data: ["statusMessage": "Recognition session started"])
          }
 
-        // Événement de reconnaissance partielle (pour débogage)
+        // Événement de reconnaissance partielle
         recognizer.addRecognizingEventHandler { [weak self] _, event in
             print("[AzureSpeechHandler DEBUG] Recognizing Event Triggered. Text: \(event.result.text ?? "N/A")")
+            // 18. Send partial event
+            self?.sendEvent(type: "partial", data: ["text": event.result.text ?? ""])
         }
     }
 
@@ -260,6 +378,42 @@ class AzureSpeechHandler: NSObject, AzureSpeechApi {
              }
         }
     }
+
+    // Revised serialization approach:
+    private func serializeAssessmentResultToJson(_ result: SPXPronunciationAssessmentResult) -> String? {
+        // Extract properties. Note: result.properties returns [AnyHashable: Any] which might not be directly JSON serializable
+        // Let's manually build the dictionary structure expected by Flutter based on the logs/Dart code.
+        let assessmentDict: [String: Any?] = [
+            // Mimic structure expected by Flutter service parsing logic
+            "NBest": [
+                [
+                    // "Confidence": 1.0, // Confidence might not be directly available on SPXPronunciationAssessmentResult
+                    // "Lexical": result.text, // result.text might not be available directly, use overall text?
+                    // "ITN": result.text,
+                    // "MaskedITN": result.text,
+                    // "Display": result.text,
+                    "PronunciationAssessment": [
+                        "AccuracyScore": result.accuracyScore,
+                        "PronunciationScore": result.pronunciationScore,
+                        "CompletenessScore": result.completenessScore,
+                        "FluencyScore": result.fluencyScore
+                        // Add words array here if needed by Flutter service parsing logic
+                        // "Words": result.words?.map { word -> [String: Any?]? in ... }
+                    ]
+                ]
+            ]
+        ]
+
+        // Use JSONSerialization to handle Any? types and create JSON string
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: assessmentDict, options: [])
+            return String(data: jsonData, encoding: .utf8)
+        } catch {
+            print("[AzureSpeechHandler WARN] Failed to serialize assessment result to JSON string using JSONSerialization: \(error)")
+            return nil
+        }
+    }
+
 
     // Fonction centralisée pour arrêter et nettoyer les ressources
     private func stopAndCleanupRecognizer() {
