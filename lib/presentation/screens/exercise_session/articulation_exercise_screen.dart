@@ -1,118 +1,60 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // Ajouté
-// import 'package:permission_handler/permission_handler.dart'; // Géré par le Notifier/Service
-// import 'package:flutter_dotenv/flutter_dotenv.dart'; // Géré par le Notifier/Service
-// import 'package:supabase_flutter/supabase_flutter.dart'; // Géré par le Notifier/Service
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme.dart';
 import '../../../core/utils/console_logger.dart';
 import '../../../domain/entities/exercise.dart';
-import '../../../domain/entities/pronunciation_result.dart'; // Importer l'entité domaine
-// import '../../../services/service_locator.dart'; // Moins nécessaire ici, utiliser ref
-import '../../../services/audio/example_audio_provider.dart'; // Garder pour l'exemple audio
-// import '../../../services/lexique/syllabification_service.dart'; // Logique déplacée
-// import '../../../services/openai/openai_feedback_service.dart'; // Logique déplacée
-// import '../../../services/azure/azure_speech_service.dart'; // Logique déplacée
-// import '../../../domain/repositories/audio_repository.dart'; // Garder pour l'exemple audio
-// import '../../../services/evaluation/articulation_evaluation_service.dart'; // Logique déplacée
+import '../../../domain/entities/pronunciation_result.dart';
+import '../../../services/audio/example_audio_provider.dart';
 import '../../widgets/visual_effects/info_modal.dart';
 import '../../widgets/visual_effects/celebration_effect.dart';
 import '../../widgets/microphone_button.dart';
-// import '../../../services/audio/audio_analysis_service.dart'; // Probablement plus nécessaire ici
-
-// Importer les providers Riverpod
 import '../../providers/exercise_provider.dart';
 import '../../providers/exercise_state.dart';
-import '../../providers/audio_providers.dart'; // Ajout de l'import pour exampleAudioProvider
-
+import '../../providers/audio_providers.dart';
+// Ajout pour serviceLocator si besoin
 
 /// Écran d'exercice d'articulation utilisant Riverpod
-class ArticulationExerciseScreen extends ConsumerStatefulWidget { // Changé en ConsumerStatefulWidget
+class ArticulationExerciseScreen extends ConsumerStatefulWidget {
   final Exercise exercise;
-  // Remplacer onExerciseCompleted par une simple callback ou gérer la navigation/résultat via Riverpod
-  // final Function(Map<String, dynamic> results) onExerciseCompleted;
   final VoidCallback onExitPressed;
 
   const ArticulationExerciseScreen({
     super.key,
     required this.exercise,
-    // required this.onExerciseCompleted,
     required this.onExitPressed,
   });
 
   @override
-  ConsumerState<ArticulationExerciseScreen> createState() => _ArticulationExerciseScreenState(); // Changé
+  ConsumerState<ArticulationExerciseScreen> createState() => _ArticulationExerciseScreenState();
 }
 
-// Changé en ConsumerState
 class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExerciseScreen> {
-  // Supprimer les variables d'état locales gérées par Riverpod
-  // bool _isRecording = false;
-  // bool _isProcessing = false;
-  // bool _isExerciseStarted = false;
-  // bool _isExerciseCompleted = false;
-  // bool _showCelebration = false;
-  // String _textToRead = '';
-  // String _referenceTextForAzure = '';
-  // String _lastRecognizedText = '';
-  // String _openAiFeedback = '';
-  // ArticulationEvaluationResult? _evaluationResult; // Utiliser l'entité domaine PronunciationResult
-
-  // Garder uniquement les services nécessaires directement dans l'UI (si applicable)
-  // ou les obtenir via ref si besoin (préférer les passer au Notifier)
   late ExampleAudioProvider _exampleAudioProvider;
-  // Supprimer les instances de service gérées par le Notifier
-  // late AzureSpeechService _azureSpeechService;
-  // late AudioRepository _audioRepository;
-  // late OpenAIFeedbackService _openAIFeedbackService;
-
-  // Supprimer les Stream Subscriptions gérées par le Notifier ou non nécessaires
-  // StreamSubscription? _audioStreamSubscription;
-  // StreamSubscription? _recognitionResultSubscription;
-
-  // Garder l'état local pour la lecture de l'exemple
   bool _isPlayingExample = false;
-
-  // Supprimer la gestion du temps d'enregistrement local
-  // DateTime? _recordingStartTime;
-  // final Duration _minRecordingDuration = const Duration(seconds: 1);
-  // DateTime? _exerciseStartTime;
 
   @override
   void initState() {
     super.initState();
-    // Initialiser les services locaux nécessaires directement dans l'UI
-    // Note: Il est préférable de minimiser les services lus directement ici.
-    // _exampleAudioProvider est initialisé ici car il est utilisé pour une action UI directe (_playExampleAudio)
-    // et n'est pas strictement lié à l'état principal de l'exercice géré par ExerciseNotifier.
     _exampleAudioProvider = ref.read(exampleAudioProvider);
 
-    // Déclencher la préparation de l'exercice dans le Notifier
-    // Utiliser Future.microtask pour appeler après le premier build
     Future.microtask(() {
-      // TODO: Obtenir la langue dynamiquement si nécessaire
       final language = 'fr-FR';
-      // TODO: Générer/Obtenir le texte dynamiquement si nécessaire (peut être fait dans le Notifier)
-      final textToRead = "Le soleil sèche six chemises sur six cintres."; // Exemple
+      // Utiliser le champ correct 'textToRead' et fournir une valeur par défaut plus sûre
+      final textToRead = widget.exercise.textToRead ?? "Texte d'exercice non trouvé.";
+      ConsoleLogger.info('[ArticulationScreen] Preparing exercise with text: "$textToRead"');
       ref.read(exerciseStateProvider.notifier).prepareExercise(textToRead, language);
     });
   }
 
-  // Supprimer _initializeServicesAndText, _subscribeToRecognitionResults, _getOpenAiFeedback,
-  // _completeExercise, _saveSessionToSupabase, _requestMicrophonePermission,
-  // _stopRecordingAndRecognition. Ces logiques sont dans le Notifier.
-
   @override
   void dispose() {
-    // Arrêter la lecture audio si elle est en cours
-    _exampleAudioProvider.stop(); // Correction: utiliser stop()
+    _exampleAudioProvider.stop();
     super.dispose();
   }
 
-  /// Joue l'exemple audio pour le texte affiché
   Future<void> _playExampleAudio() async {
-    // Lire l'état depuis Riverpod
     final exerciseState = ref.read(exerciseStateProvider);
     final textToRead = exerciseState.referenceText;
     final status = exerciseState.status;
@@ -122,11 +64,7 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
     try {
       ConsoleLogger.info('Lecture de l\'exemple audio pour: "$textToRead"');
       setState(() { _isPlayingExample = true; });
-
       await _exampleAudioProvider.playExampleFor(textToRead);
-      // Attendre la fin de la lecture (si le provider expose un stream/future pour cela)
-      // await _exampleAudioProvider.isPlayingStream.firstWhere((playing) => !playing); // Exemple
-
       if (mounted) setState(() { _isPlayingExample = false; });
       ConsoleLogger.info('Fin de la lecture de l\'exemple audio');
     } catch (e) {
@@ -135,120 +73,149 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
     }
   }
 
-  /// Démarre ou arrête l'enregistrement via le Notifier Riverpod
   Future<void> _toggleRecording() async {
     final notifier = ref.read(exerciseStateProvider.notifier);
     final status = ref.read(exerciseStateProvider).status;
 
     if (status == ExerciseStatus.recording) {
-      // TODO: Ajouter la logique de durée minimale si nécessaire dans le Notifier ou ici
       await notifier.stopRecording();
     } else if (status == ExerciseStatus.ready) {
       await notifier.startRecording();
     } else {
        ConsoleLogger.warning('Tentative de toggleRecording dans un état inattendu: $status');
-       // Optionnel: Afficher un message à l'utilisateur
-       // ScaffoldMessenger.of(context).showSnackBar(
-       //   SnackBar(content: Text('Veuillez patienter...'), duration: Duration(seconds: 1)),
-       // );
     }
   }
 
-
-  /// Affiche la boîte de dialogue de fin d'exercice (adaptée pour Riverpod)
   void _showCompletionDialog(PronunciationResult result, String? recognizedText) {
-     ConsoleLogger.info('Affichage des résultats finaux');
-     if (mounted) {
-       showDialog(
-         context: context,
-         barrierDismissible: false, // Empêcher la fermeture en cliquant à l'extérieur
-         builder: (context) {
-           // Utiliser le résultat de l'état Riverpod
-           bool success = (result.accuracyScore > 70) && result.errorDetails == null;
-           String feedbackToShow = result.errorDetails ?? "Évaluation terminée."; // TODO: Utiliser le feedback OpenAI si intégré au Notifier
+     ConsoleLogger.info('[ArticulationScreen] Executing _showCompletionDialog...');
+     if (!mounted) {
+      ConsoleLogger.warning('[ArticulationScreen] _showCompletionDialog called but widget is not mounted.');
+      return;
+     }
 
-           return Stack(
-             children: [
-               if (success)
-                 CelebrationEffect(
-                   intensity: 0.8,
-                   primaryColor: AppTheme.primaryColor,
-                   secondaryColor: AppTheme.accentGreen,
-                   durationSeconds: 3,
+     // --- Nouvelle version inspirée de LungCapacity ---
+     // Déterminer le succès (par exemple, score de précision > 70)
+     bool success = result.accuracyScore > 70 && result.errorDetails == null;
+     // Déterminer si on a un résultat valide à afficher (pas le résultat vide par défaut)
+     bool hasValidResult = result != const PronunciationResult.empty();
+
+     ConsoleLogger.info('[ArticulationScreen] Showing dialog. Success: $success, HasValidResult: $hasValidResult, Score: ${result.accuracyScore}');
+
+     showDialog(
+       context: context,
+       barrierDismissible: false, // Empêche de fermer en cliquant à l'extérieur
+       builder: (context) {
+         return Stack(
+           children: [
+             if (success) // Afficher la célébration seulement si succès
+               ClipRect( // Assurer que l'effet ne dépasse pas
+                 child: CelebrationEffect(
+                   intensity: 0.7, // Ajuster l'intensité si besoin
+                   primaryColor: AppTheme.primaryColor, // Couleur principale du thème
+                   secondaryColor: AppTheme.accentGreen, // Vert pour succès
+                   durationSeconds: 5, // Durée de l'effet
                    onComplete: () {
-                     ConsoleLogger.info('Animation de célébration terminée');
+                     ConsoleLogger.info('[ArticulationScreen] Celebration animation completed.');
                      if (mounted) {
-                       Navigator.of(context).pop(); // Fermer la dialog
-                       // Gérer la suite (ex: navigation vers écran suivant ou retour)
-                       // widget.onExerciseCompleted(results); // Remplacer par une navigation ou autre action
-                       widget.onExitPressed(); // Exemple: Quitter après succès
+                       Navigator.of(context).pop(); // Fermer la modale
+                       // Après la célébration, quitter l'écran d'exercice
+                       Future.delayed(const Duration(milliseconds: 100), () {
+                         if (mounted) {
+                           widget.onExitPressed();
+                         }
+                       });
                      }
                    },
                  ),
-               Center(
-                 child: AlertDialog(
-                   backgroundColor: AppTheme.darkSurface,
-                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                   title: Row(
-                     children: [
-                       Icon(success ? Icons.check_circle : Icons.info_outline, color: success ? AppTheme.accentGreen : Colors.orangeAccent, size: 32),
-                       const SizedBox(width: 16),
-                       Text(success ? 'Exercice terminé !' : 'Résultats', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                     ],
-                   ),
-                   content: Column(
-                     mainAxisSize: MainAxisSize.min,
-                     crossAxisAlignment: CrossAxisAlignment.start,
-                     children: [
-                       Text('Score Précision: ${result.accuracyScore.toStringAsFixed(1)}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: success ? AppTheme.accentGreen : Colors.orangeAccent)),
-                       // Afficher d'autres scores si pertinent
-                       Text('Score Prononciation: ${result.pronunciationScore.toStringAsFixed(1)}', style: TextStyle(fontSize: 16, color: Colors.white70)),
-                       Text('Score Fluidité: ${result.fluencyScore.toStringAsFixed(1)}', style: TextStyle(fontSize: 16, color: Colors.white70)),
-                       Text('Score Complétude: ${result.completenessScore.toStringAsFixed(1)}', style: TextStyle(fontSize: 16, color: Colors.white70)),
-                       const SizedBox(height: 12),
-                       Text('Attendu: "${ref.read(exerciseStateProvider).referenceText ?? ""}"', style: TextStyle(fontSize: 14, color: Colors.white70)),
-                       const SizedBox(height: 8),
-                       Text('Reconnu: "${recognizedText ?? ""}"', style: TextStyle(fontSize: 14, color: Colors.white)),
-                       const SizedBox(height: 8),
-                       Text('Feedback: $feedbackToShow', style: TextStyle(fontSize: 14, color: Colors.white)),
-                       if (result.errorDetails != null) ...[
-                         const SizedBox(height: 8),
-                         Text('Erreur: ${result.errorDetails}', style: TextStyle(fontSize: 14, color: AppTheme.accentRed)),
-                       ]
-                       // TODO: Afficher les détails par mot si souhaité (result.words)
-                     ],
-                   ),
-                   actions: [
-                     TextButton(
-                       onPressed: () {
-                         Navigator.of(context).pop();
-                         widget.onExitPressed();
-                       },
-                       child: const Text('Quitter', style: TextStyle(color: Colors.white70)),
+               ),
+             Center(
+               child: AlertDialog(
+                 backgroundColor: AppTheme.darkSurface, // Fond sombre
+                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.borderRadius3)), // Bords arrondis
+                 title: Row(
+                   children: [
+                     Icon(
+                       success ? Icons.check_circle : Icons.info_outline,
+                       color: success ? AppTheme.accentGreen : (hasValidResult ? AppTheme.accentYellow : Colors.grey), // Vert si succès, Jaune si résultat mais pas succès, Gris si pas de résultat
+                       size: 32,
                      ),
-                     ElevatedButton(
-                       style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
-                       onPressed: () {
-                         Navigator.of(context).pop();
-                         // Réinitialiser l'état via le Notifier pour réessayer
-                         final notifier = ref.read(exerciseStateProvider.notifier);
-                         final currentState = ref.read(exerciseStateProvider);
-                         if (currentState.referenceText != null && currentState.language != null) {
-                            notifier.prepareExercise(currentState.referenceText!, currentState.language!);
-                         }
-                       },
-                       child: const Text('Réessayer', style: TextStyle(color: Colors.white)),
+                     const SizedBox(width: AppTheme.spacing4),
+                     Text(
+                       success ? 'Exercice réussi !' : (hasValidResult ? 'Résultats' : 'Information'),
+                       style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                      ),
                    ],
                  ),
+                 content: SingleChildScrollView( // Permettre le défilement si le contenu est long
+                   child: Column(
+                     mainAxisSize: MainAxisSize.min,
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     children: [
+                       // Afficher les scores si un résultat valide est disponible
+                       if (hasValidResult) ...[
+                         Text(
+                           'Score Précision: ${result.accuracyScore.toStringAsFixed(1)} / 100',
+                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: success ? AppTheme.accentGreen : AppTheme.accentYellow),
+                         ),
+                         const SizedBox(height: AppTheme.spacing3),
+                         Text('Prononciation: ${result.pronunciationScore.toStringAsFixed(1)}', style: TextStyle(fontSize: 16, color: AppTheme.textSecondary)),
+                         Text('Fluidité: ${result.fluencyScore.toStringAsFixed(1)}', style: TextStyle(fontSize: 16, color: AppTheme.textSecondary)),
+                         Text('Complétude: ${result.completenessScore.toStringAsFixed(1)}', style: TextStyle(fontSize: 16, color: AppTheme.textSecondary)),
+                         const SizedBox(height: AppTheme.spacing4),
+                         Text('Attendu: "${ref.read(exerciseStateProvider).referenceText ?? ""}"', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+                         const SizedBox(height: AppTheme.spacing2),
+                         Text('Reconnu: "${recognizedText ?? "N/A"}"', style: TextStyle(fontSize: 14, color: AppTheme.textPrimary)),
+                         const SizedBox(height: AppTheme.spacing3),
+                       ] else ...[
+                         // Message si aucun résultat valide
+                         Text(
+                           'Aucun score calculé (arrêt manuel ou parole non détectée).',
+                           style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic, color: AppTheme.textSecondary),
+                         ),
+                         const SizedBox(height: AppTheme.spacing3),
+                       ],
+                       // Afficher le feedback ou l'erreur
+                       if (result.errorDetails != null) ...[
+                         Text('Erreur: ${result.errorDetails}', style: TextStyle(fontSize: 14, color: AppTheme.accentRed)),
+                       ] else if (hasValidResult) ...[
+                         // Ajouter un feedback simple basé sur le score si pas d'erreur
+                         Text(
+                           success ? 'Excellent travail !' : 'Continuez à vous entraîner !',
+                           style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+                         ),
+                       ],
+                     ],
+                   ),
+                 ),
+                 actions: [
+                   TextButton(
+                     onPressed: () {
+                       Navigator.of(context).pop(); // Fermer la modale
+                       widget.onExitPressed(); // Quitter l'écran
+                     },
+                     child: const Text('Quitter', style: TextStyle(color: AppTheme.textSecondary)),
+                   ),
+                   ElevatedButton(
+                     style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor), // Couleur du bouton principal
+                     onPressed: () {
+                       Navigator.of(context).pop(); // Fermer la modale
+                       // Réinitialiser l'état pour réessayer
+                       final notifier = ref.read(exerciseStateProvider.notifier);
+                       final currentState = ref.read(exerciseStateProvider);
+                       if (currentState.referenceText != null && currentState.language != null) {
+                         notifier.prepareExercise(currentState.referenceText!, currentState.language!);
+                       }
+                     },
+                     child: const Text('Réessayer', style: TextStyle(color: AppTheme.textPrimary)),
+                   ),
+                 ],
                ),
-             ],
-           );
-         },
-       );
-     }
-  }
-
+             ),
+           ],
+         );
+       },
+     );
+   }
 
   void _showInfoModal() {
     ConsoleLogger.info('Affichage de la modale d\'information pour l\'exercice: ${widget.exercise.title}');
@@ -275,22 +242,46 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
   Widget build(BuildContext context) {
     // Écouter les changements d'état pour afficher les dialogs/snackbars
     ref.listen<ExerciseState>(exerciseStateProvider, (previous, next) {
+      // Si l'état passe à 'completed' (et n'était pas déjà 'completed')
       if (previous?.status != ExerciseStatus.completed && next.status == ExerciseStatus.completed) {
-        if (next.result != null) {
-          // TODO: Obtenir le texte reconnu final (peut nécessiter de l'ajouter à ExerciseState ou de le passer autrement)
-          String? recognizedText = "Texte reconnu non disponible"; // Placeholder
-          _showCompletionDialog(next.result!, recognizedText);
-        }
+        ConsoleLogger.info('[ArticulationScreen] State changed to completed. Preparing to show dialog...');
+        final resultToShow = next.result ?? const PronunciationResult.empty();
+        String? recognizedText = resultToShow.words.isNotEmpty
+            ? resultToShow.words.map((w) => w.word).join(' ')
+            : "Texte non reconnu ou arrêt manuel";
+
+        ConsoleLogger.info('[ArticulationScreen] Calling _showCompletionDialog with result (Accuracy: ${resultToShow.accuracyScore}) and recognized text: "$recognizedText"');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+           if (mounted) {
+              ConsoleLogger.info('[ArticulationScreen] Inside addPostFrameCallback, calling _showCompletionDialog NOW.');
+              _showCompletionDialog(resultToShow, recognizedText);
+           } else {
+              ConsoleLogger.warning('[ArticulationScreen] Widget not mounted when post frame callback executed for dialog.');
+           }
+        });
+
       } else if (previous?.status != ExerciseStatus.error && next.status == ExerciseStatus.error) {
-         if (next.errorMessage != null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Erreur: ${next.errorMessage}'), backgroundColor: Colors.red),
-            );
+        ConsoleLogger.error('[ArticulationScreen] State changed to error: ${next.errorMessage}');
+         // Vérifier si l'erreur est une annulation manuelle avant d'afficher le SnackBar
+         final errorMessage = next.errorMessage?.toLowerCase() ?? "";
+         final bool isCancellationError = errorMessage.contains("cancel") || errorMessage.contains("stopped manually");
+
+         // Afficher le SnackBar SEULEMENT si ce n'est PAS une erreur d'annulation et qu'il y a un message
+         if (!isCancellationError && next.errorMessage != null && mounted) {
+            ConsoleLogger.info('[ArticulationScreen] Displaying error SnackBar for: ${next.errorMessage}');
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+               if (mounted) {
+                 ScaffoldMessenger.of(context).showSnackBar(
+                   SnackBar(content: Text('Erreur: ${next.errorMessage}'), backgroundColor: Colors.red),
+                 );
+               }
+            });
+         } else if (isCancellationError) {
+             ConsoleLogger.info('[ArticulationScreen] Cancellation error detected, SnackBar suppressed.');
          }
       }
     });
 
-    // Lire l'état actuel pour construire l'UI
     final exerciseState = ref.watch(exerciseStateProvider);
 
     return Scaffold(
@@ -304,7 +295,7 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: widget.onExitPressed, // Garder la callback pour quitter
+          onPressed: widget.onExitPressed,
         ),
         actions: [
           IconButton(
@@ -335,16 +326,16 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
         children: [
           Expanded(
             flex: 3,
-            child: _buildMainContent(exerciseState), // Passer l'état
+            child: _buildMainContent(exerciseState),
           ),
-          _buildControls(exerciseState), // Passer l'état
-          _buildFeedbackArea(exerciseState), // Passer l'état
+          _buildControls(exerciseState),
+          _buildFeedbackArea(exerciseState),
         ],
       ),
     );
   }
 
-  Widget _buildMainContent(ExerciseState state) { // Prend l'état en paramètre
+  Widget _buildMainContent(ExerciseState state) {
     final bool isRecording = state.status == ExerciseStatus.recording;
     final bool isProcessing = state.status == ExerciseStatus.processing || state.status == ExerciseStatus.initializing;
     final String textToRead = state.referenceText ?? "Chargement...";
@@ -355,7 +346,6 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Afficher le texte à lire depuis l'état
             Text(
               textToRead,
               textAlign: TextAlign.center,
@@ -366,9 +356,8 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
                 height: 1.4,
               ),
             ),
-            const SizedBox(height: 16 + 28 * 1.5), // Conserver l'espacement
+            const SizedBox(height: 16 + 28 * 1.5),
             const SizedBox(height: 32),
-            // Mettre à jour l'icône en fonction de l'état
             Icon(
               isRecording ? Icons.mic : (isProcessing ? Icons.hourglass_top : Icons.mic_none),
               size: 80,
@@ -381,15 +370,11 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
     );
   }
 
-  Widget _buildControls(ExerciseState state) { // Prend l'état en paramètre
+  Widget _buildControls(ExerciseState state) {
     final bool isRecording = state.status == ExerciseStatus.recording;
     final bool isProcessing = state.status == ExerciseStatus.processing || state.status == ExerciseStatus.initializing;
-    final bool isCompleted = state.status == ExerciseStatus.completed;
     final bool isReady = state.status == ExerciseStatus.ready;
-
-    // Déterminer si le bouton d'enregistrement doit être activé
     bool canRecordOrStop = (isReady || isRecording) && !_isPlayingExample;
-    // Déterminer si le bouton play doit être activé
     bool canPlayExample = !_isPlayingExample && !isRecording && !isProcessing;
 
     return Container(
@@ -397,7 +382,6 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // Bouton Play Example
           ElevatedButton.icon(
             onPressed: canPlayExample ? _playExampleAudio : null,
             style: ElevatedButton.styleFrom(
@@ -412,30 +396,26 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
               color: canPlayExample ? Colors.tealAccent[100] : Colors.grey,
             ),
             label: Text(
-              'Exemple', // Label mis à jour
+              'Exemple',
               style: TextStyle(
                 color: canPlayExample ? Colors.white.withOpacity(0.9) : Colors.grey,
               ),
             ),
           ),
-          // Bouton Microphone
           PulsatingMicrophoneButton(
             size: 72,
             isRecording: isRecording,
             baseColor: AppTheme.primaryColor,
             recordingColor: AppTheme.accentRed,
-            // Appeler _toggleRecording uniquement si l'état le permet, en l'enveloppant
-            // Passer une fonction vide si désactivé, car onPressed n'est pas nullable
-            onPressed: canRecordOrStop ? () { _toggleRecording(); } : () {},
+            onPressed: canRecordOrStop ? _toggleRecording : () {},
           ),
-          // Placeholder pour l'espacement (ou un autre bouton si nécessaire)
-           SizedBox(width: 80), // Ajuster la largeur si besoin
+           SizedBox(width: 80),
         ],
       ),
     );
   }
 
-  Widget _buildFeedbackArea(ExerciseState state) { // Prend l'état en paramètre
+  Widget _buildFeedbackArea(ExerciseState state) {
     String feedbackText;
     Color feedbackColor = Colors.white.withOpacity(0.8);
 
@@ -457,7 +437,6 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
         break;
       case ExerciseStatus.completed:
         if (state.result != null) {
-           // TODO: Intégrer le feedback OpenAI ici s'il est ajouté à l'état
            feedbackText = state.result!.errorDetails ?? 'Score: ${state.result!.accuracyScore.toStringAsFixed(1)}';
            feedbackColor = state.result!.errorDetails != null
                ? AppTheme.accentRed
@@ -467,10 +446,18 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
         }
         break;
       case ExerciseStatus.error:
-        feedbackText = state.errorMessage ?? 'Une erreur est survenue.';
-        feedbackColor = AppTheme.accentRed;
+        // Afficher le message d'erreur seulement si ce n'est PAS une annulation
+        final errorMessage = state.errorMessage?.toLowerCase() ?? "";
+        final bool isCancellationError = errorMessage.contains("cancel") || errorMessage.contains("stopped manually");
+        if (!isCancellationError && state.errorMessage != null) {
+           feedbackText = state.errorMessage!;
+           feedbackColor = AppTheme.accentRed;
+        } else {
+           // Si c'est une annulation ou pas de message, revenir à l'état prêt visuellement
+           feedbackText = 'Prêt à enregistrer.';
+           feedbackColor = Colors.white.withOpacity(0.8);
+        }
         break;
-      case ExerciseStatus.initial:
       default:
         feedbackText = 'Préparation de l\'exercice...';
         break;
@@ -484,7 +471,7 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Statut', // Titre mis à jour
+              'Statut',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -511,11 +498,4 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
       ),
     );
   }
-
-  // Supprimer _difficultyToString si non utilisé ailleurs
-  // String _difficultyToString(ExerciseDifficulty difficulty) { ... }
-
-  // Supprimer les fonctions utilitaires _safelyConvertMap/_safelyConvertList
-  // Map<String, dynamic>? _safelyConvertMap(...) { ... }
-  // List<dynamic>? _safelyConvertList(...) { ... }
 }

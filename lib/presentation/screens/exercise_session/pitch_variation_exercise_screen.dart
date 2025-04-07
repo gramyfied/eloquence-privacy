@@ -293,13 +293,8 @@ class PitchVariationCubit extends Cubit<PitchVariationExerciseState> {
       _audioChunkSubscription = audioStream.listen(
         (chunk) {
           // Ensure chunk is Uint8List before passing
-          if (chunk is Uint8List) {
-             _audioAnalysisService.processAudioChunk(chunk);
-          } else {
-             print("Warning: Received non-Uint8List chunk from audio repository.");
-             // Handle conversion or error if necessary
-          }
-        },
+           _audioAnalysisService.processAudioChunk(chunk);
+                },
         onError: (error) {
           print("Audio stream error: $error");
           emit(state.copyWith(status: PitchVariationStatus.error, feedback: "Erreur d'enregistrement audio."));

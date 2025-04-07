@@ -87,6 +87,7 @@ class AzureSpeechHandler: NSObject, AzureSpeechApi {
 
                     // Démarrer la reconnaissance continue
                     print("[AzureSpeechHandler] Starting continuous recognition...")
+                    print("[AzureSpeechHandler DEBUG] Attempting to start continuous recognition...") // DEBUG LOG ADDED
                     try self.speechRecognizer!.startContinuousRecognition()
                     print("[AzureSpeechHandler] Continuous recognition started.")
 
@@ -149,6 +150,7 @@ class AzureSpeechHandler: NSObject, AzureSpeechApi {
 
         // Résultat reconnu (final pour une phrase/segment)
         recognizer.addRecognizedEventHandler { [weak self] _, event in
+            print("[AzureSpeechHandler DEBUG] Recognized Event Triggered. Reason: \(event.result.reason), Text: \(event.result.text ?? "N/A")") // DEBUG LOG ADDED
             guard let self = self, let currentCompletion = self.assessmentCompletion else { return }
             self.assessmentCompletion = nil // Important: Consommer le handler pour éviter double appel
 
@@ -179,6 +181,7 @@ class AzureSpeechHandler: NSObject, AzureSpeechApi {
 
         // Annulation
         recognizer.addCanceledEventHandler { [weak self] _, event in
+             print("[AzureSpeechHandler DEBUG] Canceled Event Triggered. Reason: \(event.reason), ErrorCode: \(event.errorCode), Details: \(event.errorDetails ?? "N/A")") // DEBUG LOG ADDED
              guard let self = self, let currentCompletion = self.assessmentCompletion else { return }
              self.assessmentCompletion = nil
 
@@ -191,6 +194,7 @@ class AzureSpeechHandler: NSObject, AzureSpeechApi {
 
         // Session arrêtée
         recognizer.addSessionStoppedEventHandler { [weak self] _, event in
+            print("[AzureSpeechHandler DEBUG] SessionStopped Event Triggered. SessionId: \(event.sessionId)") // DEBUG LOG ADDED
             print("[AzureSpeechHandler] Event: SessionStopped. SessionId: \(event.sessionId)")
              guard let self = self else { return }
             // Si le completion handler est toujours là, c'est que la session s'est arrêtée avant un résultat final
@@ -208,6 +212,11 @@ class AzureSpeechHandler: NSObject, AzureSpeechApi {
          recognizer.addSessionStartedEventHandler { _, event in
              print("[AzureSpeechHandler] Event: SessionStarted. SessionId: \(event.sessionId)")
          }
+
+        // Événement de reconnaissance partielle (pour débogage)
+        recognizer.addRecognizingEventHandler { [weak self] _, event in
+            print("[AzureSpeechHandler DEBUG] Recognizing Event Triggered. Text: \(event.result.text ?? "N/A")")
+        }
     }
 
     // Fonction utilitaire pour mapper le résultat natif vers l'objet Pigeon

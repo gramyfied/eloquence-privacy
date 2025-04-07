@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-    import 'package:eloquence_flutter/core/errors/failures.dart';
     import 'package:eloquence_flutter/domain/entities/pronunciation_result.dart';
     import 'package:eloquence_flutter/domain/usecases/initialize_azure_speech.dart';
     import 'package:eloquence_flutter/domain/usecases/start_pronunciation_assessment.dart';
@@ -78,8 +77,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
       // final SyncService _syncService; // Exemple
       // final ModalService _modalService; // Exemple
 
-      // Flag pour savoir si l'initialisation a déjà été tentée/réussie
-      bool _isInitialized = false;
+      // SUPPRESSION: Flag local _isInitialized n'est plus utilisé
+      // bool _isInitialized = false;
 
       ExerciseNotifier(
         this._initializeUseCase,
@@ -91,76 +90,90 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
       ) : super(const ExerciseState());
 
       /// Prépare l'exercice avec le texte et la langue.
-      /// Tente d'initialiser le SDK si ce n'est pas déjà fait.
+      /// Prépare l'exercice avec le texte et la langue.
+      /// Vérifie si le service Azure est initialisé.
       Future<void> prepareExercise(String text, String lang) async {
+        // Vérifier l'état d'initialisation du repository
+        final bool isAzureReady = _ref.read(azureSpeechRepositoryProvider).isInitialized;
+
+        if (!isAzureReady) {
+          print("ERREUR: Le service Azure Speech n'est pas initialisé. Vérifiez main.dart et les clés .env.");
+          state = state.copyWith(
+            referenceText: text,
+            language: lang,
+            status: ExerciseStatus.error,
+            errorMessage: "Service Azure non initialisé.",
+            clearResult: true,
+          );
+          return;
+        }
+
+        // Si initialisé, préparer l'état pour l'exercice
         state = state.copyWith(
           referenceText: text,
           language: lang,
-          status: ExerciseStatus.initializing,
+          status: ExerciseStatus.ready, // Directement prêt si Azure est OK
           clearError: true,
           clearResult: true,
         );
-
-        if (!_isInitialized) {
-          // TODO: Récupérer la clé et la région depuis une source sécurisée (config, .env)
-          const String azureKey = String.fromEnvironment('AZURE_SPEECH_KEY', defaultValue: 'YOUR_KEY');
-          const String azureRegion = String.fromEnvironment('AZURE_SPEECH_REGION', defaultValue: 'YOUR_REGION');
-
-           if (azureKey == 'YOUR_KEY' || azureRegion == 'YOUR_REGION') {
-             print("ERREUR: Clé ou région Azure non configurée !");
-              state = state.copyWith(
-                status: ExerciseStatus.error,
-                errorMessage: "Configuration Azure manquante.",
-              );
-             return;
-           }
-
-
-          final initResult = await _initializeUseCase.execute(azureKey, azureRegion);
-
-          initResult.fold(
-            (failure) {
-              state = state.copyWith(
-                status: ExerciseStatus.error,
-                errorMessage: "Erreur d'initialisation: ${failure.toString()}",
-              );
-              // Peut-être logger l'erreur plus en détail
-            },
-            (_) {
-              _isInitialized = true;
-              state = state.copyWith(status: ExerciseStatus.ready);
-            },
-          );
-        } else {
-           state = state.copyWith(status: ExerciseStatus.ready);
-        }
       }
 
       /// Démarre l'enregistrement et l'évaluation.
       Future<void> startRecording() async {
+        // 1. Vérifier si l'état actuel permet de démarrer
         if (state.status != ExerciseStatus.ready || state.referenceText == null || state.language == null) {
           print("Impossible de démarrer l'enregistrement : état incorrect ou données manquantes.");
           return;
         }
-        if (!_isInitialized) {
-           state = state.copyWith(status: ExerciseStatus.error, errorMessage: "SDK non initialisé.");
+
+        // 2. Vérifier si le service Azure est réellement initialisé (via le repository)
+        final bool isAzureReady = _ref.read(azureSpeechRepositoryProvider).isInitialized;
+        if (!isAzureReady) {
+           print("ERREUR: Tentative de démarrage de l'enregistrement mais le service Azure (repository) n'est pas initialisé.");
+           state = state.copyWith(status: ExerciseStatus.error, errorMessage: "Service Azure non prêt.");
            return;
         }
 
+        // 3. Mettre à jour l'état pour indiquer l'enregistrement
         state = state.copyWith(status: ExerciseStatus.recording, clearError: true, clearResult: true);
 
+        // 4. Démarrer l'évaluation via le use case
         final assessmentResult = await _startAssessmentUseCase.execute(state.referenceText!, state.language!);
 
-        // Le résultat est géré ici, que ce soit un succès, un NoMatch (empty result) ou une erreur
+        // 5. Gérer le résultat de l'évaluation
         assessmentResult.fold(
           (failure) {
-            state = state.copyWith(
-              status: ExerciseStatus.error,
-              errorMessage: "Erreur d'évaluation: ${failure.toString()}",
-            );
-            // _modalService.showErrorModal(failure.toString()); // Exemple
+            // Vérifier si l'erreur est une annulation manuelle ou une exception d'annulation
+            // NativePlatformException peut encapsuler la CancellationException
+            bool isCancellation = false;
+            String failureString = failure.toString().toLowerCase();
+            // Vérifier si le message contient des indices d'annulation
+            isCancellation = failureString.contains("cancel") || failureString.contains("stopped manually");
+
+            if (isCancellation) {
+              // C'est une annulation manuelle ou une erreur liée à l'annulation.
+              // Passer à l'état completed avec un résultat vide et SANS message d'erreur.
+              print("INFO: Enregistrement arrêté/annulé (géré dans failure block). Message: $failure");
+              state = state.copyWith(
+                status: ExerciseStatus.completed, // Passer à completed
+                result: const PronunciationResult.empty(), // Utiliser un résultat vide
+                errorMessage: null, // Assurer qu'il n'y a pas de message d'erreur
+                clearError: true,
+              );
+            } else {
+              // C'est une autre erreur, l'afficher et mettre l'état en erreur
+              print("ERREUR: Évaluation échouée: $failure");
+              state = state.copyWith(
+                status: ExerciseStatus.error,
+                errorMessage: "Erreur d'évaluation: ${failure.toString()}",
+              );
+              // _modalService.showErrorModal(failure.toString()); // Exemple
+            }
           },
           (result) {
+            // result sera PronunciationResult.empty() si NoMatch (géré par le repo)
+            // result sera PronunciationResult.empty() si arrêt manuel ou NoMatch
+            print("Évaluation terminée. Résultat (peut être vide): ${result.accuracyScore}");
              // Même si result est PronunciationResult.empty(), on passe à completed
             state = state.copyWith(
               status: ExerciseStatus.completed,

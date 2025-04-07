@@ -20,6 +20,9 @@ abstract class IAzureSpeechRepository {
   /// Arrête toute session de reconnaissance vocale ou d'évaluation en cours.
   Future<void> stopRecognition();
 
+  // AJOUT: Getter pour vérifier l'état d'initialisation
+  bool get isInitialized;
+
   // Ajoutez d'autres méthodes si nécessaire (ex: synthèse vocale)
   // Future<Uint8List> synthesizeSpeech(String text, String language, String voiceName);
 }

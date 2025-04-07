@@ -2,7 +2,7 @@ plugins {
     id "com.android.application"
     id "kotlin-android"
     // Add kotlinx-serialization plugin
-    id "org.jetbrains.kotlin.plugin.serialization" version "1.8.22" // Assurez-vous que la version correspond à votre version Kotlin
+    id "org.jetbrains.kotlin.plugin.serialization" version "1.9.0" // Aligner avec la version Kotlin de Gradle
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
 }
@@ -13,18 +13,18 @@ android {
     ndkVersion = flutter.ndkVersion
 
     // Redéfinir explicitement la compatibilité Java ET la toolchain Kotlin
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17 // Changé de 21 à 17
-        targetCompatibility = JavaVersion.VERSION_17 // Changé de 21 à 17
+    compileOptions { // Revenir à 17
+        sourceCompatibility = JavaVersion.VERSION_17 
+        targetCompatibility = JavaVersion.VERSION_17 
     }
-    kotlin { 
-        jvmToolchain(17) // Changé de 21 à 17
+    kotlin { // Utiliser la toolchain Kotlin 17
+        jvmToolchain(17) 
     }
-    // compileOptions { // Ancienne config commentée
+    // compileOptions { // Ancienne config commentée (21)
     //     sourceCompatibility = JavaVersion.VERSION_21 
     //     targetCompatibility = JavaVersion.VERSION_21 
     // }
-    // kotlinOptions {
+    // kotlinOptions { // Ancienne config commentée (21)
     //     jvmTarget = "21" 
     // }
 
@@ -80,5 +80,5 @@ dependencies {
     // Ajoutez ici d'autres dépendances Android si nécessaire
 
     // Kotlinx Serialization JSON library
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1") // Utilisez une version stable appropriée
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3") // Mise à jour vers une version plus récente
 }

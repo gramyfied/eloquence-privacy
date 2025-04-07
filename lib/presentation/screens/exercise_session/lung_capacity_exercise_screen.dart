@@ -347,6 +347,14 @@ class _LungCapacityExerciseScreenState extends State<LungCapacityExerciseScreen>
                      mainAxisSize: MainAxisSize.min,
                      crossAxisAlignment: CrossAxisAlignment.start,
                      children: [
+                       // AJOUT: Affichage du score (légèrement modifié pour clarté si succès)
+                       Text(
+                         success
+                             ? 'Score: 100 / 100 (Objectif atteint !)' // Texte explicite si succès
+                             : 'Score: ${results['score']?.toInt() ?? 0} / 100', // Affichage normal sinon
+                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: success ? AppTheme.accentGreen : AppTheme.accentYellow)
+                       ),
+                       const SizedBox(height: AppTheme.spacing3), // Espacement ajouté
                        Text('Durée réalisée: ${results['duree_realisee'].toStringAsFixed(1)} s', style: TextStyle(fontSize: 16, color: AppTheme.textPrimary)), // Utilisation de AppTheme
                        const SizedBox(height: AppTheme.spacing2), // Utilisation de AppTheme
                        Text('Objectif: ${results['duree_objectif'].toStringAsFixed(1)} s', style: TextStyle(fontSize: 16, color: AppTheme.textSecondary)), // Utilisation de AppTheme

@@ -9,6 +9,8 @@ import 'package:eloquence_flutter/infrastructure/native/azure_speech_api.g.dart'
 /// communiquer avec le SDK Azure Speech natif.
 class AzureSpeechRepositoryImpl implements IAzureSpeechRepository {
   final AzureSpeechApi _nativeApi; // L'API Pigeon générée
+  // AJOUT: Variable pour suivre l'état d'initialisation
+  bool _isInitialized = false;
 
   /// Construit une instance de [AzureSpeechRepositoryImpl].
   ///
@@ -17,11 +19,19 @@ class AzureSpeechRepositoryImpl implements IAzureSpeechRepository {
 
   @override
   Future<void> initialize(String subscriptionKey, String region) async {
+    print("🔵 [AzureSpeechRepoImpl] Tentative d'initialisation avec region: $region");
+    // Réinitialiser au cas où on réinitialise
+    _isInitialized = false;
     try {
+      print("🔵 [AzureSpeechRepoImpl] Appel de _nativeApi.initialize...");
       // Appelle la méthode native via Pigeon
       await _nativeApi.initialize(subscriptionKey, region);
+      // Mettre à jour l'état si succès
+      _isInitialized = true;
+      print("🟢 [AzureSpeechRepoImpl] Initialisation native réussie.");
     } on PlatformException catch (e, s) {
-      // Capture les erreurs spécifiques à la communication native
+      print("🔴 [AzureSpeechRepoImpl] Erreur PlatformException lors de l'initialisation native: ${e.message} (${e.code})");
+      // Garder _isInitialized à false en cas d'erreur
       throw NativePlatformException(
           'Erreur native lors de l\'initialisation Azure: ${e.message} (${e.code})', s);
     } catch (e, s) {
@@ -30,6 +40,10 @@ class AzureSpeechRepositoryImpl implements IAzureSpeechRepository {
           'Erreur inattendue lors de l\'initialisation Azure: ${e.toString()}', s);
     }
   }
+
+  // AJOUT: Implémentation du getter
+  @override
+  bool get isInitialized => _isInitialized;
 
   @override
   Future<PronunciationResult> startPronunciationAssessment(

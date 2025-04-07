@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:math' as math; // Importer avec préfixe pour les calculs
 import 'dart:math'; // Importer pour Random
@@ -9,7 +8,6 @@ import 'package:audio_signal_processor/audio_signal_processor.dart'; // Importer
 import '../../../core/utils/console_logger.dart';
 import '../../../app/theme.dart';
 import '../../../domain/entities/exercise.dart';
-import '../../../domain/entities/exercise_category.dart';
 import '../../../domain/repositories/audio_repository.dart';
 import '../../../services/service_locator.dart';
 // Retrait import AzureSpeechService car on n'utilise plus analyzeAudioFile

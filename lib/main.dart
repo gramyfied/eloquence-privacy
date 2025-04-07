@@ -9,10 +9,10 @@ import 'app/app.dart';
 // import 'app/router.dart'; // L'import du router n'est pas nécessaire ici
 import 'services/service_locator.dart'; // Contient setupServiceLocator et serviceLocator
 import 'services/lexique/syllabification_service.dart'; // Importer le service
-import 'services/azure/azure_speech_service.dart'; // Importer AzureSpeechService
+// Importer AzureSpeechService
 import 'services/azure/azure_tts_service.dart'; // Importer AzureTtsService
 import 'domain/repositories/auth_repository.dart';
-import 'domain/repositories/exercise_repository.dart';
+import 'domain/repositories/azure_speech_repository.dart'; // AJOUT: Import manquant
 // Correction des imports pour les repositories Supabase
 import 'infrastructure/repositories/supabase_profile_repository.dart';
 import 'infrastructure/repositories/supabase_session_repository.dart';
@@ -55,9 +55,36 @@ void main() async {
   // Charger le lexique de syllabification
   await serviceLocator<SyllabificationService>().loadLexicon();
 
-  // --- Supprimer l'initialisation de l'ancien AzureSpeechService ---
-  // L'initialisation se fait maintenant via InitializeAzureSpeechUseCase dans ExerciseNotifier
-  // try {
+  // --- Initialiser IAzureSpeechRepository au démarrage ---
+  try {
+    // Récupérer le repository depuis le service locator
+    final azureSpeechRepository = serviceLocator<IAzureSpeechRepository>();
+    final azureKey = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'];
+    final azureRegion = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'];
+
+    if (azureKey != null && azureRegion != null && azureKey.isNotEmpty && azureRegion.isNotEmpty) {
+      // Appeler la méthode initialize du repository
+      await azureSpeechRepository.initialize(azureKey, azureRegion);
+      // Vérifier l'état après l'appel (optionnel mais bon pour le log)
+      if (azureSpeechRepository.isInitialized) {
+        print('🟢 [MAIN] IAzureSpeechRepository initialisé avec succès.');
+      } else {
+         // L'initialisation a échoué (une exception aurait dû être levée par l'implémentation)
+         print('🔴 [MAIN] Échec de l\'initialisation d\'IAzureSpeechRepository (état post-appel).');
+      }
+    } else {
+      print('🔴 [MAIN] Clés Azure manquantes ou vides dans .env pour IAzureSpeechRepository.');
+    }
+  } catch (e) {
+    // L'implémentation de initialize lève une exception en cas d'erreur
+    print('🔴 [MAIN] Erreur critique lors de l\'initialisation d\'IAzureSpeechRepository: $e');
+  }
+  // --- Fin de l'initialisation ---
+
+
+  // --- Supprimer l'initialisation de l'ancien AzureSpeechService --- (Bloc commenté gardé pour référence historique)
+  // // L'initialisation se fait maintenant via InitializeAzureSpeechUseCase dans ExerciseNotifier
+  // // try {
   //   final azureSpeechService = serviceLocator<AzureSpeechService>();
   //   final azureKey = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'];
   //   final azureRegion = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'];

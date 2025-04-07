@@ -98,6 +98,7 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
     private var pronunciationAssessmentConfig: PronunciationAssessmentConfig? = null
     private var audioConfig: AudioConfig? = null // Garder une référence pour le nettoyage
     private var currentAssessmentDeferred: CompletableDeferred<PronunciationAssessmentResult?>? = null
+    private var _isStoppingManually = false // Flag pour arrêt manuel
 
     companion object {
         private const val TAG = "AzureSpeechHandler"
@@ -114,8 +115,6 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
             Log.i(TAG, "Initializing Azure Speech SDK for region: $region")
             try {
                 speechConfig = SpeechConfig.fromSubscription(subscriptionKey, region)
-                // Vous pouvez ajouter d'autres configurations ici si nécessaire
-                // speechConfig?.setProperty(PropertyId.SpeechServiceConnection_LanguageIdMode, "AtStart") // Exemple
                 Log.i(TAG, "Azure Speech SDK initialized successfully.")
                 callback(Result.success(Unit))
             } catch (e: Exception) {
@@ -128,92 +127,92 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
     override fun startPronunciationAssessment(referenceText: String, language: String, callback: (Result<PronunciationAssessmentResult?>) -> Unit) {
        mainScope.launch {
             Log.i(TAG, "Starting pronunciation assessment for language: $language")
+            _isStoppingManually = false // Réinitialiser le flag
             if (speechConfig == null) {
                 Log.e(TAG, "Initialization required before starting assessment.")
                 callback(Result.failure(IllegalStateException("SDK not initialized. Call initialize first.")))
                 return@launch
             }
-
             if (!checkMicrophonePermission()) {
                  Log.e(TAG, "Microphone permission not granted.")
                  callback(Result.failure(SecurityException("Microphone permission not granted.")))
                  return@launch
             }
+            stopAndCleanupRecognizer() // Nettoyer avant de commencer
 
-            // Nettoyer toute reconnaissance précédente
-            stopAndCleanupRecognizer()
-
+            Log.d(TAG, "[startPronunciationAssessment] Entering try block.")
             currentAssessmentDeferred = CompletableDeferred()
-            val deferred = currentAssessmentDeferred ?: return@launch // Should not happen
+            val deferred = currentAssessmentDeferred ?: return@launch
+            Log.d(TAG, "[startPronunciationAssessment] Deferred created.")
 
             try {
-                // Configuration de l'évaluation
-                // Note: Assurez-vous que le JSON est valide et correspond à vos besoins.
-                // Échapper les guillemets dans referenceText si nécessaire.
-                // Correction: Utiliser le constructeur au lieu de fromJSON
+                Log.d(TAG, "[startPronunciationAssessment] STEP 1: Creating PronunciationAssessmentConfig...")
                 pronunciationAssessmentConfig = PronunciationAssessmentConfig(
-                    referenceText,
-                    PronunciationAssessmentGradingSystem.HundredMark,
-                    PronunciationAssessmentGranularity.Phoneme,
-                    true // enableMiscue
+                    referenceText, PronunciationAssessmentGradingSystem.HundredMark,
+                    PronunciationAssessmentGranularity.Phoneme, true
                 )
-                // Ajouter d'autres configurations si nécessaire via les setters, ex:
-                // pronunciationAssessmentConfig?.setJsonResult() // Pour obtenir le JSON brut si besoin
+                Log.d(TAG, "[startPronunciationAssessment] STEP 1: Pronunciation assessment config created.")
 
-                Log.d(TAG, "Pronunciation assessment config created.")
-
-                // Configuration audio
+                Log.d(TAG, "[startPronunciationAssessment] STEP 2: Creating AudioConfig...")
                 audioConfig = AudioConfig.fromDefaultMicrophoneInput()
-                Log.d(TAG, "Audio config created for default microphone.")
+                Log.d(TAG, "[startPronunciationAssessment] STEP 2: Audio config created.")
 
-                // Création du recognizer
+                Log.d(TAG, "[startPronunciationAssessment] STEP 3: Creating SpeechRecognizer for language: $language...")
                 speechRecognizer = SpeechRecognizer(speechConfig, language, audioConfig)
-                Log.d(TAG, "Speech recognizer created for language: $language")
+                Log.d(TAG, "[startPronunciationAssessment] STEP 3: Speech recognizer created.")
 
-                // Appliquer la config d'évaluation
+                Log.d(TAG, "[startPronunciationAssessment] STEP 4: Applying assessment config to recognizer...")
                 pronunciationAssessmentConfig?.applyTo(speechRecognizer)
-                Log.d(TAG, "Pronunciation assessment config applied to recognizer.")
+                Log.d(TAG, "[startPronunciationAssessment] STEP 4: Pronunciation assessment config applied.")
 
-                // Ajouter les listeners d'événements
+                Log.d(TAG, "[startPronunciationAssessment] STEP 5: Adding event handlers...")
                 addEventHandlers(deferred)
+                Log.d(TAG, "[startPronunciationAssessment] STEP 5: Event handlers added.")
 
-                // Démarrer la reconnaissance
-                Log.i(TAG, "Starting continuous recognition...")
+                Log.i(TAG, "[startPronunciationAssessment] STEP 6: Starting continuous recognition...")
+                Log.d(TAG, "[DEBUG] Attempting to call startContinuousRecognitionAsync...") // DEBUG LOG ADDED
                 val recognitionFuture = speechRecognizer?.startContinuousRecognitionAsync()
-                // Attendre que le démarrage soit effectif (ou échoue) pour éviter les race conditions
-                recognitionFuture?.get(5, TimeUnit.SECONDS) // Timeout raisonnable
-                Log.i(TAG, "Continuous recognition started.")
+                Log.d(TAG, "[startPronunciationAssessment] STEP 6: startContinuousRecognitionAsync called, awaiting future...")
+                recognitionFuture?.get(10, TimeUnit.SECONDS) // Consider potential blocking here
+                Log.i(TAG, "[startPronunciationAssessment] STEP 6: Continuous recognition future completed (started or failed).")
 
-                // Gérer le résultat via le Deferred dans un scope séparé pour ne pas bloquer mainScope
+                Log.d(TAG, "[startPronunciationAssessment] STEP 7: Launching coroutine to await deferred result...")
                 launch(Dispatchers.IO) {
                     try {
                         Log.d(TAG, "Waiting for assessment result...")
-                        val result = deferred.await()
-                        Log.i(TAG, "Assessment result received. Success: ${result != null}")
-                        // Revenir sur le main thread pour appeler le callback Flutter
+                        val result = deferred.await() // Attend le résultat (ou null/exception)
+                        Log.i(TAG, "Assessment result received via deferred. Success: ${result != null}")
                         withContext(Dispatchers.Main) {
-                             callback(Result.success(result))
+                             callback(Result.success(result)) // Renvoyer le résultat (peut être null)
                         }
                     } catch (e: CancellationException) {
-                         Log.w(TAG, "Assessment cancelled or timed out.")
+                         Log.w(TAG, "Deferred cancelled: ${e.message}")
                          withContext(Dispatchers.Main) {
-                            callback(Result.failure(e))
+                            // Si l'annulation N'EST PAS due à un arrêt manuel, propager l'erreur
+                            if (!_isStoppingManually) {
+                                callback(Result.failure(e))
+                            } else {
+                                // Si c'est un arrêt manuel, considérer comme un succès avec résultat null
+                                Log.i(TAG, "Manual stop detected during await, returning success with null result.")
+                                callback(Result.success(null))
+                            }
                          }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error waiting for assessment result: ${e.message}", e)
+                        Log.e(TAG, "Error waiting for assessment result via deferred: ${e.message}", e)
                          withContext(Dispatchers.Main) {
                             callback(Result.failure(e))
                          }
-                    } finally {
-                         // Le nettoyage se fait maintenant dans les listeners ou stopRecognition
                     }
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start pronunciation assessment: ${e.message}", e)
-                stopAndCleanupRecognizer() // Nettoyer en cas d'erreur de démarrage
-                deferred.completeExceptionally(e) // Assurer que le deferred est complété
-                callback(Result.failure(e))
+                Log.e(TAG, "[startPronunciationAssessment] Exception caught during setup/start: ${e.message}", e)
+                stopAndCleanupRecognizer()
+                // Compléter le deferred avec l'exception si ce n'est pas déjà fait
+                if (currentAssessmentDeferred?.isActive == true) {
+                   deferred.completeExceptionally(e)
+                }
+                callback(Result.failure(e)) // Renvoyer l'erreur à Flutter
             }
        }
     }
@@ -221,35 +220,37 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
      override fun stopRecognition(callback: (Result<Unit>) -> Unit) {
         mainScope.launch {
             Log.i(TAG, "Stopping recognition requested.")
+            _isStoppingManually = true // Mettre le flag
             val recognizer = speechRecognizer
             val deferred = currentAssessmentDeferred
 
             if (recognizer == null) {
                 Log.w(TAG, "stopRecognition called but recognizer is already null.")
-                callback(Result.success(Unit)) // Pas d'erreur si déjà arrêté
+                callback(Result.success(Unit))
                 return@launch
             }
 
-            // Annuler le deferred s'il est toujours actif
-            if (deferred?.isActive == true) {
-                 deferred.cancel(CancellationException("Recognition stopped manually by user."))
-            }
+            // NE PAS Annuler le deferred explicitement ici.
+            // Laisser les event handlers (recognized, canceled, sessionStopped) le compléter.
+            // if (deferred?.isActive == true) {
+            //      Log.d(TAG, "Cancelling active deferred due to manual stop.")
+            //      deferred.cancel(CancellationException("Manually stopped by user via stopRecognition call."))
+            // }
 
-            // Arrêter la reconnaissance de manière asynchrone
+            // Simplement demander l'arrêt de la reconnaissance Azure
             launch(Dispatchers.IO) {
                 try {
                     Log.d(TAG, "Calling stopContinuousRecognitionAsync...")
-                    recognizer.stopContinuousRecognitionAsync().get(5, TimeUnit.SECONDS) // Attendre l'arrêt effectif
+                    recognizer.stopContinuousRecognitionAsync().get(5, TimeUnit.SECONDS)
                     Log.i(TAG, "Continuous recognition stopped successfully via stopRecognition.")
-                    // Le nettoyage final se fera via les listeners ou ici si nécessaire
                     withContext(Dispatchers.Main) {
-                        stopAndCleanupRecognizer() // Assurer le nettoyage
+                        // Le nettoyage se fait dans les listeners (canceled/sessionStopped)
                         callback(Result.success(Unit))
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error stopping recognition: ${e.message}", e)
+                    Log.e(TAG, "Error stopping recognition via SDK call: ${e.message}", e)
                      withContext(Dispatchers.Main) {
-                        stopAndCleanupRecognizer() // Nettoyer même en cas d'erreur
+                        stopAndCleanupRecognizer() // Forcer le nettoyage en cas d'erreur ici
                         callback(Result.failure(e))
                      }
                 }
@@ -258,153 +259,140 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
     }
 
     private fun addEventHandlers(deferred: CompletableDeferred<PronunciationAssessmentResult?>) {
-         // Configurer Json pour ignorer les clés inconnues
-         val jsonParser = Json { ignoreUnknownKeys = true; isLenient = true } // Correction: 'private' supprimé
+         val jsonParser = Json { ignoreUnknownKeys = true; isLenient = true }
 
          speechRecognizer?.recognized?.addEventListener { _, e ->
+            Log.d(TAG, "[DEBUG] Recognized Event Triggered. Reason: ${e.result.reason}, Text: ${e.result.text}") // DEBUG LOG ADDED
             Log.d(TAG, "Event: RecognizedSpeech. Reason: ${e.result.reason}")
-            if (e.result.reason == ResultReason.RecognizedSpeech) {
+            if (deferred.isActive && e.result.reason == ResultReason.RecognizedSpeech) {
                 val jsonResult = e.result.properties.getProperty(PropertyId.SpeechServiceResponse_JsonResult)
+                Log.d(TAG, "[DEBUG] Recognized JSON: ${jsonResult?.substring(0, minOf(jsonResult.length, 200))}...") // DEBUG LOG ADDED - Log start of JSON
                 if (jsonResult.isNullOrBlank()) {
                     Log.e(TAG, "JSON result is null or empty.")
                     deferred.completeExceptionally(Exception("Pronunciation assessment JSON result is missing."))
                 } else {
-                    Log.d(TAG, "Raw JSON Result: $jsonResult") // Log pour le débogage
+                    Log.d(TAG, "Raw JSON Result: $jsonResult")
                     try {
-                        // Parser le JSON
-                        val parsedResult = jsonParser.decodeFromString<AzurePronunciationResultJson>(jsonResult)
-
-                        // Vérifier si l'évaluation a réussi dans le JSON
+                        // Tentative d'obtention explicite du sérialiseur
+                        val serializer = serializer<AzurePronunciationResultJson>() 
+                        Log.d(TAG, "Serializer for AzurePronunciationResultJson obtained successfully.") // Log de succès si ça passe
+                        val parsedResult = jsonParser.decodeFromString(serializer, jsonResult)
                         if (parsedResult.recognitionStatus == "Success" && parsedResult.nBest?.isNotEmpty() == true) {
-                            // Utiliser le premier élément de NBest (le plus probable)
                             val bestResult = parsedResult.nBest[0]
                             if (bestResult.pronunciationAssessment != null || bestResult.words != null) {
                                 Log.i(TAG, "Pronunciation assessment successful (from JSON). Accuracy: ${bestResult.pronunciationAssessment?.accuracyScore}")
-                                // Mapper le résultat JSON parsé vers l'objet Pigeon
                                 val mappedResult = mapPronunciationResultFromJson(bestResult)
-                                deferred.complete(mappedResult)
+                                deferred.complete(mappedResult) // Compléter avec le résultat mappé
                             } else {
                                 Log.e(TAG, "Pronunciation assessment details or words missing in JSON NBest.")
                                 deferred.completeExceptionally(Exception("Pronunciation assessment details missing in JSON."))
                             }
                         } else {
                              Log.w(TAG, "Recognition status in JSON is not Success or NBest is empty. Status: ${parsedResult.recognitionStatus}")
-                             // Gérer comme NoMatch ou un autre état d'échec basé sur recognitionStatus
-                             deferred.complete(null) // Ou une exception spécifique si nécessaire
+                             deferred.complete(null) // Compléter avec null si pas de succès JSON
                         }
-                    } catch (ex: SerializationException) {
-                        Log.e(TAG, "Failed to parse JSON result: ${ex.message}", ex)
-                        deferred.completeExceptionally(Exception("Failed to parse pronunciation assessment JSON result.", ex))
-                    } catch (ex: Exception) {
+                    } catch (ex: Exception) { // Capter toutes les exceptions de parsing/traitement
                          Log.e(TAG, "Error processing JSON result: ${ex.message}", ex)
                          deferred.completeExceptionally(Exception("Error processing pronunciation assessment JSON result.", ex))
                     }
                 }
-            } else if (e.result.reason == ResultReason.NoMatch) {
+            } else if (deferred.isActive && e.result.reason == ResultReason.NoMatch) {
+                Log.w(TAG, "[DEBUG] NoMatch reason detected.") // DEBUG LOG ADDED
                 Log.w(TAG, "No speech could be recognized (Reason: NoMatch).")
-                deferred.complete(null) // Compléter avec null si pas de correspondance
+                deferred.complete(null) // Compléter avec null
             }
-            // Nettoyer après un résultat final (reconnu ou pas de correspondance)
-            mainScope.launch { stopAndCleanupRecognizer() }
+            // Le nettoyage se fera via canceled/sessionStopped
         }
 
         speechRecognizer?.canceled?.addEventListener { _, e ->
+             Log.e(TAG, "[DEBUG] Canceled Event Triggered. Reason: ${e.reason}, ErrorCode: ${e.errorCode}, Details: ${e.errorDetails}") // DEBUG LOG ADDED
             Log.e(TAG, "Event: Canceled. Reason: ${e.reason}, ErrorDetails: ${e.errorDetails}")
-            val exception = Exception("Recognition canceled: ${e.reason} - ${e.errorDetails}")
-            deferred.completeExceptionally(exception)
-            mainScope.launch { stopAndCleanupRecognizer() }
+            if (deferred.isActive) {
+                // Si arrêt manuel (flag ou raison), compléter avec null
+                if (_isStoppingManually || e.reason == CancellationReason.CancelledByUser) {
+                    Log.w(TAG, "Cancellation event handled as manual stop, completing deferred with null.")
+                    deferred.complete(null)
+                } else { // Sinon, c'est une vraie erreur
+                    val exception = Exception("Recognition canceled: ${e.reason} - ${e.errorDetails}")
+                    deferred.completeExceptionally(exception)
+                }
+            }
+            mainScope.launch { stopAndCleanupRecognizer() } // Nettoyer
         }
 
         speechRecognizer?.sessionStopped?.addEventListener { _, e ->
+            Log.w(TAG, "[DEBUG] SessionStopped Event Triggered. SessionId: ${e.sessionId}") // DEBUG LOG ADDED
             Log.w(TAG, "Event: SessionStopped. SessionId: ${e.sessionId}")
-            // Si le deferred est toujours actif, cela signifie qu'aucun résultat final n'a été reçu.
             if (deferred.isActive) {
-                Log.w(TAG, "Session stopped before final result. Completing exceptionally.")
-                deferred.completeExceptionally(Exception("Session stopped unexpectedly before a final result."))
+                Log.w(TAG, "Session stopped before final result. Completing deferred with null (assuming manual stop or timeout).")
+                // Considérer l'arrêt de session comme résultant en 'null'
+                deferred.complete(null)
             }
-             mainScope.launch { stopAndCleanupRecognizer() } // Nettoyer dans tous les cas d'arrêt de session
+             mainScope.launch { stopAndCleanupRecognizer() } // Nettoyer
         }
 
          speechRecognizer?.sessionStarted?.addEventListener { _, e ->
+             Log.d(TAG, "[DEBUG] SessionStarted Event Triggered. SessionId: ${e.sessionId}") // DEBUG LOG ADDED
              Log.d(TAG, "Event: SessionStarted. SessionId: ${e.sessionId}")
+         }
+
+         // Événement de reconnaissance partielle (pour débogage)
+         speechRecognizer?.recognizing?.addEventListener { _, e ->
+             Log.d(TAG, "[DEBUG] Recognizing Event Triggered. Text: ${e.result.text}") // DEBUG LOG ADDED
          }
     }
 
-    // Nouvelle fonction pour mapper le résultat JSON parsé vers l'objet Pigeon
+    // Mapper le résultat JSON vers l'objet Pigeon
     private fun mapPronunciationResultFromJson(jsonNBest: NBestItemJson): PronunciationAssessmentResult {
         val assessmentDetails = jsonNBest.pronunciationAssessment
-        val wordsList = jsonNBest.words ?: emptyList() // Utiliser la liste de mots de NBest
-
+        val wordsList = jsonNBest.words ?: emptyList()
         val mappedWords = wordsList.mapNotNull { wordJson ->
-            // Vérifier si les données essentielles sont présentes
             if (wordJson.word != null && wordJson.pronunciationAssessment != null) {
                  WordAssessmentResult(
                      word = wordJson.word,
-                     accuracyScore = wordJson.pronunciationAssessment.accuracyScore ?: 0.0, // Fournir une valeur par défaut
-                     errorType = wordJson.pronunciationAssessment.errorType ?: "Unknown" // Fournir une valeur par défaut
+                     accuracyScore = wordJson.pronunciationAssessment.accuracyScore ?: 0.0,
+                     errorType = wordJson.pronunciationAssessment.errorType ?: "Unknown"
                  )
-            } else {
-                null // Ignorer les mots mal formés
-            }
+            } else { null }
         }
-
         return PronunciationAssessmentResult(
             accuracyScore = assessmentDetails?.accuracyScore ?: 0.0,
-            pronunciationScore = assessmentDetails?.pronScore ?: 0.0, // Utilise pronScore du JSON
+            pronunciationScore = assessmentDetails?.pronScore ?: 0.0,
             completenessScore = assessmentDetails?.completenessScore ?: 0.0,
             fluencyScore = assessmentDetails?.fluencyScore ?: 0.0,
-            words = mappedWords.takeIf { it.isNotEmpty() } // Renvoyer null si la liste est vide après filtrage
+            words = mappedWords.takeIf { it.isNotEmpty() }
         )
     }
 
-
-    // Fonction pour vérifier la permission micro
+    // Vérifier permission micro
      private fun checkMicrophonePermission(): Boolean {
         return ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     }
 
-    // Fonction centralisée pour arrêter et nettoyer les ressources
+    // Nettoyer les ressources
     private fun stopAndCleanupRecognizer() {
         Log.d(TAG, "Cleaning up speech recognizer resources...")
-        val recognizer = speechRecognizer
-        speechRecognizer = null // Empêche les appels multiples ou sur un objet fermé
+        val recognizer = speechRecognizer; speechRecognizer = null
+        val config = audioConfig; audioConfig = null
+        val deferred = currentAssessmentDeferred; currentAssessmentDeferred = null
 
-        val config = audioConfig
-        audioConfig = null
-
-        val deferred = currentAssessmentDeferred
-        currentAssessmentDeferred = null
-
-        // Détacher les listeners pour éviter les fuites ou les appels après fermeture
+        // Détacher listeners
         try {
              recognizer?.recognized?.removeEventListener { _, _ -> }
              recognizer?.canceled?.removeEventListener { _, _ -> }
              recognizer?.sessionStopped?.removeEventListener { _, _ -> }
              recognizer?.sessionStarted?.removeEventListener { _, _ -> }
-        } catch (e: Exception) {
-             Log.e(TAG, "Error removing listeners during cleanup: ${e.message}", e)
-        }
+        } catch (e: Exception) { Log.e(TAG, "Error removing listeners: ${e.message}", e) }
 
-        // Fermer le recognizer et l'audio config
-        // Utiliser un thread séparé pour éviter de bloquer le thread principal si la fermeture est longue
+        // Fermer recognizer/config
         CoroutineScope(Dispatchers.IO).launch {
-            try {
-                recognizer?.close()
-                Log.d(TAG, "Speech recognizer closed.")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error closing speech recognizer: ${e.message}", e)
-            }
-            try {
-                config?.close()
-                Log.d(TAG, "Audio config closed.")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error closing audio config: ${e.message}", e)
-            }
+            try { recognizer?.close() } catch (e: Exception) { Log.e(TAG, "Error closing recognizer: ${e.message}", e) }
+            try { config?.close() } catch (e: Exception) { Log.e(TAG, "Error closing audio config: ${e.message}", e) }
         }
 
-         // S'assurer que le deferred est complété s'il est toujours actif (par exemple, si cleanup est appelé avant un événement)
+         // Compléter deferred si encore actif
          if (deferred?.isActive == true) {
-             Log.w(TAG, "Completing deferred exceptionally during cleanup as it was still active.")
+             Log.w(TAG, "Completing deferred exceptionally during cleanup.")
              deferred.completeExceptionally(CancellationException("Recognizer cleaned up before completion."))
          }
          Log.d(TAG, "Cleanup finished.")

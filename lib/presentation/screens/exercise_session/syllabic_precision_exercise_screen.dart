@@ -2,14 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart'; // Ajouter l'import GoRouter
 // ignore: depend_on_referenced_packages
-import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; // Importer Supabase
 
@@ -24,7 +21,7 @@ import '../../../app/theme.dart'; // Importer AppTheme
 import '../../widgets/microphone_button.dart'; // Importer le bouton micro
 import '../../widgets/visual_effects/info_modal.dart'; // Importer la modale info
 import '../../../domain/entities/azure_pronunciation_assessment.dart'; // Importer les nouveaux modèles
-import 'exercise_result_screen.dart'; // Importer l'écran des résultats
+// Importer l'écran des résultats
 import '../../../core/utils/console_logger.dart'; // Pour les logs
 
 // IMPORTANT: Les fonctions _saveWordResult et _setDatabaseSafeMode préparent les données
