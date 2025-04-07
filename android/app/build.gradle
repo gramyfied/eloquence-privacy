@@ -1,6 +1,8 @@
 plugins {
     id "com.android.application"
     id "kotlin-android"
+    // Add kotlinx-serialization plugin
+    id "org.jetbrains.kotlin.plugin.serialization" version "1.8.22" // Assurez-vous que la version correspond à votre version Kotlin
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
 }
@@ -76,4 +78,7 @@ dependencies {
     // sauf si absolument nécessaire après d'autres diagnostics.
 
     // Ajoutez ici d'autres dépendances Android si nécessaire
+
+    // Kotlinx Serialization JSON library
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1") // Utilisez une version stable appropriée
 }

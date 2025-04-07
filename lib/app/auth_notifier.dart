@@ -1,0 +1,54 @@
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Un ChangeNotifier qui écoute les changements d'état d'authentification Supabase.
+/// Utilisé par GoRouter pour déclencher les redirections.
+class AuthNotifier extends ChangeNotifier {
+  bool _isLoggedIn = false;
+
+  AuthNotifier() {
+    // Vérifier l'état initial
+    _isLoggedIn = Supabase.instance.client.auth.currentUser != null;
+    // Écouter les changements futurs
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final AuthChangeEvent event = data.event;
+      final Session? session = data.session;
+      final bool wasLoggedIn = _isLoggedIn;
+
+      // Mettre à jour l'état basé sur l'événement et la session
+      switch (event) {
+        case AuthChangeEvent.signedIn:
+        case AuthChangeEvent.tokenRefreshed:
+        case AuthChangeEvent.userUpdated:
+          _isLoggedIn = true;
+          break;
+        case AuthChangeEvent.signedOut:
+          _isLoggedIn = false;
+          break;
+        case AuthChangeEvent.initialSession:
+          // Pour initialSession, faire confiance à l'état actuel de la session
+          // Ne pas mettre à false si la session est valide juste parce que l'événement est initialSession
+          _isLoggedIn = session != null;
+          break;
+        case AuthChangeEvent.passwordRecovery:
+        case AuthChangeEvent.userDeleted:
+        case AuthChangeEvent.mfaChallengeVerified:
+          // Ces événements ne changent pas nécessairement l'état de connexion principal
+          // On pourrait les ignorer ou les gérer spécifiquement si nécessaire
+          break;
+      }
+
+      print("[AuthNotifier] Auth state changed: event=$event, session=${session != null}, isLoggedIn=$_isLoggedIn (was $wasLoggedIn)");
+
+      // Notifier seulement si l'état de connexion a réellement changé
+      if (wasLoggedIn != _isLoggedIn) {
+        notifyListeners(); // Notifier GoRouter du changement
+      }
+    });
+  }
+
+  bool get isLoggedIn => _isLoggedIn;
+}
+
+// Optionnel: Créer un provider Riverpod si on veut y accéder ailleurs
+// final authNotifierProvider = ChangeNotifierProvider((ref) => AuthNotifier());

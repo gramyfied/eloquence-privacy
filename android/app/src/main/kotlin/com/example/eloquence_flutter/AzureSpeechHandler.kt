@@ -6,11 +6,89 @@ import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import com.microsoft.cognitiveservices.speech.*
 import com.microsoft.cognitiveservices.speech.audio.*
-import io.flutter.Log // Utiliser le Log de Flutter pour la visibilité
+import io.flutter.Log
 import io.flutter.plugin.common.BinaryMessenger
 import kotlinx.coroutines.*
+// Imports for Kotlinx Serialization
+import kotlinx.serialization.*
+import kotlinx.serialization.json.*
+import kotlinx.serialization.descriptors.*
+import kotlinx.serialization.encoding.*
 import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
+
+
+// --- Data Classes for Azure Pronunciation Assessment JSON ---
+@Serializable
+data class AzurePronunciationResultJson(
+    @SerialName("RecognitionStatus") val recognitionStatus: String? = null,
+    @SerialName("NBest") val nBest: List<NBestItemJson>? = null,
+    @SerialName("DisplayText") val displayText: String? = null // Ajouté pour le contexte
+)
+
+@Serializable
+data class NBestItemJson(
+    @SerialName("Confidence") val confidence: Double? = null,
+    @SerialName("Lexical") val lexical: String? = null,
+    @SerialName("ITN") val itn: String? = null,
+    @SerialName("MaskedITN") val maskedItn: String? = null,
+    @SerialName("Display") val display: String? = null,
+    @SerialName("PronunciationAssessment") val pronunciationAssessment: PronunciationAssessmentDetailsJson? = null,
+    @SerialName("Words") val words: List<WordAssessmentJson>? = null // Peut être directement ici ou dans PronunciationAssessment
+)
+
+@Serializable
+data class PronunciationAssessmentDetailsJson(
+    @SerialName("AccuracyScore") val accuracyScore: Double? = null,
+    @SerialName("PronScore") val pronScore: Double? = null, // Note: Nom différent dans JSON vs SDK
+    @SerialName("CompletenessScore") val completenessScore: Double? = null,
+    @SerialName("FluencyScore") val fluencyScore: Double? = null
+    // Les mots peuvent aussi être imbriqués ici selon la configuration
+)
+
+@Serializable
+data class WordAssessmentJson(
+    @SerialName("Word") val word: String? = null,
+    @SerialName("Offset") val offset: Long? = null,
+    @SerialName("Duration") val duration: Long? = null,
+    @SerialName("PronunciationAssessment") val pronunciationAssessment: WordPronunciationDetailsJson? = null,
+    @SerialName("Syllables") val syllables: List<SyllableAssessmentJson>? = null, // Si Granularity >= Syllable
+    @SerialName("Phonemes") val phonemes: List<PhonemeAssessmentJson>? = null // Si Granularity >= Phoneme
+)
+
+@Serializable
+data class WordPronunciationDetailsJson(
+     @SerialName("AccuracyScore") val accuracyScore: Double? = null,
+     @SerialName("ErrorType") val errorType: String? = null // e.g., "None", "Mispronunciation", "Omission", "Insertion"
+)
+
+@Serializable
+data class SyllableAssessmentJson(
+    @SerialName("Syllable") val syllable: String? = null,
+    @SerialName("Offset") val offset: Long? = null,
+    @SerialName("Duration") val duration: Long? = null,
+    @SerialName("PronunciationAssessment") val pronunciationAssessment: SyllablePronunciationDetailsJson? = null
+)
+
+@Serializable
+data class SyllablePronunciationDetailsJson(
+    @SerialName("AccuracyScore") val accuracyScore: Double? = null
+)
+
+@Serializable
+data class PhonemeAssessmentJson(
+    @SerialName("Phoneme") val phoneme: String? = null,
+    @SerialName("Offset") val offset: Long? = null,
+    @SerialName("Duration") val duration: Long? = null,
+    @SerialName("PronunciationAssessment") val pronunciationAssessment: PhonemePronunciationDetailsJson? = null
+)
+
+@Serializable
+data class PhonemePronunciationDetailsJson(
+    @SerialName("AccuracyScore") val accuracyScore: Double? = null
+)
+// --- Fin des Data Classes ---
+
 
 // Implémente l'interface générée par Pigeon : AzureSpeechApi
 class AzureSpeechHandler(private val context: Context, private val mainScope: CoroutineScope = CoroutineScope(Dispatchers.Main)) : AzureSpeechApi {
@@ -180,21 +258,50 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
     }
 
     private fun addEventHandlers(deferred: CompletableDeferred<PronunciationAssessmentResult?>) {
+         // Configurer Json pour ignorer les clés inconnues
+         val jsonParser = Json { ignoreUnknownKeys = true; isLenient = true } // Correction: 'private' supprimé
+
          speechRecognizer?.recognized?.addEventListener { _, e ->
             Log.d(TAG, "Event: RecognizedSpeech. Reason: ${e.result.reason}")
             if (e.result.reason == ResultReason.RecognizedSpeech) {
-                // Correction: Utiliser getPronunciationAssessmentResult() sur l'objet result
-                val pronunciationResult = e.result.pronunciationAssessmentResult
-                if (pronunciationResult != null) {
-                    Log.i(TAG, "Pronunciation assessment successful. Score: ${pronunciationResult.accuracyScore}")
-                    val mappedResult = mapPronunciationResult(pronunciationResult)
-                    deferred.complete(mappedResult)
+                val jsonResult = e.result.properties.getProperty(PropertyId.SpeechServiceResponse_JsonResult)
+                if (jsonResult.isNullOrBlank()) {
+                    Log.e(TAG, "JSON result is null or empty.")
+                    deferred.completeExceptionally(Exception("Pronunciation assessment JSON result is missing."))
                 } else {
-                    Log.e(TAG, "Pronunciation assessment result is null despite RecognizedSpeech reason.")
-                    deferred.completeExceptionally(Exception("Pronunciation assessment result is null."))
+                    Log.d(TAG, "Raw JSON Result: $jsonResult") // Log pour le débogage
+                    try {
+                        // Parser le JSON
+                        val parsedResult = jsonParser.decodeFromString<AzurePronunciationResultJson>(jsonResult)
+
+                        // Vérifier si l'évaluation a réussi dans le JSON
+                        if (parsedResult.recognitionStatus == "Success" && parsedResult.nBest?.isNotEmpty() == true) {
+                            // Utiliser le premier élément de NBest (le plus probable)
+                            val bestResult = parsedResult.nBest[0]
+                            if (bestResult.pronunciationAssessment != null || bestResult.words != null) {
+                                Log.i(TAG, "Pronunciation assessment successful (from JSON). Accuracy: ${bestResult.pronunciationAssessment?.accuracyScore}")
+                                // Mapper le résultat JSON parsé vers l'objet Pigeon
+                                val mappedResult = mapPronunciationResultFromJson(bestResult)
+                                deferred.complete(mappedResult)
+                            } else {
+                                Log.e(TAG, "Pronunciation assessment details or words missing in JSON NBest.")
+                                deferred.completeExceptionally(Exception("Pronunciation assessment details missing in JSON."))
+                            }
+                        } else {
+                             Log.w(TAG, "Recognition status in JSON is not Success or NBest is empty. Status: ${parsedResult.recognitionStatus}")
+                             // Gérer comme NoMatch ou un autre état d'échec basé sur recognitionStatus
+                             deferred.complete(null) // Ou une exception spécifique si nécessaire
+                        }
+                    } catch (ex: SerializationException) {
+                        Log.e(TAG, "Failed to parse JSON result: ${ex.message}", ex)
+                        deferred.completeExceptionally(Exception("Failed to parse pronunciation assessment JSON result.", ex))
+                    } catch (ex: Exception) {
+                         Log.e(TAG, "Error processing JSON result: ${ex.message}", ex)
+                         deferred.completeExceptionally(Exception("Error processing pronunciation assessment JSON result.", ex))
+                    }
                 }
             } else if (e.result.reason == ResultReason.NoMatch) {
-                Log.w(TAG, "No speech could be recognized.")
+                Log.w(TAG, "No speech could be recognized (Reason: NoMatch).")
                 deferred.complete(null) // Compléter avec null si pas de correspondance
             }
             // Nettoyer après un résultat final (reconnu ou pas de correspondance)
@@ -223,24 +330,33 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
          }
     }
 
-    // Fonction utilitaire pour mapper le résultat natif vers l'objet Pigeon
-    private fun mapPronunciationResult(nativeResult: com.microsoft.cognitiveservices.speech.PronunciationAssessmentResult): PronunciationAssessmentResult {
-         val mappedWords = nativeResult.words?.map { word ->
-             WordAssessmentResult(
-                 word = word.word,
-                 accuracyScore = word.accuracyScore,
-                 errorType = word.errorType
-             )
-         }
+    // Nouvelle fonction pour mapper le résultat JSON parsé vers l'objet Pigeon
+    private fun mapPronunciationResultFromJson(jsonNBest: NBestItemJson): PronunciationAssessmentResult {
+        val assessmentDetails = jsonNBest.pronunciationAssessment
+        val wordsList = jsonNBest.words ?: emptyList() // Utiliser la liste de mots de NBest
+
+        val mappedWords = wordsList.mapNotNull { wordJson ->
+            // Vérifier si les données essentielles sont présentes
+            if (wordJson.word != null && wordJson.pronunciationAssessment != null) {
+                 WordAssessmentResult(
+                     word = wordJson.word,
+                     accuracyScore = wordJson.pronunciationAssessment.accuracyScore ?: 0.0, // Fournir une valeur par défaut
+                     errorType = wordJson.pronunciationAssessment.errorType ?: "Unknown" // Fournir une valeur par défaut
+                 )
+            } else {
+                null // Ignorer les mots mal formés
+            }
+        }
 
         return PronunciationAssessmentResult(
-            accuracyScore = nativeResult.accuracyScore,
-            pronunciationScore = nativeResult.pronunciationScore,
-            completenessScore = nativeResult.completenessScore,
-            fluencyScore = nativeResult.fluencyScore,
-            words = mappedWords
+            accuracyScore = assessmentDetails?.accuracyScore ?: 0.0,
+            pronunciationScore = assessmentDetails?.pronScore ?: 0.0, // Utilise pronScore du JSON
+            completenessScore = assessmentDetails?.completenessScore ?: 0.0,
+            fluencyScore = assessmentDetails?.fluencyScore ?: 0.0,
+            words = mappedWords.takeIf { it.isNotEmpty() } // Renvoyer null si la liste est vide après filtrage
         )
     }
+
 
     // Fonction pour vérifier la permission micro
      private fun checkMicrophonePermission(): Boolean {
