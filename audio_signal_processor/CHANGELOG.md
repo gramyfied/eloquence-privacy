@@ -1,3 +1,1 @@
-## 0.0.1
-
-* TODO: Describe initial release.
+<content of audio_signal_processor/CHANGELOG.md>

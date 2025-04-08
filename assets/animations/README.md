@@ -1,3 +1,1 @@
-# Animations
-
-Ce répertoire contient les animations utilisées dans l'application Éloquence.
+<content of assets/animations/README.md>
