@@ -144,7 +144,9 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
             Log.i(TAG, "Initializing Azure Speech SDK for region: $region")
             try {
                 speechConfig = SpeechConfig.fromSubscription(subscriptionKey, region)
-                Log.i(TAG, "Azure Speech SDK initialized successfully.")
+                // Augmenter le timeout de fin de silence à 4000ms pour laisser plus de temps pour les pauses.
+                speechConfig?.setProperty(PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "4000")
+                Log.i(TAG, "Azure Speech SDK initialized successfully with EndSilenceTimeoutMs=4000.")
                 callback(Result.success(Unit))
             } catch (e: Exception) {
                 Log.e(TAG, "Azure Speech SDK initialization failed: ${e.message}", e)
@@ -279,7 +281,8 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
                 } catch (e: Exception) {
                     Log.e(TAG, "Error stopping recognition via SDK call: ${e.message}", e)
                      withContext(Dispatchers.Main) {
-                        stopAndCleanupRecognizer() // Forcer le nettoyage en cas d'erreur ici
+                        // Ne PAS appeler stopAndCleanupRecognizer ici. Laisser les events le faire.
+                        // stopAndCleanupRecognizer() // Forcer le nettoyage en cas d'erreur ici
                         callback(Result.failure(e))
                      }
                 }
@@ -439,7 +442,8 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
                      deferred.completeExceptionally(exception)
                  }
              }
-             mainScope.launch { stopAndCleanupRecognizer() }
+             // Ne PAS appeler le cleanup ici, laisser sessionStopped le faire.
+             // mainScope.launch { stopAndCleanupRecognizer() }
          }
 
          speechRecognizer?.sessionStopped?.addEventListener { _, e ->

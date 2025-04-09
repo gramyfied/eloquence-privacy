@@ -53,10 +53,10 @@ class RealTimeAudioPipeline {
     }
   }
 
-  RealTimeAudioPipeline(
+  RealTimeAudioPipeline( 
     this._audioService,
     this._azureSpeechService,
-    this._azureTtsService, // Accepter le service TTS injecté
+    this._azureTtsService, // Accepter le service TTS injecté 
   ) {
     // Initialiser les controllers dans le constructeur
     _isListeningController = ValueNotifier<bool>(false);

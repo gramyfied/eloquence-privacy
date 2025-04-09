@@ -197,6 +197,27 @@ class _ImpactProfessionnelExerciseScreenState extends State<ImpactProfessionnelE
             aiAvatar: Icons.business, // Using a business icon for professional impact
           ),
           const SizedBox(height: 20),
+          // AJOUT: Afficher la transcription partielle pendant l'écoute
+          if (interactionState == InteractionState.listening)
+            ValueListenableBuilder<String>(
+              valueListenable: manager.partialTranscript,
+              builder: (context, partialText, _) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  constraints: const BoxConstraints(minHeight: 50), // Pour éviter les sauts de layout
+                  child: Text(
+                    partialText.isEmpty ? "..." : partialText, // Afficher "..." si vide
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 16,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                );
+              },
+            ),
+          // Afficher le dernier tour de parole si on n'écoute pas et qu'il y a un historique
           if (interactionState != InteractionState.listening && interactionState != InteractionState.speaking && manager.conversationHistory.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -250,45 +271,37 @@ class _ImpactProfessionnelExerciseScreenState extends State<ImpactProfessionnelE
           valueListenable: manager.isSpeaking,
           builder: (context, isSpeaking, _) {
             InteractionState currentState = manager.currentState;
-            bool canListen = !isListening && !isSpeaking &&
-                (currentState == InteractionState.ready || currentState == InteractionState.speaking);
-
-            IconData micIcon;
-            Color micColor;
-            VoidCallback? onPressed;
+            // Modification: Autoriser l'écoute quand l'état est 'ready' OU quand l'IA parle ('speaking')
+            // pour permettre l'interruption (barge-in).
+            // InteractionState currentState = manager.currentState; // Déjà défini plus haut
+            bool canListen = !isListening && (currentState == InteractionState.ready || currentState == InteractionState.speaking);
 
             if (isListening) {
-              micIcon = Icons.stop;
-              micColor = Colors.redAccent;
-              onPressed = () => _interactionManager?.stopListening();
+              // État: L'utilisateur est en train de parler (écoute active)
               return FloatingActionButton(
-                onPressed: onPressed,
-                backgroundColor: micColor,
-                child: PulsatingWidget(child: Icon(micIcon, color: Colors.white)),
+                onPressed: () => _interactionManager?.stopListening(),
+                backgroundColor: Colors.redAccent,
+                child: PulsatingWidget(child: const Icon(Icons.stop, color: Colors.white)),
               );
             } else if (canListen) {
-              micIcon = Icons.mic;
-              micColor = AppTheme.primaryColor;
-              onPressed = () => _interactionManager?.startListening('fr-FR'); // Assuming French language
+              // État: Prêt à écouter l'utilisateur
               return FloatingActionButton(
-                onPressed: onPressed,
-                backgroundColor: micColor,
-                child: Icon(micIcon, color: Colors.white),
+                onPressed: () => _interactionManager?.startListening('fr-FR'), // Assuming French language
+                backgroundColor: AppTheme.primaryColor,
+                child: const Icon(Icons.mic, color: Colors.white),
               );
             } else {
-              micIcon = Icons.mic_off;
-              micColor = Colors.grey.shade700;
-              onPressed = null;
+              // État: Inactif (IA parle, réfléchit, ou erreur)
               return FloatingActionButton(
-                onPressed: onPressed,
-                backgroundColor: micColor,
-                child: Icon(micIcon, color: Colors.grey.shade400),
+                onPressed: null, // Désactivé
+                backgroundColor: Colors.grey.shade700,
+                child: Icon(Icons.mic_off, color: Colors.grey.shade400),
               );
             }
           },
         );
       },
-    );
+    ); // Correction: Assurer que la structure du Widget est correcte
   }
 }
 
