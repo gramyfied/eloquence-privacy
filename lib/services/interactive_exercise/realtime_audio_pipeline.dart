@@ -234,10 +234,10 @@ class RealTimeAudioPipeline {
              _userFinalTranscriptController.add("");
            }
          }
-         // Effacer la transcription partielle
-         if (!_userPartialTranscriptController.isClosed) {
-           _userPartialTranscriptController.add("");
-         }
+         // Effacer la transcription partielle - COMMENTÉ pour garder le texte visible
+         // if (!_userPartialTranscriptController.isClosed) {
+         //   _userPartialTranscriptController.add(""); 
+         // }
          // Note: Le traitement de event.pronunciationResult est laissé à l'InteractionManager
          // qui écoute directement AzureSpeechService.recognitionStream.
          // Après un résultat final, la reconnaissance s'arrête souvent automatiquement côté natif,
@@ -273,7 +273,11 @@ class RealTimeAudioPipeline {
     // Mettre à jour les valeurs seulement si les controllers n'ont pas été disposés
     try {
       _isListeningController.value = false;
-      _isSpeakingController.value = false; // Assurer l'arrêt du TTS aussi
+      // Explicitly set speaking to false *before* stopping TTS to avoid race conditions
+      if (_isSpeakingController.value) {
+        _isSpeakingController.value = false;
+        print("RealTimeAudioPipeline: Manually set _isSpeakingController to false during stop.");
+      }
     } catch (e) {
       print("Warning: Cannot update ValueNotifier state, likely disposed: $e");
       // Continuer avec le reste du nettoyage
