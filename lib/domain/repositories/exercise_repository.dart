@@ -7,4 +7,5 @@ abstract class ExerciseRepository {
   Future<Exercise> getExerciseById(String exerciseId);
   Future<List<Exercise>> getExercisesByDifficulty(ExerciseDifficulty difficulty);
   Future<void> saveExercise(Exercise exercise);
+  Future<ExerciseCategory?> getCategoryByName(String categoryName); // AJOUT
 }

@@ -237,9 +237,18 @@ class AzureTtsService {
           ConsoleLogger.info('[AzureTtsService] Vérification de l\'existence du fichier: ${tempFile.path}');
           if (await tempFile.exists()) {
             ConsoleLogger.info('[AzureTtsService] Fichier existe, taille: ${await tempFile.length()} bytes');
+            // Charger la source audio
             await _audioPlayer.setAudioSource(AudioSource.uri(fileUri));
-            _audioPlayer.play();
-            // L'état de lecture sera géré par _setupPlayerListener
+            // Jouer l'audio ET attendre sa complétion
+            await _audioPlayer.play(); 
+            // Attendre explicitement que la lecture soit terminée.
+            // Le stream playerStateStream est utilisé pour mettre à jour l'UI (via _isPlayingController),
+            // mais ici on attend la fin réelle avant de continuer.
+            await _audioPlayer.processingStateStream.firstWhere(
+              (state) => state == ProcessingState.completed || state == ProcessingState.idle
+            );
+            ConsoleLogger.info('[AzureTtsService] Lecture audio terminée (détectée par await play/processingStateStream).');
+            // Note: Le listener _setupPlayerListener mettra aussi à jour _isPlayingController à false.
           } else {
             ConsoleLogger.error('[AzureTtsService] Le fichier temporaire n\'existe pas.');
             if (_isPlayingController.hasListener) _isPlayingController.add(false);
@@ -254,15 +263,16 @@ class AzureTtsService {
           rethrow;
         }
 
-        // Optionnel: Supprimer le fichier temporaire après lecture (peut être géré par le listener de fin de lecture)
-        // _audioPlayer.processingStateStream.firstWhere((state) => state == ProcessingState.completed).then((_) {
-        //   tempFile.exists().then((exists) {
-        //     if (exists) {
-        //       tempFile.delete();
-        //       ConsoleLogger.info('[AzureTtsService] Fichier audio temporaire supprimé: $tempFilePath');
-        //     }
-        //   });
-        // });
+        // Supprimer le fichier temporaire après lecture
+        // Utiliser un try-catch au cas où la suppression échouerait
+        try {
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+            ConsoleLogger.info('[AzureTtsService] Fichier audio temporaire supprimé: $tempFilePath');
+          }
+        } catch (e) {
+          ConsoleLogger.warning('[AzureTtsService] Échec de la suppression du fichier temporaire: $e');
+        }
 
       } else {
         ConsoleLogger.error('[AzureTtsService] Échec de la synthèse: ${response.statusCode} - ${response.reasonPhrase}');

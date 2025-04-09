@@ -103,9 +103,9 @@ class ModalService {
                      Text('Score Global (Précision): ${score.toStringAsFixed(0)}%', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: success ? AppTheme.accentGreen : Colors.orangeAccent)),
                      const SizedBox(height: 16),
                      // Afficher les autres scores détaillés
-                     Text('Score Prononciation: ${result.pronunciationScore!.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
-                     Text('Fluidité: ${result.fluencyScore!.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
-                     Text('Complétude: ${result.completenessScore!.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+                     Text('Score Prononciation: ${result.pronunciationScore.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+                     Text('Fluidité: ${result.fluencyScore.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
+                     Text('Complétude: ${result.completenessScore.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, color: AppTheme.primaryColor)),
                      // TODO: Afficher les erreurs par mot si nécessaire (result.words)
                      const SizedBox(height: 16),
                      Text(

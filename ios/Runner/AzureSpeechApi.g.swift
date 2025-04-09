@@ -177,6 +177,9 @@ protocol AzureSpeechApi {
   func startPronunciationAssessment(referenceText: String, language: String, completion: @escaping (Result<PronunciationAssessmentResult?, Error>) -> Void)
   /// Arrête toute reconnaissance vocale en cours.
   func stopRecognition(completion: @escaping (Result<Void, Error>) -> Void)
+  /// Démarre la reconnaissance vocale continue simple (sans évaluation de prononciation).
+  /// Les résultats (partiels, finaux) et erreurs sont envoyés via l'EventChannel.
+  func startContinuousRecognition(language: String, completion: @escaping (Result<Void, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -241,6 +244,25 @@ class AzureSpeechApiSetup {
       }
     } else {
       stopRecognitionChannel.setMessageHandler(nil)
+    }
+    /// Démarre la reconnaissance vocale continue simple (sans évaluation de prononciation).
+    /// Les résultats (partiels, finaux) et erreurs sont envoyés via l'EventChannel.
+    let startContinuousRecognitionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.eloquence_flutter.AzureSpeechApi.startContinuousRecognition\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      startContinuousRecognitionChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let languageArg = args[0] as! String
+        api.startContinuousRecognition(language: languageArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      startContinuousRecognitionChannel.setMessageHandler(nil)
     }
   }
 }

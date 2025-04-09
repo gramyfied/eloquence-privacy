@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "node",
+      "args": ["/Users/afrobotmac/Documents/Cline/MCP/supabase-mcp-server/index.js"],
+      "env": {
+        "SUPABASE_URL": "https://adyovmtayhxxdizzvspa.supabase.co",
+        "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkeW92bXRheWh4eGRpenp2c3BhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgwOTQwOTksImV4cCI6MjA1MzY3MDA5OX0.YOt18gNkmPmU_ETmvvaNonuh8VyzsvdPXha3E7zTrjA",
+        "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkeW92bXRheWh4eGRpenp2c3BhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczODA5NDA5OSwiZXhwIjoyMDUzNjcwMDk5fQ.YOt18gNkmPmU_ETmvvaNonuh8VyzsvdPXha3E7zTrjA",
+        "SUPABASE_ACCESS_TOKEN": "sbp_474b85d0e1393deaa586f62330956483b8f88a9c" 
+      },
+      "disabled": false
+    }
+  }
+}

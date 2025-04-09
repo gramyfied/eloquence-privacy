@@ -16,6 +16,12 @@ class AppTheme {
   // Couleurs spécifiques aux catégories (ajouter au besoin)
   static const Color impactPresenceColor = Color(0xFF50E3C2); // Vert/Turquoise pour Impact & Présence
 
+  // Couleurs spécifiques aux états d'interaction
+  static const Color speakingColor = Color(0xFF4CAF50); // Vert pour IA parle
+  static const Color listeningColor = Color(0xFFF44336); // Rouge pour Utilisateur parle (écoute système)
+  static const Color thinkingColor = Color(0xFF2196F3); // Bleu pour IA réfléchit
+  static const Color analyzingColor = Color(0xFFFF9800); // Orange pour Analyse
+
   // Espacements standards
   static const double spacing1 = 4.0;
   static const double spacing2 = 8.0;

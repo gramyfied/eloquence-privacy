@@ -289,6 +289,36 @@ class SupabaseExerciseRepositoryImpl implements ExerciseRepository {
 
   // --- Fonctions utilitaires ajoutées ---
 
+  // AJOUT: Implémentation de getCategoryByName
+  @override
+  Future<ExerciseCategory?> getCategoryByName(String categoryName) async {
+    try {
+      final data = await _supabaseClient
+          .from('collections')
+          .select('*') // Sélectionner toutes les colonnes pour reconstruire l'objet
+          .eq('name', categoryName) // Filtrer par nom exact
+          .maybeSingle(); // Utiliser maybeSingle pour gérer le cas où rien n'est trouvé
+
+      if (data == null) {
+        print('Aucune catégorie trouvée pour le nom: $categoryName');
+        return null;
+      }
+
+      // Mapper les données récupérées vers un objet ExerciseCategory
+      return ExerciseCategory(
+        id: data['id'],
+        name: data['name'],
+        description: '', // Description non disponible ou à lire d'une autre colonne
+        type: _mapCollectionTypeToCategory(data['type'] ?? 'fondamentaux'),
+        // iconPath: null, // Non disponible
+      );
+    } catch (e) {
+      print('Erreur getCategoryByName: $e');
+      // Retourner null ou lancer une exception selon la gestion d'erreur souhaitée
+      return null;
+    }
+  }
+
   // Récupère le type (string) d'une catégorie via son ID
   Future<String?> _getCategoryTypeById(String categoryId) async {
     try {

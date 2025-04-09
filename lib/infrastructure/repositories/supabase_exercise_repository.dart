@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/entities/exercise.dart';
 import '../../domain/entities/exercise_category.dart';
 import '../../domain/repositories/exercise_repository.dart';
-import '../../presentation/screens/exercises/exercise_categories_screen.dart';
+import '../../presentation/screens/exercises/exercise_category_utils.dart';
 
 class SupabaseExerciseRepository implements ExerciseRepository {
   final SupabaseClient _supabaseClient;
@@ -702,6 +702,30 @@ class SupabaseExerciseRepository implements ExerciseRepository {
             },
           ),
         ];
+    }
+  }
+
+  // AJOUT: Implémentation de getCategoryByName
+  @override
+  Future<ExerciseCategory?> getCategoryByName(String categoryName) async {
+    try {
+      // Correction: Utiliser la table 'exercise_categories' comme dans getCategories
+      final data = await _supabaseClient
+          .from('exercise_categories')
+          .select('*') // Sélectionner toutes les colonnes pour reconstruire l'objet
+          .eq('name', categoryName) // Filtrer par nom exact
+          .maybeSingle(); // Utiliser maybeSingle pour gérer le cas où rien n'est trouvé
+
+      if (data == null) {
+        print('Aucune catégorie trouvée pour le nom: $categoryName');
+        return null;
+      }
+      // Utiliser la fonction de mapping existante
+      return _mapToExerciseCategory(data);
+    } catch (e) {
+      print('Erreur getCategoryByName: $e');
+      // Retourner null ou lancer une exception selon la gestion d'erreur souhaitée
+      return null;
     }
   }
 }

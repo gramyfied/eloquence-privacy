@@ -379,7 +379,7 @@ class _SyllabicPrecisionExerciseScreenState
         _wordProcessed = true; // Marquer comme traité pour éviter double traitement
 
         if (mounted && (_isRecording || _isProcessing)) { // Vérifier si toujours actif
-          print("🔴 [Flutter Timeout] Conditions remplies: mounted=${mounted}, isRecording=${_isRecording}, isProcessing=${_isProcessing}, processingWord=${_currentlyProcessingWord}");
+          print("🔴 [Flutter Timeout] Conditions remplies: mounted=$mounted, isRecording=$_isRecording, isProcessing=$_isProcessing, processingWord=$_currentlyProcessingWord");
           setState(() {
              _isRecording = false;
             _isProcessing = false;

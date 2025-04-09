@@ -34,6 +34,13 @@ import 'audio/example_audio_provider.dart';
 import 'evaluation/articulation_evaluation_service.dart';
 import 'lexique/syllabification_service.dart'; // Ajout du service de syllabification
 import 'audio/audio_analysis_service.dart'; // Correction: Chemin correct
+import 'audio/audio_service.dart'; // Ajouté pour l'injection
+import 'openai/openai_service.dart'; // Service OpenAI générique
+import 'interactive_exercise/scenario_generator_service.dart';
+import 'interactive_exercise/conversational_agent_service.dart';
+import 'interactive_exercise/feedback_analysis_service.dart';
+import 'interactive_exercise/realtime_audio_pipeline.dart';
+import '../presentation/providers/interaction_manager.dart'; // Assurez-vous que le chemin est correct
 
 final serviceLocator = GetIt.instance;
 
@@ -92,6 +99,8 @@ void setupServiceLocator() {
   // TODO: Vérifier si AzureSpeechService est encore nécessaire après la refactorisation complète.
   // Si non, supprimer cet enregistrement.
   // Mettre à jour pour injecter IAzureSpeechRepository
+  // Utiliser registerLazySingleton pour garantir qu'une seule instance est utilisée
+  // tout au long du cycle de vie de l'application
   serviceLocator.registerLazySingleton<AzureSpeechService>(
     () => AzureSpeechService(serviceLocator<IAzureSpeechRepository>())
   );
@@ -112,11 +121,13 @@ void setupServiceLocator() {
   // );
 
   // Enregistrer AudioPlayer (nécessaire pour AzureTtsService)
-  // Utiliser registerFactory pour obtenir une nouvelle instance si nécessaire,
-  // ou registerLazySingleton si une seule instance suffit pour toute l'app.
-  serviceLocator.registerFactory<AudioPlayer>(() => AudioPlayer());
+  // Utiliser registerLazySingleton pour garantir qu'une seule instance est utilisée
+  // tout au long du cycle de vie de l'application
+  serviceLocator.registerLazySingleton<AudioPlayer>(() => AudioPlayer());
 
   // Enregistrer AzureTtsService (qui utilise AudioPlayer)
+  // Utiliser registerLazySingleton pour garantir qu'une seule instance est utilisée
+  // tout au long du cycle de vie de l'application, évitant ainsi les problèmes de disposition
   serviceLocator.registerLazySingleton<AzureTtsService>(
     () => AzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
   );
@@ -151,4 +162,56 @@ void setupServiceLocator() {
   // AJOUT: Enregistrer AudioAnalysisService (même si c'est un placeholder pour l'instant)
   // TODO: Remplacer par la vraie implémentation quand elle sera prête
   serviceLocator.registerLazySingleton<AudioAnalysisService>(() => AudioAnalysisService());
+
+  // AJOUT: Enregistrer AudioService (constructeur par défaut pour l'instant)
+  // TODO: Implémenter AudioService et ajouter les dépendances si nécessaire
+  serviceLocator.registerLazySingleton<AudioService>(
+    () => AudioService() // Appel du constructeur par défaut
+  );
+
+  // --- Services pour les Exercices Interactifs ---
+
+  // Enregistrer le service OpenAI générique pour Azure OpenAI
+  serviceLocator.registerLazySingleton<OpenAIService>(
+    () => OpenAIService(
+      apiKey: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_KEY'] ?? '',
+      endpoint: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_ENDPOINT'] ?? '',
+      deploymentName: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_DEPLOYMENT_NAME'] ?? '',
+    )
+  );
+
+  // Enregistrer les services spécifiques aux exercices interactifs
+  serviceLocator.registerLazySingleton<ScenarioGeneratorService>(
+    () => ScenarioGeneratorService(serviceLocator<OpenAIService>())
+  );
+  serviceLocator.registerLazySingleton<ConversationalAgentService>(
+    () => ConversationalAgentService(serviceLocator<OpenAIService>())
+  );
+  serviceLocator.registerLazySingleton<FeedbackAnalysisService>(
+    () => FeedbackAnalysisService(serviceLocator<OpenAIService>())
+  );
+
+  // Enregistrer le pipeline audio temps réel
+  // MODIFICATION: Utiliser registerLazySingleton pour garantir qu'une seule instance est utilisée
+  // tout au long du cycle de vie de l'application, évitant ainsi les problèmes de ValueNotifier disposés.
+  serviceLocator.registerLazySingleton<RealTimeAudioPipeline>(
+    () => RealTimeAudioPipeline(
+      serviceLocator<AudioService>(),
+      serviceLocator<AzureSpeechService>(),
+      serviceLocator<AzureTtsService>(),
+    )
+  );
+
+  // Enregistrer InteractionManager comme Factory car il est stateful pour une session
+  serviceLocator.registerFactory<InteractionManager>(
+    () => InteractionManager(
+      serviceLocator<ScenarioGeneratorService>(),
+      serviceLocator<ConversationalAgentService>(),
+      serviceLocator<RealTimeAudioPipeline>(),
+      serviceLocator<FeedbackAnalysisService>(),
+      // AJOUT: Passer la dépendance AzureSpeechService
+      serviceLocator<AzureSpeechService>(),
+    )
+  );
+
 }

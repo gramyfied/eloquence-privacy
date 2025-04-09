@@ -122,15 +122,15 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
   void _subscribeToAnalysisResults() {
     _analysisSubscription?.cancel();
     _analysisSubscription = AudioSignalProcessor.analysisResultStream.listen(
-      (result) {
-        if (mounted && _isRecording) {
-          // AJOUT: Log pour vérifier la réception de F0
-          // print("[ExpressiveIntonation] Received F0: ${result.f0}");
-           setState(() {
-             // Correction 2: Créer correctement PitchDataPoint
-             if (result.f0 > 50 && result.f0 < 500 && result.f0.isFinite) {
-                final timestamp = DateTime.now().millisecondsSinceEpoch; // timestamp est int
-                _pitchContourPoints.add(PitchDataPoint(timestamp, result.f0.toDouble())); // f0 est double
+       (result) {
+         if (mounted && _isRecording) {
+           // AJOUT: Log pour vérifier la réception de F0
+           print("[ExpressiveIntonation DEBUG] Received F0: ${result.f0}");
+            setState(() {
+              // Correction: Utiliser (double, double) pour PitchDataPoint
+              if (result.f0 > 50 && result.f0 < 500 && result.f0.isFinite) {
+                final timestamp = DateTime.now().millisecondsSinceEpoch.toDouble(); // Convertir int en double
+                _pitchContourPoints.add(PitchDataPoint(timestamp, result.f0.toDouble()));
              }
              if (result.jitter.isFinite && result.jitter > 0) {
                _jitterValues.add(result.jitter);
@@ -388,31 +388,29 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
   // Méthode pour calculer les métriques (appelée depuis _stopRecordingAndAnalyze)
    Map<String, double> _calculateMetrics() {
        Map<String, double> metrics = {};
-       // Correction 5: Utiliser p.pitch et ajouter null checks
-       final pitchValues = _pitchContourPoints.map((p) => p.pitch).toList();
+       // Correction: Utiliser p.frequencyHz
+       final pitchValues = _pitchContourPoints.map((p) => p.frequencyHz).toList();
        if (pitchValues.isNotEmpty) {
          metrics['meanF0'] = pitchValues.reduce((a, b) => a + b) / pitchValues.length;
          metrics['minF0'] = pitchValues.reduce(math.min);
          metrics['maxF0'] = pitchValues.reduce(math.max);
-
+         // Correction: Ajouter null checks avant soustraction
          final maxF0 = metrics['maxF0'];
          final minF0 = metrics['minF0'];
-         // Vérifier la nullité avant la soustraction pour rangeF0
          if (maxF0 != null && minF0 != null) {
            metrics['rangeF0'] = maxF0 - minF0;
          } else {
-           metrics['rangeF0'] = 0.0; // Valeur par défaut si null
+           metrics['rangeF0'] = 0.0;
          }
-
+         // Correction: Ajouter null check avant calcul de variance
          final mean = metrics['meanF0'];
-         // Vérifier la nullité avant le calcul de variance/stdevF0
          if (mean != null) {
            final variance = pitchValues.length > 1
                ? pitchValues.map((p) => math.pow(p - mean, 2)).reduce((a, b) => a + b) / pitchValues.length
                : 0.0;
            metrics['stdevF0'] = math.sqrt(variance);
          } else {
-           metrics['stdevF0'] = 0.0; // Valeur par défaut si null
+           metrics['stdevF0'] = 0.0;
          }
        } else {
          // Assigner des valeurs par défaut si pitchValues est vide
@@ -501,7 +499,8 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
                    ? PitchContourVisualizer(
                        targetPitchData: const [], // Pas de cible pour l'instant
                        userPitchData: _pitchContourPoints, // Passer directement la liste de PitchDataPoint
-                       currentPitch: _pitchContourPoints.lastOrNull?.pitch, // Utiliser la dernière valeur pitch
+                       // Correction: Utiliser p.frequencyHz
+                       currentPitch: _pitchContourPoints.lastOrNull?.frequencyHz, // Utiliser la dernière valeur frequencyHz
                        minFreq: 80, // Ajuster si nécessaire
                        maxFreq: 500, // Ajuster si nécessaire
                       durationMs: 5000, // Example default duration
@@ -736,6 +735,56 @@ class _ExpressiveIntonationExerciseScreenState extends State<ExpressiveIntonatio
           );
         },
       );
+  }
+
+  // Nouvelle méthode pour calculer les résultats globaux de la session
+  Map<String, dynamic> _calculateOverallSessionResults() {
+    if (_allRoundScores.isEmpty || _allRoundMetrics.isEmpty) {
+      return {
+        'score': 0.0,
+        'commentaires': 'Aucun tour complété.',
+        'details': {},
+        'erreur': 'Aucun résultat disponible.',
+      };
+    }
+
+    // Calculer le score moyen
+    final double averageScore = _allRoundScores.reduce((a, b) => a + b) / _allRoundScores.length;
+
+    // 1. Synthèse simple des feedbacks (concaténation)
+    final String combinedFeedback = _allRoundFeedbacks.where((fb) => fb.isNotEmpty && fb != 'Analyse terminée.' && !fb.startsWith('Erreur')).join('\n---\n');
+    final String finalFeedbackSummary = combinedFeedback.isNotEmpty ? combinedFeedback : 'Session terminée. Aucun feedback spécifique généré.';
+
+    // 2. Calculer la moyenne des métriques détaillées
+    Map<String, double> averageMetrics = {};
+    if (_allRoundMetrics.isNotEmpty) {
+      // Initialiser la somme pour chaque clé de métrique trouvée dans le premier tour
+      for (var key in _allRoundMetrics.first.keys) {
+        averageMetrics[key] = 0.0;
+      }
+
+      // Sommer les valeurs pour chaque métrique sur tous les tours
+      for (var metricsMap in _allRoundMetrics) {
+        metricsMap.forEach((key, value) {
+          if (averageMetrics.containsKey(key) && value.isFinite) {
+            averageMetrics[key] = (averageMetrics[key] ?? 0.0) + value;
+          }
+        });
+      }
+
+      // Diviser par le nombre de tours pour obtenir la moyenne
+      final roundCount = _allRoundMetrics.length;
+      averageMetrics.forEach((key, sum) {
+        averageMetrics[key] = sum / roundCount;
+      });
+    }
+
+    return {
+      'score': averageScore,
+      'commentaires': finalFeedbackSummary, // Utiliser la synthèse
+      'details': averageMetrics, // Utiliser les métriques moyennées
+      'erreur': null, // On suppose qu'on arrive ici seulement si les tours se sont bien passés
+    };
   }
 
 } // Fin _ExpressiveIntonationExerciseScreenState

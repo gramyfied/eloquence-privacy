@@ -24,5 +24,7 @@ class AppRoutes {
   static const String exerciseFinalesNettes = '/exercise/finales-nettes/:exerciseId'; // Nouvelle route pour Finales Nettes
   static const String exerciseExpressiveIntonation = '/exercise/expressive-intonation/:exerciseId'; // AJOUT: Route pour Intonation Expressive
   static const String exercisePitchVariation = '/exercise/pitch-variation/:exerciseId'; // AJOUT: Route pour Variation de Hauteur
+  // AJOUT: Route pour les exercices interactifs
+  static const String interactiveExercise = '/interactive-exercise/:exerciseId';
   // Ajoutez d'autres routes spécifiques ici si nécessaire
 }

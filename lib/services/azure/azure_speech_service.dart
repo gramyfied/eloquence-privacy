@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:convert'; // Importer pour jsonDecode
-import 'dart:async';
-import 'dart:convert'; // Importer pour jsonDecode
+// Importer pour jsonDecode
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart'; // Pour kDebugMode
 // AJOUT: Importer l'interface du repository et l'entité de résultat
 import '../../domain/repositories/azure_speech_repository.dart';
-import '../../domain/entities/pronunciation_result.dart';
 // AJOUT: Importer le nom du canal depuis le handler natif (si possible, sinon copier la chaîne)
 // Note: On ne peut pas importer directement depuis le code natif, on utilise la chaîne.
 const String _eventChannelNameFromNative = 'com.eloquence.app/azure_speech_events';
@@ -85,13 +83,30 @@ class AzureSpeechService {
        _repository.startPronunciationAssessment(referenceText, language).then((finalResult) {
          // Le résultat final du Future Pigeon est aussi géré par l'EventChannel maintenant.
          // On pourrait logger ici si besoin.
-         if (kDebugMode) print('AzureSpeechService: Pigeon Future completed (final result also sent via EventChannel). Result: ${finalResult?.accuracyScore}');
+         if (kDebugMode) print('AzureSpeechService: Pigeon Future completed (final result also sent via EventChannel). Result: ${finalResult.accuracyScore}');
        }).catchError((error) {
          // L'erreur du Future Pigeon est aussi gérée par l'EventChannel.
          if (kDebugMode) print('AzureSpeechService: Pigeon Future error: $error');
        });
     }
   }
+
+  /// Démarre la reconnaissance vocale continue simple via le repository.
+  Future<void> startContinuousStreamingRecognition(String language) async {
+    if (!isInitialized) {
+      throw Exception('AzureSpeechService (via Repository) not initialized.');
+    }
+    if (kDebugMode) print('AzureSpeechService: Starting continuous streaming recognition for language: $language via Repository.');
+    try {
+      // Appeler la nouvelle méthode Pigeon via le repository
+      await _repository.startContinuousRecognition(language);
+      // Les résultats seront reçus via l'EventChannel (_recognitionStream)
+    } catch (e) {
+       if (kDebugMode) print('AzureSpeechService: Failed to start continuous streaming recognition via Repository: $e');
+       throw Exception('Failed to start continuous streaming recognition: $e');
+    }
+  }
+
 
   /// Arrête la reconnaissance vocale via le repository.
   Future<void> stopRecognition() async {
@@ -150,8 +165,11 @@ class AzureSpeechService {
                   // Note: Pas de prosodyResult dans la version actuelle du handler natif
 
                   if (kDebugMode) {
-                    if (pronunciationData != null) print('AzureSpeechService: Received final event with pronunciation assessment.');
-                    else print('AzureSpeechService: Received final event without pronunciation assessment (e.g., NoMatch or error).');
+                    if (pronunciationData != null) {
+                      print('AzureSpeechService: Received final event with pronunciation assessment.');
+                    } else {
+                      print('AzureSpeechService: Received final event without pronunciation assessment (e.g., NoMatch or error).');
+                    }
                   }
 
                   return AzureSpeechEvent.finalResult(

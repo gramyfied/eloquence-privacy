@@ -200,7 +200,7 @@ class _VolumeControlExerciseScreenState extends State<VolumeControlExerciseScree
 
         // Écouter le stream de niveau audio
         _audioMeteringSubscription?.cancel();
-        const double _minDetectionThreshold = 0.15; // Seuil minimal pour enregistrer le volume pour l'évaluation
+        const double minDetectionThreshold = 0.15; // Seuil minimal pour enregistrer le volume pour l'évaluation
         _audioMeteringSubscription = _audioRepository.audioLevelStream.listen(
           (level) { // La donnée reçue est directement le niveau (double)
             // TODO: Vérifier si le niveau est déjà normalisé (0-1) ou s'il faut le normaliser
@@ -215,7 +215,7 @@ class _VolumeControlExerciseScreenState extends State<VolumeControlExerciseScree
             }
 
             // N'enregistrer le volume pour l'évaluation que s'il dépasse le seuil de détection
-            if (normalizedVolume >= _minDetectionThreshold) {
+            if (normalizedVolume >= minDetectionThreshold) {
               _recordedVolumes.add(normalizedVolume);
             }
           },

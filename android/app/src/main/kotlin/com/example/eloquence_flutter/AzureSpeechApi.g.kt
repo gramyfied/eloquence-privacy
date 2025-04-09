@@ -143,6 +143,11 @@ interface AzureSpeechApi {
   fun startPronunciationAssessment(referenceText: String, language: String, callback: (Result<PronunciationAssessmentResult?>) -> Unit)
   /** Arrête toute reconnaissance vocale en cours. */
   fun stopRecognition(callback: (Result<Unit>) -> Unit)
+  /**
+   * Démarre la reconnaissance vocale continue simple (sans évaluation de prononciation).
+   * Les résultats (partiels, finaux) et erreurs sont envoyés via l'EventChannel.
+   */
+  fun startContinuousRecognition(language: String, callback: (Result<Unit>) -> Unit)
 
   companion object {
     /** The codec used by AzureSpeechApi. */
@@ -199,6 +204,25 @@ interface AzureSpeechApi {
         if (api != null) {
           channel.setMessageHandler { _, reply ->
             api.stopRecognition() { result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(wrapError(error))
+              } else {
+                reply.reply(wrapResult(null))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.eloquence_flutter.AzureSpeechApi.startContinuousRecognition$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val languageArg = args[0] as String
+            api.startContinuousRecognition(languageArg) { result: Result<Unit> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(wrapError(error))

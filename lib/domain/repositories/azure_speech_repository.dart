@@ -20,6 +20,10 @@ abstract class IAzureSpeechRepository {
   /// Arrête toute session de reconnaissance vocale ou d'évaluation en cours.
   Future<void> stopRecognition();
 
+  /// Démarre la reconnaissance vocale continue simple (sans évaluation).
+  /// Les résultats sont envoyés via l'EventChannel associé au service.
+  Future<void> startContinuousRecognition(String language); // Nouvelle méthode
+
   // AJOUT: Getter pour vérifier l'état d'initialisation
   bool get isInitialized;
 

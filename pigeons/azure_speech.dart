@@ -67,6 +67,11 @@ abstract class AzureSpeechApi {
   @async
   void stopRecognition();
 
+  /// Démarre la reconnaissance vocale continue simple (sans évaluation de prononciation).
+  /// Les résultats (partiels, finaux) et erreurs sont envoyés via l'EventChannel.
+  @async
+  void startContinuousRecognition(String language);
+
   // Ajoutez d'autres méthodes si nécessaire, par exemple pour la synthèse vocale (TTS)
   // @async
   // Uint8List synthesizeSpeech(String text, String language, String voiceName);

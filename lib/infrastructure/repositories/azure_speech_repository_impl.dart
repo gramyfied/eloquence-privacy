@@ -76,6 +76,23 @@ class AzureSpeechRepositoryImpl implements IAzureSpeechRepository {
   }
 
   @override
+  Future<void> startContinuousRecognition(String language) async {
+    if (!_isInitialized) {
+      throw Exception('AzureSpeechRepository not initialized. Call initialize first.');
+    }
+    try {
+      // Appeler la méthode Pigeon correspondante en utilisant la variable membre _nativeApi
+      await _nativeApi.startContinuousRecognition(language);
+      // Les résultats seront gérés par l'EventChannel écouté par AzureSpeechService
+    } on PlatformException catch (e) {
+      // Convertir PlatformException en une exception plus spécifique si nécessaire
+      throw Exception('Pigeon API call failed for startContinuousRecognition: ${e.message}');
+    } catch (e) {
+      throw Exception('Failed to start continuous recognition: $e');
+    }
+  }
+
+  @override
   Future<void> stopRecognition() async {
     try {
       // Appelle la méthode native via Pigeon

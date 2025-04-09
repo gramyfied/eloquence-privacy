@@ -287,8 +287,71 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
         }
     }
 
-    // Modifier pour accepter et utiliser l'EventSink
-    private fun addEventHandlers(deferred: CompletableDeferred<PronunciationAssessmentResult?>, sink: EventChannel.EventSink?) {
+    // --- Nouvelle méthode pour la reconnaissance continue simple ---
+    override fun startContinuousRecognition(language: String, callback: (Result<Unit>) -> Unit) {
+        mainScope.launch {
+            Log.i(TAG, "Starting continuous recognition for language: $language")
+            _isStoppingManually = false // Réinitialiser le flag
+            if (speechConfig == null) {
+                Log.e(TAG, "Initialization required before starting recognition.")
+                callback(Result.failure(IllegalStateException("SDK not initialized.")))
+                return@launch
+            }
+            if (!checkMicrophonePermission()) {
+                 Log.e(TAG, "Microphone permission not granted.")
+                 callback(Result.failure(SecurityException("Microphone permission not granted.")))
+                 return@launch
+            }
+            stopAndCleanupRecognizer() // Nettoyer avant de commencer
+
+            // Pas besoin de CompletableDeferred ici car on ne retourne pas de résultat spécifique via Pigeon
+            // Les résultats passent par l'EventChannel
+
+            try {
+                Log.d(TAG, "[startContinuousRecognition] Creating AudioConfig...")
+                audioConfig = AudioConfig.fromDefaultMicrophoneInput()
+                Log.d(TAG, "[startContinuousRecognition] Audio config created.")
+
+                Log.d(TAG, "[startContinuousRecognition] Creating SpeechRecognizer for language: $language...")
+                speechRecognizer = SpeechRecognizer(speechConfig, language, audioConfig)
+                Log.d(TAG, "[startContinuousRecognition] Speech recognizer created.")
+
+                // NE PAS appliquer PronunciationAssessmentConfig ici
+
+                Log.d(TAG, "[startContinuousRecognition] Adding event handlers...")
+                // Passer null pour le deferred car non utilisé pour cette méthode
+                addEventHandlers(null, eventSink)
+                Log.d(TAG, "[startContinuousRecognition] Event handlers added.")
+
+                Log.i(TAG, "[startContinuousRecognition] Starting continuous recognition...")
+                val recognitionFuture = speechRecognizer?.startContinuousRecognitionAsync()
+                Log.d(TAG, "[startContinuousRecognition] startContinuousRecognitionAsync called, awaiting future...")
+                recognitionFuture?.get(10, TimeUnit.SECONDS) // Attendre le démarrage
+                Log.i(TAG, "[startContinuousRecognition] Continuous recognition started successfully.")
+
+                // Envoyer un événement de statut
+                sendEvent("status", mapOf("statusMessage" to "Continuous recognition started"))
+
+                // Renvoyer succès à Flutter immédiatement, les résultats suivront via EventChannel
+                callback(Result.success(Unit))
+
+            } catch (e: Exception) {
+                Log.e(TAG, "[startContinuousRecognition] Exception caught during setup/start: ${e.message}", e)
+                stopAndCleanupRecognizer()
+                // Envoyer une erreur via EventChannel
+                sendEvent("error", mapOf(
+                    "code" to "START_CONTINUOUS_FAILED",
+                    "message" to "Failed to start continuous recognition: ${e.localizedMessage}"
+                ))
+                callback(Result.failure(e)) // Renvoyer l'erreur à Flutter
+            }
+        }
+    }
+    // --- Fin nouvelle méthode ---
+
+
+    // Modifier pour accepter et utiliser l'EventSink, et rendre deferred nullable
+    private fun addEventHandlers(deferred: CompletableDeferred<PronunciationAssessmentResult?>?, sink: EventChannel.EventSink?) {
          val jsonParser = Json { ignoreUnknownKeys = true; isLenient = true }
 
          // Retrait des helpers locaux sendEvent/sendError, utilisation de la méthode de classe
@@ -296,107 +359,99 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
          speechRecognizer?.recognized?.addEventListener { _, e ->
             Log.d(TAG, "[DEBUG] Recognized Event Triggered. Reason: ${e.result.reason}, Text: ${e.result.text}") // DEBUG LOG ADDED
             Log.d(TAG, "Event: RecognizedSpeech. Reason: ${e.result.reason}")
-            if (deferred.isActive && e.result.reason == ResultReason.RecognizedSpeech) {
+            val recognizedText = e.result.text ?: ""
+
+            // Gérer le cas de l'évaluation de prononciation (si deferred n'est pas null)
+            if (deferred?.isActive == true && e.result.reason == ResultReason.RecognizedSpeech) {
                 val jsonResult = e.result.properties.getProperty(PropertyId.SpeechServiceResponse_JsonResult)
-                Log.d(TAG, "[DEBUG] Recognized JSON: ${jsonResult?.substring(0, minOf(jsonResult.length, 200))}...") // DEBUG LOG ADDED - Log start of JSON
+                Log.d(TAG, "[DEBUG] Recognized JSON (Assessment): ${jsonResult?.substring(0, minOf(jsonResult.length, 200))}...")
                 if (jsonResult.isNullOrBlank()) {
-                    Log.e(TAG, "JSON result is null or empty.")
+                    Log.e(TAG, "Assessment JSON result is null or empty.")
+                    sendEvent("error", mapOf("code" to "ASSESSMENT_JSON_MISSING", "message" to "Assessment JSON missing"))
                     deferred.completeExceptionally(Exception("Pronunciation assessment JSON result is missing."))
                 } else {
-                    Log.d(TAG, "Raw JSON Result: $jsonResult")
+                    Log.d(TAG, "Raw Assessment JSON: $jsonResult")
                     try {
-                        // Tentative d'obtention explicite du sérialiseur
-                        val serializer = serializer<AzurePronunciationResultJson>() 
-                         Log.d(TAG, "Serializer for AzurePronunciationResultJson obtained successfully.") // Log de succès si ça passe
-                         val parsedResult = jsonParser.decodeFromString(serializer, jsonResult)
-                         if (parsedResult.recognitionStatus == "Success" && parsedResult.nBest?.isNotEmpty() == true) {
-                             val bestResult = parsedResult.nBest[0]
-                             if (bestResult.pronunciationAssessment != null || bestResult.words != null) {
-                                 Log.i(TAG, "Pronunciation assessment successful (from JSON). Accuracy: ${bestResult.pronunciationAssessment?.accuracyScore}")
-                                 val mappedResult = mapPronunciationResultFromJson(bestResult)
-                                 // Envoyer l'événement final via EventChannel (structure plate)
-                                 sendEvent("finalResult", mapOf(
-                                     "text" to (bestResult.display ?: bestResult.lexical), // Utiliser display ou lexical
-                                     "pronunciationResult" to jsonResult // Envoyer le JSON brut
-                                 ))
-                                 deferred.complete(mappedResult) // Compléter le Deferred pour l'appel Pigeon
-                             } else {
-                                 Log.e(TAG, "Pronunciation assessment details or words missing in JSON NBest.")
-                                 // Envoyer erreur via EventChannel
-                                 sendEvent("error", mapOf(
-                                     "code" to "JSON_ERROR",
-                                     "message" to "Détails d'évaluation manquants dans JSON",
-                                     "details" to jsonResult
-                                 ))
-                                 deferred.completeExceptionally(Exception("Pronunciation assessment details missing in JSON."))
-                             }
-                         } else {
-                              Log.w(TAG, "Recognition status in JSON is not Success or NBest is empty. Status: ${parsedResult.recognitionStatus}")
-                              // Envoyer un événement final sans score (structure plate)
-                              sendEvent("finalResult", mapOf(
-                                  "text" to parsedResult.displayText, // Utiliser DisplayText s'il existe
-                                  "pronunciationResult" to null // Indiquer pas de score
-                              ))
-                              deferred.complete(null) // Compléter le Deferred Pigeon avec null
+                        val serializer = serializer<AzurePronunciationResultJson>()
+                        val parsedResult = jsonParser.decodeFromString(serializer, jsonResult)
+                        if (parsedResult.recognitionStatus == "Success" && parsedResult.nBest?.isNotEmpty() == true) {
+                            val bestResult = parsedResult.nBest[0]
+                            if (bestResult.pronunciationAssessment != null || bestResult.words != null) {
+                                Log.i(TAG, "Assessment successful (from JSON). Accuracy: ${bestResult.pronunciationAssessment?.accuracyScore}")
+                                val mappedResult = mapPronunciationResultFromJson(bestResult)
+                                // Envoyer l'événement final AVEC évaluation
+                                sendEvent("finalResult", mapOf(
+                                    "text" to (bestResult.display ?: bestResult.lexical),
+                                    "pronunciationResult" to jsonResult // Envoyer JSON brut pour l'évaluation
+                                ))
+                                deferred.complete(mappedResult)
+                            } else {
+                                Log.e(TAG, "Assessment details/words missing in JSON NBest.")
+                                sendEvent("error", mapOf("code" to "JSON_ASSESSMENT_DETAILS_MISSING", "message" to "Assessment details missing"))
+                                deferred.completeExceptionally(Exception("Assessment details missing in JSON."))
+                            }
+                        } else {
+                             Log.w(TAG, "Assessment JSON status not Success or NBest empty. Status: ${parsedResult.recognitionStatus}")
+                             sendEvent("finalResult", mapOf("text" to parsedResult.displayText, "pronunciationResult" to null))
+                             deferred.complete(null)
                          }
                      } catch (ex: Exception) { // Capter toutes les exceptions de parsing/traitement
-                          Log.e(TAG, "Error processing JSON result: ${ex.message}", ex)
-                          // Envoyer erreur via EventChannel
-                          sendEvent("error", mapOf(
-                              "code" to "JSON_PARSE_ERROR",
-                              "message" to "Erreur lors du parsing JSON: ${ex.message}",
-                              "details" to ex.toString()
-                          ))
-                          deferred.completeExceptionally(Exception("Error processing pronunciation assessment JSON result.", ex))
+                         Log.e(TAG, "Error processing Assessment JSON: ${ex.message}", ex)
+                         sendEvent("error", mapOf("code" to "JSON_PARSE_ERROR", "message" to "Error parsing assessment JSON: ${ex.message}"))
+                         deferred.completeExceptionally(Exception("Error processing assessment JSON.", ex))
                     }
-                 }
-             } else if (deferred.isActive && e.result.reason == ResultReason.NoMatch) {
-                 Log.w(TAG, "[DEBUG] NoMatch reason detected.") // DEBUG LOG ADDED
-                 Log.w(TAG, "No speech could be recognized (Reason: NoMatch).")
-                 // Envoyer un événement final indiquant NoMatch (structure plate)
+                }
+            }
+            // Gérer le cas de la reconnaissance continue simple (deferred est null)
+            else if (deferred == null && e.result.reason == ResultReason.RecognizedSpeech) {
+                 Log.i(TAG, "Continuous recognition final result: '$recognizedText'")
+                 // Envoyer l'événement final SANS évaluation
                  sendEvent("finalResult", mapOf(
-                     "text" to null,
-                     "pronunciationResult" to null,
-                     "error" to "NoMatch" // Indiquer la raison
+                     "text" to recognizedText,
+                     "pronunciationResult" to null // Pas d'évaluation ici
                  ))
-                 deferred.complete(null) // Compléter le Deferred Pigeon avec null
-             }
-             // Le nettoyage se fera via canceled/sessionStopped
+                 // Pas de deferred à compléter ici
+            }
+            // Gérer NoMatch pour les deux cas
+            else if (e.result.reason == ResultReason.NoMatch) {
+                 Log.w(TAG, "No speech recognized (Reason: NoMatch).")
+                 sendEvent("finalResult", mapOf("text" to null, "pronunciationResult" to null, "error" to "NoMatch"))
+                 deferred?.complete(null) // Compléter si c'était une évaluation
+            }
+            // Le nettoyage se fera via canceled/sessionStopped pour les deux cas
          }
 
          speechRecognizer?.canceled?.addEventListener { _, e ->
               Log.e(TAG, "[DEBUG] Canceled Event Triggered. Reason: ${e.reason}, ErrorCode: ${e.errorCode}, Details: ${e.errorDetails}") // DEBUG LOG ADDED
              Log.e(TAG, "Event: Canceled. Reason: ${e.reason}, ErrorDetails: ${e.errorDetails}")
-             // Envoyer l'erreur via EventChannel (structure plate)
              sendEvent("error", mapOf(
                  "code" to e.errorCode.name,
                  "message" to "Reconnaissance annulée: ${e.reason}",
                  "details" to e.errorDetails
              ))
-             if (deferred.isActive) {
-                 // Si arrêt manuel (flag ou raison), compléter le Deferred Pigeon avec null
+             // Compléter le deferred s'il est actif (pour l'évaluation)
+             if (deferred?.isActive == true) {
                  if (_isStoppingManually || e.reason == CancellationReason.CancelledByUser) {
                      Log.w(TAG, "Cancellation event handled as manual stop, completing deferred with null.")
                      deferred.complete(null)
-                 } else { // Sinon, c'est une vraie erreur, compléter le Deferred Pigeon avec exception
+                 } else {
                      val exception = Exception("Recognition canceled: ${e.reason} - ${e.errorDetails}")
                      deferred.completeExceptionally(exception)
                  }
              }
-             mainScope.launch { stopAndCleanupRecognizer() } // Nettoyer
+             mainScope.launch { stopAndCleanupRecognizer() }
          }
 
          speechRecognizer?.sessionStopped?.addEventListener { _, e ->
              Log.w(TAG, "[DEBUG] SessionStopped Event Triggered. SessionId: ${e.sessionId}") // DEBUG LOG ADDED
              Log.w(TAG, "Event: SessionStopped. SessionId: ${e.sessionId}")
-             // Envoyer un événement de statut via EventChannel (structure plate)
              sendEvent("status", mapOf("statusMessage" to "Recognition session stopped"))
-             if (deferred.isActive) {
-                 Log.w(TAG, "Session stopped before final result. Completing deferred with null (assuming manual stop or timeout).")
-                 // Considérer l'arrêt de session comme résultant en 'null' pour le Deferred Pigeon
+             // Compléter le deferred s'il est actif (pour l'évaluation)
+             if (deferred?.isActive == true) {
+                 Log.w(TAG, "Session stopped before final result. Completing deferred with null.")
                  deferred.complete(null)
              }
-              mainScope.launch { stopAndCleanupRecognizer() } // Nettoyer
+              mainScope.launch { stopAndCleanupRecognizer() }
          }
 
           speechRecognizer?.sessionStarted?.addEventListener { _, e ->
@@ -454,6 +509,8 @@ class AzureSpeechHandler(private val context: Context, private val mainScope: Co
              recognizer?.canceled?.removeEventListener { _, _ -> }
              recognizer?.sessionStopped?.removeEventListener { _, _ -> }
              recognizer?.sessionStarted?.removeEventListener { _, _ -> }
+             // Détacher aussi recognizing
+             recognizer?.recognizing?.removeEventListener { _, _ -> }
         } catch (e: Exception) { Log.e(TAG, "Error removing listeners: ${e.message}", e) }
 
         // Fermer recognizer/config

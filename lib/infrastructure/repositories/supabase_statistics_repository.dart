@@ -384,29 +384,27 @@ class SupabaseStatisticsRepository {
       }
 
       // --- Update Cache ---
-      if (updatedStats != null) {
-         // We need the full stats object including user_id for the cache key consistency
-         final statsToCache = Map<String, dynamic>.from(updatedStats);
-         if (!statsToCache.containsKey('user_id')) {
-            statsToCache['user_id'] = userId; // Ensure user_id is present
-         }
-         // Add other fields if they exist in the table but not in updatedStats map
-         // (e.g., created_at might come from currentStats if it exists)
-         if (currentStats != null && currentStats.containsKey('created_at')) {
-             statsToCache['created_at'] = currentStats['created_at'];
-         }
+       // We need the full stats object including user_id for the cache key consistency
+       final statsToCache = Map<String, dynamic>.from(updatedStats);
+       if (!statsToCache.containsKey('user_id')) {
+          statsToCache['user_id'] = userId; // Ensure user_id is present
+       }
+       // Add other fields if they exist in the table but not in updatedStats map
+       // (e.g., created_at might come from currentStats if it exists)
+       if (currentStats != null && currentStats.containsKey('created_at')) {
+           statsToCache['created_at'] = currentStats['created_at'];
+       }
 
 
-         try {
-           final box = await _openBox(_userStatsBoxName);
-           await box.put(userId, statsToCache);
-           debugPrint('🟢 [SupabaseStatisticsRepo] updateUserStatistics: Cache mis à jour.');
-         } catch (cacheError) {
-            debugPrint('🔴 [SupabaseStatisticsRepo] Erreur mise à jour cache (updateUserStatistics): $cacheError');
-            // Log error but don't rethrow, as Supabase update was successful
-         }
-      }
-      // --- End Update Cache ---
+       try {
+         final box = await _openBox(_userStatsBoxName);
+         await box.put(userId, statsToCache);
+         debugPrint('🟢 [SupabaseStatisticsRepo] updateUserStatistics: Cache mis à jour.');
+       } catch (cacheError) {
+          debugPrint('🔴 [SupabaseStatisticsRepo] Erreur mise à jour cache (updateUserStatistics): $cacheError');
+          // Log error but don't rethrow, as Supabase update was successful
+       }
+          // --- End Update Cache ---
 
     } on PostgrestException catch (e) {
       debugPrint('🔴 [SupabaseStatisticsRepo] Erreur Postgrest (updateUserStatisticsAfterSession): ${e.message}');
