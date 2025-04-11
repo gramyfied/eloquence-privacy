@@ -6,18 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:piper_tts_plugin/piper_tts_plugin.dart';
 import '../../core/utils/console_logger.dart';
 import 'tts_service_interface.dart';
-
-// TODO: Ajouter le package piper_tts_plugin au pubspec.yaml
-// import 'package:piper_tts_plugin/piper_tts_plugin.dart';
-
-// Définition temporaire des classes Piper pour compilation
-class PiperTtsPlugin {
-  Future<bool> initialize({required String modelPath, required String configPath}) async => true;
-  Future<Uint8List?> synthesize({required String text}) async => Uint8List(0);
-  Future<void> release() async {}
-}
 
 /// Service de synthèse vocale utilisant Piper TTS en local.
 /// Cette classe implémente l'interface ITtsService pour faciliter

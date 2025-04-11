@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:eloquence_flutter/services/interactive_exercise/realtime_audio_pipeline.dart';
 
 // Note: Ce test est temporairement désactivé car il nécessite une mise à jour des mocks
 // pour fonctionner avec les nouvelles interfaces. Il faudrait exécuter la commande

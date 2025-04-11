@@ -16,6 +16,8 @@ import '../infrastructure/repositories/supabase_exercise_repository.dart';
 // Importer les nouvelles interfaces et implémentations
 import '../domain/repositories/azure_speech_repository.dart';
 import '../infrastructure/repositories/azure_speech_repository_impl.dart';
+import '../infrastructure/repositories/whisper_speech_repository_impl.dart'; // Ajouté pour le mode local
+import '../infrastructure/repositories/kaldi_gop_repository_impl.dart'; // Ajouté pour le mode local
 import '../infrastructure/native/azure_speech_api.g.dart'; // API Pigeon générée
 // import 'package:flutter_tts/flutter_tts.dart'; // Retiré
 
@@ -42,15 +44,11 @@ import 'interactive_exercise/feedback_analysis_service.dart';
 import 'interactive_exercise/realtime_audio_pipeline.dart';
 import '../presentation/providers/interaction_manager.dart'; // Assurez-vous que le chemin est correct
 // Importer les interfaces et implémentations des nouveaux plugins
-// TODO: Décommenter ces imports une fois les packages ajoutés au pubspec.yaml
-// import 'package:whisper_stt_plugin/whisper_stt_plugin.dart';
-// import 'package:piper_tts_plugin/piper_tts_plugin.dart';
-// import 'package:kaldi_gop_plugin/kaldi_gop_plugin.dart';
-// Importer les implémentations locales des repositories/services
-// import '../infrastructure/repositories/whisper_speech_repository_impl.dart';
-// import '../infrastructure/repositories/kaldi_gop_repository_impl.dart';
-import 'tts/piper_tts_service.dart';
+import 'package:whisper_stt_plugin/whisper_stt_plugin.dart';
+import 'package:piper_tts_plugin/piper_tts_plugin.dart';
+import 'package:kaldi_gop_plugin/kaldi_gop_plugin.dart' as kaldi_plugin;
 import 'tts/tts_service_interface.dart';
+import 'tts/piper_tts_service.dart'; // Ajouté pour le mode local
 import 'feedback/feedback_service_interface.dart';
 import 'mistral/mistral_feedback_service.dart';
 
@@ -106,24 +104,15 @@ void setupServiceLocator() {
 
   // 2. Enregistrer l'implémentation du Repository Speech (conditionnel)
   if (appMode == 'local') {
-    // TODO: Créer et enregistrer LocalSpeechRepositoryImpl
-    // Cette implémentation devra utiliser WhisperSttPlugin et KaldiGopPlugin
-    // et mapper leurs résultats à la structure attendue par IAzureSpeechRepository
-    // ou définir une nouvelle interface commune.
-    /*
+    // Enregistrer WhisperSpeechRepositoryImpl pour le mode local
     serviceLocator.registerLazySingleton<IAzureSpeechRepository>(
-      () => LocalSpeechRepositoryImpl(
-        // Injecter les plugins locaux
-        // whisperPlugin: serviceLocator<WhisperSttPlugin>(),
-        // kaldiPlugin: serviceLocator<KaldiGopPlugin>(),
+      () => WhisperSpeechRepositoryImpl(
+        audioRepository: serviceLocator<AudioRepository>(),
+        // Le plugin Whisper sera créé par défaut dans le constructeur
       )
     );
-    */
-     print("WARNING: LocalSpeechRepositoryImpl not yet implemented. Registering Azure version as fallback.");
-     // Fallback temporaire sur Azure pour que l'app compile
-     serviceLocator.registerLazySingleton<IAzureSpeechRepository>(
-       () => AzureSpeechRepositoryImpl(serviceLocator<AzureSpeechApi>())
-     );
+    
+    print("INFO: Enregistrement de WhisperSpeechRepositoryImpl pour le mode local.");
   } else {
     // Mode Cloud: Enregistrer l'implémentation Azure
     serviceLocator.registerLazySingleton<IAzureSpeechRepository>(
@@ -142,11 +131,10 @@ void setupServiceLocator() {
 
   // Enregistrer les plugins locaux
   if (appMode == 'local') {
-    // TODO: Décommenter ces enregistrements une fois les packages ajoutés au pubspec.yaml
-    // // Enregistrer les plugins pour les services locaux
-    // serviceLocator.registerLazySingleton<WhisperSttPlugin>(() => WhisperSttPlugin());
-    // serviceLocator.registerLazySingleton<PiperTtsPlugin>(() => PiperTtsPlugin());
-    // serviceLocator.registerLazySingleton<KaldiGopPlugin>(() => KaldiGopPlugin());
+    // Enregistrer les plugins pour les services locaux
+    serviceLocator.registerLazySingleton<WhisperSttPlugin>(() => WhisperSttPlugin());
+    serviceLocator.registerLazySingleton<PiperTtsPlugin>(() => PiperTtsPlugin());
+    serviceLocator.registerLazySingleton<kaldi_plugin.KaldiGopPlugin>(() => kaldi_plugin.KaldiGopPlugin());
   }
 
   // Enregistrer le service de Feedback IA (conditionnel)
@@ -176,20 +164,14 @@ void setupServiceLocator() {
 
   // Enregistrer le service TTS (conditionnel)
   if (appMode == 'local') {
-      // TODO: Décommenter ce bloc une fois le plugin Piper disponible
-      // // Enregistrer PiperTtsService
-      // serviceLocator.registerLazySingleton<ITtsService>(
-      //   () => PiperTtsService(
-      //     audioPlayer: serviceLocator<AudioPlayer>(),
-      //     piperPlugin: serviceLocator<PiperTtsPlugin>(),
-      //   )
-      // );
-      
-      // Utiliser AzureTtsService comme fallback temporaire
-      print("WARNING: PiperTtsService not yet fully implemented. Registering Azure version as fallback.");
+      // Enregistrer PiperTtsService
       serviceLocator.registerLazySingleton<ITtsService>(
-        () => AzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
+        () => PiperTtsService(
+          audioPlayer: serviceLocator<AudioPlayer>(),
+          piperPlugin: serviceLocator<PiperTtsPlugin>(),
+        )
       );
+      print("INFO: Enregistrement de PiperTtsService pour le mode local.");
   } else {
       // Mode Cloud: Enregistrer AzureTtsService
       serviceLocator.registerLazySingleton<ITtsService>(

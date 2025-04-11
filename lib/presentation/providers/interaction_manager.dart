@@ -12,7 +12,7 @@ import '../../services/interactive_exercise/realtime_audio_pipeline.dart';
 import '../../services/interactive_exercise/scenario_generator_service.dart';
 import '../../domain/repositories/azure_speech_repository.dart'; // Importer AzureSpeechEvent
 // Importer depuis le repository où les événements sont maintenant définis
-import '../../infrastructure/repositories/whisper_speech_repository_impl.dart'; // Importer l'implémentation Whisper
+// Importer l'implémentation Whisper
 
 enum InteractionState { idle, initializing, generatingScenario, briefing, ready, listening, thinking, speaking, analyzing, finished, error }
 

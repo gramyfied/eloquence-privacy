@@ -492,7 +492,7 @@ Ne fournis que la phrase générée, sans aucune introduction, explication ou gu
   }) async {
     ConsoleLogger.info('🤖 [OPENAI Feedback] Génération de feedback pour l\'intonation...');
     ConsoleLogger.info('🤖 [OPENAI Feedback] - Émotion cible: $targetEmotion');
-    ConsoleLogger.info('🤖 [OPENAI Feedback] - Phrase référence: \"$referenceSentence\"');
+    ConsoleLogger.info('🤖 [OPENAI Feedback] - Phrase référence: "$referenceSentence"');
     if (audioMetrics != null && audioMetrics.isNotEmpty) {
       ConsoleLogger.info('🤖 [OPENAI Feedback] - Métriques audio fournies: ${audioMetrics.entries.map((e) => '${e.key}: ${e.value.toStringAsFixed(2)}').join(', ')}');
     } else {

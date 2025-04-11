@@ -78,8 +78,13 @@ dependencies:
   flutter_dotenv: ^5.1.0
   audio_signal_processor:
     path: audio_signal_processor # Correct path relative to pubspec.yaml
+  # Plugins pour la version B hors ligne
   whisper_stt_plugin:
-    path: whisper_stt_plugin # Ajout de la dépendance locale
+    path: whisper_stt_plugin # Plugin pour la reconnaissance vocale locale avec Whisper
+  piper_tts_plugin:
+    path: piper_tts_plugin # Plugin pour la synthèse vocale locale avec Piper
+  kaldi_gop_plugin:
+    path: kaldi_gop_plugin # Plugin pour l'évaluation de prononciation locale avec Kaldi GOP
 
 dev_dependencies:
   # ffigen: ^11.0.0 # Supprimé car Whisper FFI n'est plus utilisé

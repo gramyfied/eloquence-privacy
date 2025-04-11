@@ -42,6 +42,12 @@
 @import just_audio;
 #endif
 
+#if __has_include(<kaldi_gop_plugin/KaldiGopPlugin.h>)
+#import <kaldi_gop_plugin/KaldiGopPlugin.h>
+#else
+@import kaldi_gop_plugin;
+#endif
+
 #if __has_include(<path_provider_foundation/PathProviderPlugin.h>)
 #import <path_provider_foundation/PathProviderPlugin.h>
 #else
@@ -52,6 +58,12 @@
 #import <permission_handler_apple/PermissionHandlerPlugin.h>
 #else
 @import permission_handler_apple;
+#endif
+
+#if __has_include(<piper_tts_plugin/PiperTtsPlugin.h>)
+#import <piper_tts_plugin/PiperTtsPlugin.h>
+#else
+@import piper_tts_plugin;
 #endif
 
 #if __has_include(<record_darwin/RecordPlugin.h>)
@@ -93,8 +105,10 @@
   [FlutterTtsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterTtsPlugin"]];
   [FLTImagePickerPlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTImagePickerPlugin"]];
   [JustAudioPlugin registerWithRegistrar:[registry registrarForPlugin:@"JustAudioPlugin"]];
+  [KaldiGopPlugin registerWithRegistrar:[registry registrarForPlugin:@"KaldiGopPlugin"]];
   [PathProviderPlugin registerWithRegistrar:[registry registrarForPlugin:@"PathProviderPlugin"]];
   [PermissionHandlerPlugin registerWithRegistrar:[registry registrarForPlugin:@"PermissionHandlerPlugin"]];
+  [PiperTtsPlugin registerWithRegistrar:[registry registrarForPlugin:@"PiperTtsPlugin"]];
   [RecordPlugin registerWithRegistrar:[registry registrarForPlugin:@"RecordPlugin"]];
   [SharedPreferencesPlugin registerWithRegistrar:[registry registrarForPlugin:@"SharedPreferencesPlugin"]];
   [SqflitePlugin registerWithRegistrar:[registry registrarForPlugin:@"SqflitePlugin"]];

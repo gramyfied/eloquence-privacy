@@ -1,4 +1,3 @@
-import '../../domain/entities/pronunciation_result.dart';
 
 /// Interface commune pour les services de feedback IA
 /// Permet d'interchanger facilement entre OpenAIFeedbackService et MistralFeedbackService

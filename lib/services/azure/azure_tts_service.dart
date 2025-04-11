@@ -26,6 +26,7 @@ class AzureTtsService implements ITtsService {
   DateTime? _tokenExpiryTime; // Pour gérer l'expiration du token
 
   bool _isInitialized = false;
+  @override
   bool get isInitialized => _isInitialized;
   // bool _manuallyStopped = false; // Flag supprimé, complexité inutile
 

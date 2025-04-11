@@ -1,22 +1,37 @@
 import 'dart:async';
-// Pour Uint8List si nécessaire plus tard
+import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:eloquence_flutter/core/errors/exceptions.dart';
 import 'package:eloquence_flutter/domain/entities/pronunciation_result.dart';
+import 'package:eloquence_flutter/domain/repositories/audio_repository.dart';
 import 'package:eloquence_flutter/domain/repositories/azure_speech_repository.dart';
-import 'package:whisper_stt_plugin/whisper_stt_plugin.dart'; // Importer le plugin
-import 'package:eloquence_flutter/core/errors/exceptions.dart'; // Importer les exceptions personnalisées
+import 'package:whisper_stt_plugin/whisper_stt_plugin.dart';
 
-// TODO: Définir le chemin vers le modèle Whisper (via config, constante, etc.)
-const String _defaultWhisperModelPath = "assets/models/ggml-base.bin"; // Exemple
+/// Chemin vers les modèles Whisper (à configurer)
+const String _defaultWhisperModelDir = "assets/models/whisper";
+const String _defaultWhisperModelName = "ggml-tiny-q5_1.bin"; // Modèle quantifié léger
 
+/// Implémentation du repository pour la reconnaissance vocale avec Whisper.
+/// Cette classe implémente l'interface IAzureSpeechRepository pour s'intégrer
+/// facilement dans l'architecture existante, mais utilise Whisper en interne.
 class WhisperSpeechRepositoryImpl implements IAzureSpeechRepository {
   final WhisperSttPlugin _whisperPlugin;
+  final AudioRepository _audioRepository;
   bool _isInitialized = false;
   StreamController<AzureSpeechEvent>? _recognitionStreamController;
-  StreamSubscription? _whisperEventSubscription;
+  String? _currentRecordingPath;
+  Timer? _silenceTimer;
+  bool _isRecording = false;
+  bool _isContinuousRecognition = false;
 
-  WhisperSpeechRepositoryImpl({WhisperSttPlugin? whisperPlugin})
-      : _whisperPlugin = whisperPlugin ?? WhisperSttPlugin();
+  WhisperSpeechRepositoryImpl({
+    required AudioRepository audioRepository,
+    WhisperSttPlugin? whisperPlugin,
+  })  : _whisperPlugin = whisperPlugin ?? WhisperSttPlugin(),
+        _audioRepository = audioRepository {
+    _recognitionStreamController = StreamController<AzureSpeechEvent>.broadcast();
+  }
 
   @override
   bool get isInitialized => _isInitialized;
@@ -29,134 +44,365 @@ class WhisperSpeechRepositoryImpl implements IAzureSpeechRepository {
 
   @override
   Future<void> initialize(String subscriptionKey, String region) async {
-    // L'initialisation de Whisper n'utilise pas de clé/région Azure,
-    // mais le chemin du modèle.
-    // On pourrait ignorer les paramètres ou les utiliser pour autre chose si pertinent.
+    // Whisper n'utilise pas de clé/région Azure, mais un fichier modèle
     try {
-      // TODO: Rendre le chemin du modèle configurable
-      final success = await _whisperPlugin.initialize(modelPath: _defaultWhisperModelPath);
+      final modelPath = await _getModelPath();
+      _recognitionStreamController?.add(AzureSpeechEvent.status("Initialisation de Whisper avec le modèle: $modelPath"));
+      
+      final success = await _whisperPlugin.initialize(modelPath: modelPath);
       if (success) {
         _isInitialized = true;
         _recognitionStreamController?.add(AzureSpeechEvent.status("Whisper initialisé avec succès."));
       } else {
         _isInitialized = false;
         _recognitionStreamController?.add(AzureSpeechEvent.error("INIT_FAILED", "Échec de l'initialisation de Whisper."));
-        throw NativePlatformException("Échec de l'initialisation de Whisper."); // Utiliser NativePlatformException
+        throw NativePlatformException("Échec de l'initialisation de Whisper.");
       }
     } catch (e) {
       _isInitialized = false;
-       _recognitionStreamController?.add(AzureSpeechEvent.error("INIT_EXCEPTION", "Exception lors de l'initialisation de Whisper: $e"));
-      throw NativePlatformException("Exception lors de l'initialisation de Whisper: $e"); // Utiliser NativePlatformException
+      _recognitionStreamController?.add(AzureSpeechEvent.error("INIT_EXCEPTION", "Exception lors de l'initialisation de Whisper: $e"));
+      throw NativePlatformException("Exception lors de l'initialisation de Whisper: $e");
     }
+  }
+
+  /// Obtient le chemin complet vers le fichier modèle Whisper.
+  /// Cette méthode pourrait être étendue pour gérer le téléchargement du modèle si nécessaire.
+  Future<String> _getModelPath() async {
+    // TODO: Implémenter la logique de téléchargement/vérification du modèle
+    // Pour l'instant, on suppose que le modèle est déjà dans le répertoire assets/models/whisper
+    final modelPath = '$_defaultWhisperModelDir/$_defaultWhisperModelName';
+    
+    // Vérifier si le fichier existe
+    final modelFile = File(modelPath);
+    if (!await modelFile.exists()) {
+      throw Exception("Le fichier modèle Whisper n'existe pas: $modelPath");
+    }
+    
+    return modelPath;
   }
 
   @override
   Future<void> startContinuousRecognition(String language) async {
     if (!_isInitialized) {
-      throw NativePlatformException("Whisper non initialisé."); // Utiliser NativePlatformException
+      throw NativePlatformException("Whisper non initialisé.");
     }
-    _recognitionStreamController ??= StreamController<AzureSpeechEvent>.broadcast();
 
-    // S'assurer d'arrêter toute écoute précédente
-    await _whisperEventSubscription?.cancel();
-    _whisperEventSubscription = null;
+    if (_isRecording) {
+      await stopRecognition();
+    }
+
+    _recognitionStreamController?.add(AzureSpeechEvent.status("Démarrage de la reconnaissance continue avec Whisper..."));
+    _isContinuousRecognition = true;
 
     try {
-       _recognitionStreamController?.add(AzureSpeechEvent.status("Démarrage de la reconnaissance Whisper..."));
-      // TODO: Lancer la capture audio et envoyer les chunks au plugin
-      // L'implémentation actuelle du plugin semble nécessiter l'envoi manuel des chunks.
-      // Il faudra intégrer cela avec la capture audio (ex: RecordAudioRepository).
-      // Pour l'instant, on écoute juste les événements du plugin (s'il en émet).
+      // Démarrer l'enregistrement en streaming
+      final audioStream = await _audioRepository.startRecordingStream();
+      _isRecording = true;
 
-      _whisperEventSubscription = _whisperPlugin.transcriptionEvents.listen(
-        (result) {
-          if (result.isPartial) {
-            _recognitionStreamController?.add(AzureSpeechEvent.partial(result.text));
-          } else {
-            // Whisper ne fournit pas d'évaluation de prononciation ni de prosodie.
-            _recognitionStreamController?.add(AzureSpeechEvent.finalResult(result.text, null, null));
+      // Traiter le flux audio en continu
+      audioStream.listen(
+        (audioChunk) async {
+          if (!_isRecording || !_isContinuousRecognition) return;
+
+          try {
+            // Transcrire le chunk audio avec Whisper
+            final result = await _whisperPlugin.transcribeChunk(
+              audioChunk: audioChunk,
+              language: language.split('-')[0], // Extraire le code langue principal (ex: 'fr' de 'fr-FR')
+            );
+
+            if (result.isPartial) {
+              // Émettre un événement partiel
+              _recognitionStreamController?.add(AzureSpeechEvent.partial(result.text));
+            } else {
+              // Émettre un événement final
+              _recognitionStreamController?.add(AzureSpeechEvent.finalResult(
+                result.text,
+                null, // Pas de résultat de prononciation pour la reconnaissance continue
+                null, // Pas de résultat de prosodie
+              ));
+            }
+
+            // Réinitialiser le timer de silence à chaque chunk traité
+            _resetSilenceTimer();
+          } catch (e) {
+            _recognitionStreamController?.add(AzureSpeechEvent.error(
+              "TRANSCRIPTION_ERROR",
+              "Erreur lors de la transcription: $e",
+            ));
           }
         },
         onError: (error) {
-          // TODO: Mapper l'erreur du plugin en AzureSpeechEvent.error
-          _recognitionStreamController?.add(AzureSpeechEvent.error("PLUGIN_ERROR", error.toString()));
+          _recognitionStreamController?.add(AzureSpeechEvent.error(
+            "AUDIO_STREAM_ERROR",
+            "Erreur dans le flux audio: $error",
+          ));
         },
         onDone: () {
-           _recognitionStreamController?.add(AzureSpeechEvent.status("Flux d'événements Whisper terminé."));
-          // Peut-être arrêter la reconnaissance ici si nécessaire
+          if (_isContinuousRecognition) {
+            // Si on est toujours en mode reconnaissance continue, c'est une fin inattendue
+            _recognitionStreamController?.add(AzureSpeechEvent.status("Flux audio terminé."));
+            _isRecording = false;
+          }
         },
       );
 
-      // TODO: Démarrer la capture audio réelle ici et appeler _whisperPlugin.transcribeChunk(...)
-      // Exemple hypothétique:
-      // audioCaptureService.start((audioChunk) {
-      //   _whisperPlugin.transcribeChunk(audioChunk: audioChunk, language: language);
-      // });
-
-      print("Reconnaissance continue Whisper démarrée (simulation d'écoute d'événements).");
-       _recognitionStreamController?.add(AzureSpeechEvent.status("Écoute Whisper démarrée."));
-
+      // Configurer un timer pour détecter les silences prolongés
+      _resetSilenceTimer();
     } catch (e) {
-      _recognitionStreamController?.add(AzureSpeechEvent.error("START_REC_EXCEPTION", "Exception lors du démarrage de la reconnaissance Whisper: $e"));
-      throw NativePlatformException("Erreur lors du démarrage de la reconnaissance Whisper: $e"); // Utiliser NativePlatformException
+      _isRecording = false;
+      _isContinuousRecognition = false;
+      _recognitionStreamController?.add(AzureSpeechEvent.error(
+        "RECOGNITION_START_ERROR",
+        "Erreur lors du démarrage de la reconnaissance: $e",
+      ));
+      throw NativePlatformException("Erreur lors du démarrage de la reconnaissance Whisper: $e");
     }
+  }
+
+  void _resetSilenceTimer() {
+    _silenceTimer?.cancel();
+    _silenceTimer = Timer(const Duration(seconds: 2), () {
+      // Si aucun audio n'est reçu pendant 2 secondes, on considère que c'est un silence
+      if (_isContinuousRecognition) {
+        _recognitionStreamController?.add(AzureSpeechEvent.status("Silence détecté."));
+      }
+    });
   }
 
   @override
   Future<PronunciationResult> startPronunciationAssessment(String referenceText, String language) async {
     if (!_isInitialized) {
-      throw NativePlatformException("Whisper non initialisé."); // Utiliser NativePlatformException
+      throw NativePlatformException("Whisper non initialisé.");
     }
-     _recognitionStreamController?.add(AzureSpeechEvent.status("L'évaluation de prononciation n'est pas supportée par Whisper seul. Démarrage STT simple."));
-    print("AVERTISSEMENT: startPronunciationAssessment appelé sur WhisperSpeechRepositoryImpl. Whisper ne fait que du STT.");
-    print("Texte de référence (ignoré pour STT simple): $referenceText");
 
-    // Démarrer la reconnaissance simple
-    await startContinuousRecognition(language);
+    _recognitionStreamController?.add(AzureSpeechEvent.status("Démarrage de l'évaluation avec Whisper..."));
 
-    // Whisper ne fournit pas d'évaluation. Retourner un résultat vide ou par défaut.
-    // Ou lancer une exception si ce comportement n'est pas souhaité.
-    // Pour l'instant, on retourne un résultat vide après avoir potentiellement
-    // reçu le texte transcrit via les événements.
-    // On pourrait attendre un événement final ici, mais c'est complexe à gérer proprement
-    // sans bloquer l'UI. L'architecture devrait plutôt s'appuyer sur les `recognitionEvents`.
+    try {
+      // Capturer l'audio
+      final audioData = await _captureAudio();
 
-    // Alternative: Lancer une exception pour indiquer que ce n'est pas supporté.
-    // throw UnimplementedError("L'évaluation de prononciation n'est pas supportée par l'implémentation Whisper.");
+      // Transcrire l'audio avec Whisper
+      final result = await _whisperPlugin.transcribeChunk(
+        audioChunk: audioData,
+        language: language.split('-')[0], // Extraire le code langue principal (ex: 'fr' de 'fr-FR')
+      );
 
-    // Retourner un résultat vide pour l'instant.
-    // Retourner un résultat vide indiquant l'erreur/non-support.
-    return const PronunciationResult(
-      accuracyScore: 0,
-      pronunciationScore: 0,
-      completenessScore: 0,
-      fluencyScore: 0,
-      // prosodyScore: 0, // Ce champ n'existe pas dans PronunciationResult
-      words: [],
-      // recognizedText: "", // Ce champ n'existe pas dans PronunciationResult
-      errorDetails: "Évaluation de prononciation non supportée par Whisper",
-    );
+      // Créer un résultat de prononciation basique
+      // Note: Whisper ne fournit pas d'évaluation de prononciation, donc on crée un résultat simplifié
+      final recognizedText = result.text;
+      
+      // Calculer un score de similarité basique entre le texte reconnu et le texte de référence
+      final similarityScore = _calculateSimilarityScore(recognizedText, referenceText);
+      
+      // Créer un PronunciationResult avec les informations disponibles
+      final pronunciationResult = PronunciationResult(
+        accuracyScore: similarityScore,
+        pronunciationScore: similarityScore,
+        completenessScore: similarityScore,
+        fluencyScore: similarityScore,
+        words: _extractWords(recognizedText, referenceText, similarityScore),
+      );
+
+      // Convertir le résultat en Map pour l'événement
+      final Map<String, dynamic> pronunciationResultMap = _convertToAzureFormat(pronunciationResult, recognizedText);
+
+      // Émettre un événement final avec le résultat
+      _recognitionStreamController?.add(AzureSpeechEvent.finalResult(
+        recognizedText,
+        pronunciationResultMap,
+        null, // Pas de prosodie
+      ));
+
+      return pronunciationResult;
+    } catch (e) {
+      _recognitionStreamController?.add(AzureSpeechEvent.error("ASSESSMENT_EXCEPTION", "Exception lors de l'évaluation Whisper: $e"));
+      throw NativePlatformException("Erreur lors de l'évaluation Whisper: $e");
+    }
   }
 
   @override
   Future<void> stopRecognition() async {
-    print("Arrêt de la reconnaissance Whisper...");
-    // TODO: Arrêter la capture audio ici
-    // Exemple: audioCaptureService.stop();
+    _recognitionStreamController?.add(AzureSpeechEvent.status("Arrêt de la reconnaissance Whisper."));
+    
+    _isContinuousRecognition = false;
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
 
-    await _whisperEventSubscription?.cancel();
-    _whisperEventSubscription = null;
+    if (_isRecording) {
+      try {
+        if (_currentRecordingPath != null) {
+          await _audioRepository.stopRecording();
+        } else {
+          await _audioRepository.stopRecordingStream();
+        }
+        _isRecording = false;
+        _currentRecordingPath = null;
+      } catch (e) {
+        _recognitionStreamController?.add(AzureSpeechEvent.error(
+          "STOP_RECORDING_ERROR",
+          "Erreur lors de l'arrêt de l'enregistrement: $e",
+        ));
+      }
+    }
+  }
 
-    // Optionnel: Libérer les ressources Whisper si on ne les réutilise pas immédiatement.
-    // Sinon, garder initialisé pour la prochaine reconnaissance.
-    // await _whisperPlugin.release();
-    // _isInitialized = false; // Si on release
+  // Méthode privée pour capturer l'audio
+  Future<Uint8List> _captureAudio() async {
+    String? recordingPath;
+    try {
+      // Obtenir un chemin de fichier unique
+      recordingPath = await _audioRepository.getRecordingFilePath();
+      _currentRecordingPath = recordingPath;
 
-    // Fermer le stream controller s'il n'est plus nécessaire ?
-    // Attention si l'instance du repo est conservée.
-    // await _recognitionStreamController?.close();
-    // _recognitionStreamController = null;
-     _recognitionStreamController?.add(AzureSpeechEvent.status("Reconnaissance Whisper arrêtée."));
-    print("Reconnaissance Whisper arrêtée.");
+      // Démarrer l'enregistrement vers le fichier
+      await _audioRepository.startRecording(filePath: recordingPath);
+      _isRecording = true;
+      _recognitionStreamController?.add(AzureSpeechEvent.status("Enregistrement audio démarré... Parlez maintenant."));
+
+      // TODO: Ajouter une logique pour arrêter l'enregistrement
+      // Pour l'instant, on simule une attente puis on arrête.
+      // Dans une vraie app, on utiliserait la détection de silence ou un bouton stop.
+      await Future.delayed(const Duration(seconds: 5)); // Simule 5s de parole
+
+      // Arrêter l'enregistrement
+      final stoppedPath = await _audioRepository.stopRecording();
+      _isRecording = false;
+      if (stoppedPath == null || stoppedPath != recordingPath) {
+        throw Exception("Échec de l'arrêt de l'enregistrement ou chemin incohérent.");
+      }
+      _recognitionStreamController?.add(AzureSpeechEvent.status("Enregistrement terminé. Analyse en cours..."));
+
+      // Lire les données audio du fichier enregistré
+      final file = File(recordingPath);
+      if (await file.exists()) {
+        final audioData = await file.readAsBytes();
+        // Optionnel: Supprimer le fichier temporaire après lecture
+        // await file.delete();
+        return audioData;
+      } else {
+        throw Exception("Le fichier audio enregistré n'a pas été trouvé: $recordingPath");
+      }
+    } catch (e) {
+      _recognitionStreamController?.add(AzureSpeechEvent.error("AUDIO_CAPTURE_ERROR", "Erreur lors de la capture audio: $e"));
+      // Essayer de supprimer le fichier en cas d'erreur si le chemin existe
+      if (recordingPath != null) {
+        try {
+          final file = File(recordingPath);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (deleteError) {
+          print("Erreur supplémentaire lors de la suppression du fichier audio après erreur: $deleteError");
+        }
+      }
+      _isRecording = false;
+      throw Exception("Erreur lors de la capture audio: $e");
+    } finally {
+      _currentRecordingPath = null;
+    }
+  }
+
+  // Calcule un score de similarité basique entre deux textes
+  double _calculateSimilarityScore(String recognized, String reference) {
+    // Normaliser les textes (minuscules, sans ponctuation)
+    final normalizedRecognized = recognized.toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '');
+    final normalizedReference = reference.toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '');
+    
+    // Diviser en mots
+    final recognizedWords = normalizedRecognized.split(RegExp(r'\s+'));
+    final referenceWords = normalizedReference.split(RegExp(r'\s+'));
+    
+    // Compter les mots correctement reconnus
+    int matchCount = 0;
+    for (final refWord in referenceWords) {
+      if (recognizedWords.contains(refWord)) {
+        matchCount++;
+        // Retirer le mot pour éviter les doublons
+        recognizedWords.remove(refWord);
+      }
+    }
+    
+    // Calculer le score (0-100)
+    final maxWords = referenceWords.length;
+    return maxWords > 0 ? (matchCount / maxWords * 100).clamp(0.0, 100.0) : 0.0;
+  }
+
+  // Extrait les mots du texte reconnu et crée des WordResult
+  List<WordResult> _extractWords(String recognized, String reference, double globalScore) {
+    // Normaliser les textes
+    final normalizedRecognized = recognized.toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '');
+    final normalizedReference = reference.toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '');
+    
+    // Diviser en mots
+    final recognizedWords = normalizedRecognized.split(RegExp(r'\s+'));
+    final referenceWords = normalizedReference.split(RegExp(r'\s+'));
+    
+    // Créer des WordResult pour chaque mot de référence
+    final List<WordResult> results = [];
+    
+    for (final refWord in referenceWords) {
+      final bool isRecognized = recognizedWords.contains(refWord);
+      final String errorType = isRecognized ? "None" : "Mispronunciation";
+      final double wordScore = isRecognized ? 100.0 : 0.0;
+      
+      results.add(WordResult(
+        word: refWord,
+        accuracyScore: wordScore,
+        errorType: errorType,
+      ));
+      
+      // Retirer le mot pour éviter les doublons
+      if (isRecognized) {
+        recognizedWords.remove(refWord);
+      }
+    }
+    
+    return results;
+  }
+
+  // Méthode pour convertir PronunciationResult (domaine) en format Map compatible avec AzureSpeechEvent
+  Map<String, dynamic> _convertToAzureFormat(PronunciationResult domainResult, String recognizedText) {
+    // Créer une structure Map qui imite la structure JSON attendue par AzurePronunciationAssessmentResult.fromJson
+    return {
+      'Id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'RecognitionStatus': 'Success',
+      'Offset': 0,
+      'Duration': 0,
+      'Channel': 0,
+      'DisplayText': recognizedText,
+      'SNR': null,
+      'NBest': [
+        {
+          'Confidence': 1.0,
+          'Lexical': recognizedText.toLowerCase(),
+          'ITN': recognizedText.toLowerCase(),
+          'MaskedITN': recognizedText.toLowerCase(),
+          'Display': recognizedText,
+          'PronunciationAssessment': {
+            'AccuracyScore': domainResult.accuracyScore,
+            'FluencyScore': domainResult.fluencyScore,
+            'CompletenessScore': domainResult.completenessScore,
+            'PronScore': domainResult.pronunciationScore,
+          },
+          'Words': domainResult.words.map((domainWord) {
+            return {
+              'Word': domainWord.word,
+              'Offset': 0,
+              'Duration': 0,
+              'PronunciationAssessment': {
+                'AccuracyScore': domainWord.accuracyScore,
+                'PronScore': domainWord.accuracyScore,
+                'FluencyScore': null,
+                'CompletenessScore': null,
+              },
+              'ErrorType': domainWord.errorType,
+              'Syllables': [],
+              'Phonemes': [],
+            };
+          }).toList(),
+        }
+      ],
+    };
   }
 }

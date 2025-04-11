@@ -1,101 +1,128 @@
-# Plan d'Intégration : Coaching Vocal Hors Ligne avec Whisper et TTS Natif
+# Eloquence - Version B Hors Ligne
 
-Ce document décrit le plan d'implémentation d'une solution de coaching vocal fonctionnant principalement hors ligne au sein de l'application Flutter Eloquence, en remplacement des services cloud Azure.
+Ce document décrit l'implémentation de la version B hors ligne de l'application Eloquence, qui remplace les services cloud Azure et OpenAI par des alternatives open source locales.
 
 ## Objectif
 
-Fournir une analyse de la prononciation et de la prosodie ainsi qu'un feedback vocal sans dépendance réseau constante, en utilisant des technologies embarquées.
+Fournir une version de l'application Eloquence qui fonctionne principalement hors ligne, en utilisant des technologies embarquées pour la reconnaissance vocale, la synthèse vocale, l'évaluation de la prononciation et le coaching IA.
 
 ## Architecture Générale
 
-1.  **Interface Utilisateur (Flutter)** : Gère l'interaction, affiche les exercices et les résultats.
-2.  **Enregistrement Audio (Flutter)** : Utilisation du package `flutter_sound` pour capturer l'audio utilisateur au format WAV PCM (16 bits mono, 16kHz).
-3.  **Transcription STT (Natif/FFI)** : Intégration de `Whisper.cpp` (modèle `small` ou `tiny` quantifié) via FFI pour transcrire l'audio WAV en texte avec timestamps.
-4.  **Phonétisation (Dart/Natif)** : Module (à déterminer/développer, ex: Allosaurus ou dictionnaire G2P) pour convertir le texte attendu et le texte transcrit en séquences de phonèmes (IPA).
-5.  **Évaluation Prononciation (Dart)** : Algorithme comparant les séquences de phonèmes attendues et obtenues (ex: alignement type Levenshtein phonétique) pour calculer des scores de précision par phonème/mot.
-6.  **Analyse Prosodie (Dart)** : Utilisation des timestamps des mots issus de Whisper pour calculer le débit, les pauses et la fluidité.
-7.  **Synthèse Feedback (Dart)** : Combinaison des scores de prononciation et de prosodie pour générer un score global et un feedback textuel détaillé.
-8.  **Synthèse Vocale TTS (Natif via Plugin)** : Utilisation du package `flutter_tts` pour vocaliser le feedback ou les instructions via les moteurs TTS natifs d'Android/iOS.
+La version B hors ligne utilise l'architecture suivante:
+
+1. **Interface Utilisateur (Flutter)**: Inchangée par rapport à la version cloud.
+2. **Reconnaissance Vocale (STT)**: Whisper (local) via le plugin `whisper_stt_plugin`.
+3. **Synthèse Vocale (TTS)**: Piper TTS (local) via le plugin `piper_tts_plugin`.
+4. **Évaluation de Prononciation**: Kaldi GOP (local) via le plugin `kaldi_gop_plugin`.
+5. **Coaching IA**: API Mistral (externe) via l'endpoint Azure AI.
 
 ## Composants Détaillés
 
-### 1. Enregistrement Audio (`flutter_sound`)
+### 1. Reconnaissance Vocale avec Whisper
 
-*   **Configuration :** S'assurer que `flutter_sound` est configuré pour enregistrer en WAV PCM, 16 bits, mono, 16kHz.
-*   **Gestion Fichiers :** Sauvegarder les enregistrements temporairement sur l'appareil.
+Le plugin `whisper_stt_plugin` intègre Whisper.cpp pour la reconnaissance vocale locale:
 
-### 2. Transcription Offline (Whisper.cpp)
+- **Modèle**: Utilise un modèle Whisper quantifié (tiny ou base) pour un bon compromis taille/performance.
+- **Implémentation**: `WhisperSpeechRepositoryImpl` qui implémente l'interface `IAzureSpeechRepository`.
+- **Fonctionnalités**:
+  - Transcription de l'audio en texte
+  - Reconnaissance continue pour les exercices interactifs
+  - Évaluation basique de la prononciation (comparaison avec le texte de référence)
 
-*   **Intégration :** Compiler `Whisper.cpp` pour Android (NDK) et iOS. Créer des bindings Dart via FFI (`package:ffi`) pour appeler les fonctions C++ depuis Flutter.
-*   **Interface :** Fonction Dart `transcribe(filePath)` (dans `WhisperService`) appelant les fonctions natives (`whisper_full_..._ffi`) qui retournent le texte et potentiellement les timestamps par mot/segment.
-*   **Modèles :** Intégrer un modèle quantifié (ex: `ggml-small.bin`) dans les assets de l'application. Gérer la copie et le chargement du modèle.
+### 2. Synthèse Vocale avec Piper TTS
 
-### 3. Phonétisation (G2P)
+Le plugin `piper_tts_plugin` intègre Piper TTS pour la synthèse vocale locale:
 
-*   **Option 1 (Embarquée) :** Intégrer une bibliothèque G2P légère (potentiellement via FFI si C/C++) ou un dictionnaire phonétique pour le français directement dans l'application.
-*   **Option 2 (API Simple) :** Si une solution entièrement embarquée est trop complexe, envisager une API très simple (potentiellement auto-hébergée) pour la phonétisation uniquement (compromis sur le "hors ligne").
-*   **Interface :** Fonction `getPhonemes(text)` retournant la séquence de phonèmes IPA.
+- **Voix**: Utilise des voix françaises préentraînées pour Piper.
+- **Implémentation**: `PiperTtsService` qui implémente l'interface `ITtsService`.
+- **Fonctionnalités**:
+  - Synthèse de texte en audio
+  - Lecture du feedback et des instructions
 
-### 4. Évaluation Prononciation
+### 3. Évaluation de Prononciation avec Kaldi GOP
 
-*   **Algorithme :** Implémenter un algorithme d'alignement (type Needleman-Wunsch ou similaire adapté aux phonèmes) pour comparer la séquence attendue et la séquence obtenue.
-*   **Scoring :** Définir une métrique pour calculer les scores (`AccuracyScore`, `ErrorType` par mot/phonème) basés sur les substitutions, insertions, délétions de phonèmes identifiées par l'alignement.
+Le plugin `kaldi_gop_plugin` intègre Kaldi GOP pour l'évaluation de prononciation locale:
 
-### 5. Analyse Prosodie
+- **Modèle**: Utilise un modèle acoustique français pour Kaldi.
+- **Implémentation**: `KaldiGopRepositoryImpl` qui implémente l'interface `IAzureSpeechRepository`.
+- **Fonctionnalités**:
+  - Évaluation détaillée de la prononciation au niveau des phonèmes
+  - Calcul des scores de précision, fluidité et complétude
+  - Identification des erreurs de prononciation
 
-*   **Calculs :** À partir des timestamps des mots/segments (`List<WordTimestamp>`), calculer :
-    *   Débit de parole (mots ou syllabes par minute).
-    *   Durée et fréquence des pauses.
-    *   Score de fluidité basé sur la régularité du débit et la pertinence des pauses.
-    *   *(Nécessite d'implémenter la récupération des timestamps depuis Whisper FFI)*
+### 4. Coaching IA avec Mistral
 
-### 6. Synthèse Feedback
+Le service `MistralFeedbackService` utilise l'API Mistral pour le coaching IA:
 
-*   **Logique :** Combiner les scores (prononciation, fluidité, complétude - si texte de référence) pour un score global.
-*   **Texte :** Générer un texte de feedback identifiant les erreurs spécifiques (ex: phonème mal prononcé) et les aspects prosodiques (ex: débit trop rapide, pauses mal placées).
+- **Modèle**: Utilise le modèle Mistral Large via l'endpoint Azure AI.
+- **Implémentation**: `MistralFeedbackService` qui implémente l'interface `IFeedbackService`.
+- **Fonctionnalités**:
+  - Génération de feedback personnalisé
+  - Création de phrases et textes pour les exercices
+  - Analyse des performances de l'utilisateur
 
-### 7. Synthèse Vocale TTS (`flutter_tts`)
+## Gestion des Modèles
 
-*   **Intégration :** Ajouter `flutter_tts` aux dépendances (`pubspec.yaml`).
-*   **Configuration :**
-    *   Définir la langue : `await flutterTts.setLanguage("fr-FR");`
-    *   Optionnel : Lister et sélectionner une voix spécifique si nécessaire (`getVoices`, `setVoice`).
-    *   Ajuster débit/pitch/volume si besoin.
-*   **Utilisation :** Appeler `await flutterTts.speak(feedbackText);` pour lire le feedback généré.
-*   **Gestion État :** Utiliser les handlers (`setCompletionHandler`, `setErrorHandler`) pour gérer la fin de la lecture ou les erreurs.
-*   **Prérequis :** L'utilisateur doit avoir installé les données vocales françaises sur son appareil pour le fonctionnement hors ligne.
+Les modèles sont gérés de la manière suivante:
 
-## Optimisation Taille & Performance
+1. **Téléchargement**: Les modèles sont téléchargés à la demande lors de la première utilisation.
+2. **Stockage**: Les modèles sont stockés dans le répertoire des documents de l'application.
+3. **Mise à jour**: Les modèles peuvent être mis à jour via un CDN si une nouvelle version est disponible.
 
-*   Utiliser impérativement des modèles Whisper **quantifiés** (`.bin`).
-*   Privilégier les modèles `tiny` ou `small` pour un bon compromis taille/performance/précision sur mobile.
-*   Explorer les techniques de compression des assets ou le chargement à la demande des modèles si la taille initiale de l'application devient trop importante.
-*   Optimiser le code natif (C++) et les appels FFI/MethodChannel.
+## Configuration et Sélection
 
-## État Actuel & Étapes Suivantes (Implémentation)
+La sélection entre les versions cloud et hors ligne se fait via la variable d'environnement `APP_MODE`:
 
-1.  `[TODO]` **Enregistrement Audio :** Confirmer/Ajuster la configuration de `flutter_sound` pour l'enregistrement WAV PCM (16 bits, mono, 16kHz).
-2.  `[DONE]` **TTS Natif :** `flutter_tts` ajouté aux dépendances.
-3.  `[DONE]` **TTS Natif :** `service_locator.dart` mis à jour pour injecter `FlutterTts`.
-4.  `[DONE]` **TTS Natif :** `ExampleAudioProvider` utilise `FlutterTts` (remplacement Azure TTS).
-5.  **Intégration Whisper.cpp (FFI) :**
-    *   `[DONE]` Compilation native Android configurée (CMake/Gradle).
-    *   `[DONE]` Wrapper C++ (`whisper_wrapper.cpp`) créé avec fonctions FFI de base (init, free, default_params, transcribe structure).
-    *   `[DONE]` Bindings Dart FFI (`whisper_bindings.dart`) créés pour les fonctions de base.
-    *   `[DONE]` Gestion du modèle (copie depuis assets via `NativeUtils`, déclaration `pubspec.yaml`).
-    *   `[DONE]` Service Dart (`WhisperService`) créé (structure, init, dispose).
-    *   `[DONE]` Test d'initialisation FFI réussi au démarrage de l'application.
-    *   `[TODO]` **Traitement Audio :** Implémenter la lecture/conversion du fichier audio en PCM Float32, 16kHz mono dans `WhisperService._loadAndPrepareAudio`.
-    *   `[TODO]` **Intégration Transcription :** Intégrer l'appel à `WhisperService.transcribe` dans la logique applicative (ex: écran d'exercice).
-    *   `[TODO]` **Timestamps :** Ajouter les fonctions FFI et bindings Dart pour récupérer les timestamps par segment/mot si nécessaire pour l'analyse de prosodie.
-6.  `[TODO]` **Phonétisation (G2P) :** Choisir une approche (embarquée/API) et implémenter/intégrer le module.
-7.  `[TODO]` **Évaluation Prononciation :** Développer l'algorithme d'alignement phonétique et le scoring.
-8.  `[TODO]` **Analyse Prosodie :** Implémenter les calculs basés sur les timestamps (une fois récupérés).
-9.  `[TODO]` **Intégration Finale :** Intégrer tous les composants et affiner l'interface utilisateur pour afficher les nouveaux résultats.
+- `APP_MODE=cloud`: Utilise les services Azure et OpenAI (par défaut).
+- `APP_MODE=local`: Utilise les alternatives locales (Whisper, Piper, Kaldi) et Mistral.
 
-**Autres corrections effectuées :**
-*   `[DONE]` Correction double initialisation Supabase (`main.dart` / `app.dart`).
-*   `[DONE]` Correction overflow layout `HomeScreen`.
-*   `[DONE]` Correction configuration `pubspec.yaml` (SDK constraint, assets).
-*   `[DONE]` Correction configuration CMake (nom de cible, include path).
-*   `[DONE]` Correction configuration IntelliSense C++ (`c_cpp_properties.json`).
+Cette configuration est gérée dans le fichier `service_locator.dart` qui injecte les implémentations appropriées selon le mode.
+
+## Variables d'Environnement
+
+Les variables d'environnement suivantes sont nécessaires pour la version B hors ligne:
+
+```
+# Mistral AI (pour la version B hors ligne)
+MISTRAL_API_KEY=votre_clé_api
+MISTRAL_ENDPOINT=https://votre_endpoint/openai/deployments/mistral-large-latest/chat/completions?api-version=2023-07-01-preview
+MISTRAL_MODEL_NAME=mistral-large-latest
+```
+
+## État Actuel & Étapes Suivantes
+
+1. **Implémentation des Plugins**:
+   - `[DONE]` Plugin Whisper STT
+   - `[DONE]` Plugin Piper TTS
+   - `[DONE]` Plugin Kaldi GOP
+
+2. **Intégration dans l'Application**:
+   - `[DONE]` Implémentation de `WhisperSpeechRepositoryImpl`
+   - `[DONE]` Implémentation de `PiperTtsService`
+   - `[DONE]` Implémentation de `KaldiGopRepositoryImpl`
+   - `[DONE]` Implémentation de `MistralFeedbackService`
+   - `[DONE]` Mise à jour de `service_locator.dart` pour la sélection conditionnelle
+
+3. **Configuration**:
+   - `[DONE]` Ajout des variables d'environnement pour Mistral
+   - `[DONE]` Configuration du mode d'application (cloud/local)
+
+4. **Tests et Optimisation**:
+   - `[TODO]` Tests des plugins sur différents appareils
+   - `[TODO]` Optimisation des performances et de la taille des modèles
+   - `[TODO]` Tests d'intégration de bout en bout
+
+## Utilisation
+
+Pour utiliser la version B hors ligne:
+
+1. Assurez-vous que les plugins sont correctement configurés dans `pubspec.yaml`.
+2. Définissez `APP_MODE=local` dans votre environnement de build.
+3. Ajoutez les variables d'environnement Mistral dans le fichier `.env`.
+4. Exécutez l'application avec `flutter run --dart-define=APP_MODE=local`.
+
+## Limitations Connues
+
+- Les modèles locaux peuvent être moins précis que leurs équivalents cloud.
+- La taille de l'application est plus importante en raison des modèles embarqués.
+- Certaines fonctionnalités avancées d'Azure Speech (comme l'analyse détaillée de la prosodie) peuvent ne pas être disponibles dans la version locale.
