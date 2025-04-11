@@ -4,6 +4,7 @@ import 'dart:async';
 import '../../../app/theme.dart';
 import '../../../domain/entities/exercise.dart';
 import '../../../domain/repositories/audio_repository.dart';
+import '../../../domain/repositories/azure_speech_repository.dart'; // Ajout de l'import
 import '../../../services/service_locator.dart';
 import '../../../services/azure/azure_speech_service.dart';
 import '../../../services/openai/openai_feedback_service.dart'; // AJOUT: Importer OpenAI Service

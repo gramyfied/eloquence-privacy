@@ -2,28 +2,30 @@
 // in eloquence_flutter/test/presentation/providers/interaction_manager_test.dart.
 // Do not manually edit this file.
 
+import 'package:eloquence_flutter/domain/repositories/azure_speech_repository.dart' as _i11; // Ajout de l'import
+
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i5;
+import 'dart:async' as _i6;
 
 import 'package:eloquence_flutter/domain/entities/interactive_exercise/conversation_turn.dart'
-    as _i7;
+    as _i8;
 import 'package:eloquence_flutter/domain/entities/interactive_exercise/scenario_context.dart'
     as _i2;
 import 'package:eloquence_flutter/presentation/providers/interaction_manager.dart'
-    as _i8;
+    as _i9;
 import 'package:eloquence_flutter/services/azure/azure_speech_service.dart'
-    as _i12;
+    as _i3;
 import 'package:eloquence_flutter/services/interactive_exercise/conversational_agent_service.dart'
-    as _i6;
+    as _i7;
 import 'package:eloquence_flutter/services/interactive_exercise/feedback_analysis_service.dart'
-    as _i11;
+    as _i12;
 import 'package:eloquence_flutter/services/interactive_exercise/realtime_audio_pipeline.dart'
-    as _i10;
+    as _i11;
 import 'package:eloquence_flutter/services/interactive_exercise/scenario_generator_service.dart'
-    as _i4;
-import 'package:flutter/foundation.dart' as _i3;
+    as _i5;
+import 'package:flutter/foundation.dart' as _i4;
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:mockito/src/dummies.dart' as _i9;
+import 'package:mockito/src/dummies.dart' as _i10;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -50,9 +52,9 @@ class _FakeScenarioContext_0 extends _i1.SmartFake
         );
 }
 
-class _FakeValueListenable_1<T> extends _i1.SmartFake
-    implements _i3.ValueListenable<T> {
-  _FakeValueListenable_1(
+class _FakeAzureSpeechService_1 extends _i1.SmartFake
+    implements _i3.AzureSpeechService {
+  _FakeAzureSpeechService_1(
     Object parent,
     Invocation parentInvocation,
   ) : super(
@@ -61,8 +63,19 @@ class _FakeValueListenable_1<T> extends _i1.SmartFake
         );
 }
 
-class _FakeObject_2 extends _i1.SmartFake implements Object {
-  _FakeObject_2(
+class _FakeValueListenable_2<T> extends _i1.SmartFake
+    implements _i4.ValueListenable<T> {
+  _FakeValueListenable_2(
+    Object parent,
+    Invocation parentInvocation,
+  ) : super(
+          parent,
+          parentInvocation,
+        );
+}
+
+class _FakeObject_3 extends _i1.SmartFake implements Object {
+  _FakeObject_3(
     Object parent,
     Invocation parentInvocation,
   ) : super(
@@ -75,43 +88,43 @@ class _FakeObject_2 extends _i1.SmartFake implements Object {
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockScenarioGeneratorService extends _i1.Mock
-    implements _i4.ScenarioGeneratorService {
+    implements _i5.ScenarioGeneratorService {
   MockScenarioGeneratorService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i5.Future<_i2.ScenarioContext> generateScenario(String? exerciseId) =>
+  _i6.Future<_i2.ScenarioContext> generateScenario(String? exerciseId) =>
       (super.noSuchMethod(
         Invocation.method(
           #generateScenario,
           [exerciseId],
         ),
         returnValue:
-            _i5.Future<_i2.ScenarioContext>.value(_FakeScenarioContext_0(
+            _i6.Future<_i2.ScenarioContext>.value(_FakeScenarioContext_0(
           this,
           Invocation.method(
             #generateScenario,
             [exerciseId],
           ),
         )),
-      ) as _i5.Future<_i2.ScenarioContext>);
+      ) as _i6.Future<_i2.ScenarioContext>);
 }
 
 /// A class which mocks [ConversationalAgentService].
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockConversationalAgentService extends _i1.Mock
-    implements _i6.ConversationalAgentService {
+    implements _i7.ConversationalAgentService {
   MockConversationalAgentService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i5.Future<String> getNextResponse({
+  _i6.Future<String> getNextResponse({
     required _i2.ScenarioContext? context,
-    required List<_i7.ConversationTurn>? history,
-    _i8.UserVocalMetrics? lastUserMetrics,
+    required List<_i8.ConversationTurn>? history,
+    _i9.UserVocalMetrics? lastUserMetrics,
   }) =>
       (super.noSuchMethod(
         Invocation.method(
@@ -123,7 +136,7 @@ class MockConversationalAgentService extends _i1.Mock
             #lastUserMetrics: lastUserMetrics,
           },
         ),
-        returnValue: _i5.Future<String>.value(_i9.dummyValue<String>(
+        returnValue: _i6.Future<String>.value(_i10.dummyValue<String>(
           this,
           Invocation.method(
             #getNextResponse,
@@ -135,107 +148,132 @@ class MockConversationalAgentService extends _i1.Mock
             },
           ),
         )),
-      ) as _i5.Future<String>);
+      ) as _i6.Future<String>);
 }
 
 /// A class which mocks [RealTimeAudioPipeline].
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockRealTimeAudioPipeline extends _i1.Mock
-    implements _i10.RealTimeAudioPipeline {
+    implements _i11.RealTimeAudioPipeline {
   MockRealTimeAudioPipeline() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i5.Stream<String> get userFinalTranscriptStream => (super.noSuchMethod(
+  _i3.AzureSpeechService get azureSpeechService => (super.noSuchMethod(
+        Invocation.getter(#azureSpeechService),
+        returnValue: _FakeAzureSpeechService_1(
+          this,
+          Invocation.getter(#azureSpeechService),
+        ),
+      ) as _i3.AzureSpeechService);
+
+  @override
+  _i6.Stream<String> get userFinalTranscriptStream => (super.noSuchMethod(
         Invocation.getter(#userFinalTranscriptStream),
-        returnValue: _i5.Stream<String>.empty(),
-      ) as _i5.Stream<String>);
+        returnValue: _i6.Stream<String>.empty(),
+      ) as _i6.Stream<String>);
 
   @override
-  _i5.Stream<String> get userPartialTranscriptStream => (super.noSuchMethod(
+  _i6.Stream<String> get userPartialTranscriptStream => (super.noSuchMethod(
         Invocation.getter(#userPartialTranscriptStream),
-        returnValue: _i5.Stream<String>.empty(),
-      ) as _i5.Stream<String>);
+        returnValue: _i6.Stream<String>.empty(),
+      ) as _i6.Stream<String>);
 
   @override
-  _i3.ValueListenable<bool> get isListening => (super.noSuchMethod(
+  _i4.ValueListenable<bool> get isListening => (super.noSuchMethod(
         Invocation.getter(#isListening),
-        returnValue: _FakeValueListenable_1<bool>(
+        returnValue: _FakeValueListenable_2<bool>(
           this,
           Invocation.getter(#isListening),
         ),
-      ) as _i3.ValueListenable<bool>);
+      ) as _i4.ValueListenable<bool>);
 
   @override
-  _i3.ValueListenable<bool> get isSpeaking => (super.noSuchMethod(
+  _i4.ValueListenable<bool> get isSpeaking => (super.noSuchMethod(
         Invocation.getter(#isSpeaking),
-        returnValue: _FakeValueListenable_1<bool>(
+        returnValue: _FakeValueListenable_2<bool>(
           this,
           Invocation.getter(#isSpeaking),
         ),
-      ) as _i3.ValueListenable<bool>);
+      ) as _i4.ValueListenable<bool>);
 
   @override
-  _i5.Stream<String> get errorStream => (super.noSuchMethod(
+  _i6.Stream<String> get errorStream => (super.noSuchMethod(
         Invocation.getter(#errorStream),
-        returnValue: _i5.Stream<String>.empty(),
-      ) as _i5.Stream<String>);
+        returnValue: _i6.Stream<String>.empty(),
+      ) as _i6.Stream<String>);
 
   @override
-  _i5.Future<void> start(String? language) => (super.noSuchMethod(
-        Invocation.method(
-          #start,
-          [language],
-        ),
-        returnValue: _i5.Future<void>.value(),
-        returnValueForMissingStub: _i5.Future<void>.value(),
-      ) as _i5.Future<void>);
+  _i6.Stream<bool> get ttsCompletionStream => (super.noSuchMethod(
+        Invocation.getter(#ttsCompletionStream),
+        returnValue: _i6.Stream<bool>.empty(),
+      ) as _i6.Stream<bool>);
 
   @override
-  _i5.Future<void> stop() => (super.noSuchMethod(
+  void reset() => super.noSuchMethod(
         Invocation.method(
-          #stop,
-          [],
-        ),
-        returnValue: _i5.Future<void>.value(),
-        returnValueForMissingStub: _i5.Future<void>.value(),
-      ) as _i5.Future<void>);
-
-  @override
-  _i5.Future<void> speakText(String? text) => (super.noSuchMethod(
-        Invocation.method(
-          #speakText,
-          [text],
-        ),
-        returnValue: _i5.Future<void>.value(),
-        returnValueForMissingStub: _i5.Future<void>.value(),
-      ) as _i5.Future<void>);
-
-  @override
-  void dispose() => super.noSuchMethod(
-        Invocation.method(
-          #dispose,
+          #reset,
           [],
         ),
         returnValueForMissingStub: null,
       );
+
+  @override
+  _i6.Future<void> start(String? language) => (super.noSuchMethod(
+        Invocation.method(
+          #start,
+          [language],
+        ),
+        returnValue: _i6.Future<void>.value(),
+        returnValueForMissingStub: _i6.Future<void>.value(),
+      ) as _i6.Future<void>);
+
+  @override
+  _i6.Future<void> stop() => (super.noSuchMethod(
+        Invocation.method(
+          #stop,
+          [],
+        ),
+        returnValue: _i6.Future<void>.value(),
+        returnValueForMissingStub: _i6.Future<void>.value(),
+      ) as _i6.Future<void>);
+
+  @override
+  _i6.Future<void> speakText(String? text) => (super.noSuchMethod(
+        Invocation.method(
+          #speakText,
+          [text],
+        ),
+        returnValue: _i6.Future<void>.value(),
+        returnValueForMissingStub: _i6.Future<void>.value(),
+      ) as _i6.Future<void>);
+
+  @override
+  _i6.Future<void> dispose() => (super.noSuchMethod(
+        Invocation.method(
+          #dispose,
+          [],
+        ),
+        returnValue: _i6.Future<void>.value(),
+        returnValueForMissingStub: _i6.Future<void>.value(),
+      ) as _i6.Future<void>);
 }
 
 /// A class which mocks [FeedbackAnalysisService].
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockFeedbackAnalysisService extends _i1.Mock
-    implements _i11.FeedbackAnalysisService {
+    implements _i12.FeedbackAnalysisService {
   MockFeedbackAnalysisService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i5.Future<Object> analyzePerformance({
+  _i6.Future<Object> analyzePerformance({
     required _i2.ScenarioContext? context,
-    required List<_i7.ConversationTurn>? conversationHistory,
+    required List<_i8.ConversationTurn>? conversationHistory,
   }) =>
       (super.noSuchMethod(
         Invocation.method(
@@ -246,7 +284,7 @@ class MockFeedbackAnalysisService extends _i1.Mock
             #conversationHistory: conversationHistory,
           },
         ),
-        returnValue: _i5.Future<Object>.value(_FakeObject_2(
+        returnValue: _i6.Future<Object>.value(_FakeObject_3(
           this,
           Invocation.method(
             #analyzePerformance,
@@ -257,14 +295,14 @@ class MockFeedbackAnalysisService extends _i1.Mock
             },
           ),
         )),
-      ) as _i5.Future<Object>);
+      ) as _i6.Future<Object>);
 }
 
 /// A class which mocks [AzureSpeechService].
 ///
 /// See the documentation for Mockito's code generation for more information.
 class MockAzureSpeechService extends _i1.Mock
-    implements _i12.AzureSpeechService {
+    implements _i3.AzureSpeechService {
   MockAzureSpeechService() {
     _i1.throwOnMissingStub(this);
   }
@@ -275,15 +313,15 @@ class MockAzureSpeechService extends _i1.Mock
         returnValue: false,
       ) as bool);
 
+  // Correction: Utiliser _i11 pour AzureSpeechEvent
   @override
-  _i5.Stream<_i12.AzureSpeechEvent> get recognitionStream =>
-      (super.noSuchMethod(
+  _i6.Stream<_i11.AzureSpeechEvent> get recognitionStream => (super.noSuchMethod(
         Invocation.getter(#recognitionStream),
-        returnValue: _i5.Stream<_i12.AzureSpeechEvent>.empty(),
-      ) as _i5.Stream<_i12.AzureSpeechEvent>);
+        returnValue: _i6.Stream<_i11.AzureSpeechEvent>.empty(),
+      ) as _i6.Stream<_i11.AzureSpeechEvent>);
 
   @override
-  _i5.Future<void> startRecognition({
+  _i6.Future<void> startRecognition({
     String? referenceText,
     String? language = 'fr-FR',
   }) =>
@@ -296,30 +334,30 @@ class MockAzureSpeechService extends _i1.Mock
             #language: language,
           },
         ),
-        returnValue: _i5.Future<void>.value(),
-        returnValueForMissingStub: _i5.Future<void>.value(),
-      ) as _i5.Future<void>);
+        returnValue: _i6.Future<void>.value(),
+        returnValueForMissingStub: _i6.Future<void>.value(),
+      ) as _i6.Future<void>);
 
   @override
-  _i5.Future<void> startContinuousStreamingRecognition(String? language) =>
+  _i6.Future<void> startContinuousStreamingRecognition(String? language) =>
       (super.noSuchMethod(
         Invocation.method(
           #startContinuousStreamingRecognition,
           [language],
         ),
-        returnValue: _i5.Future<void>.value(),
-        returnValueForMissingStub: _i5.Future<void>.value(),
-      ) as _i5.Future<void>);
+        returnValue: _i6.Future<void>.value(),
+        returnValueForMissingStub: _i6.Future<void>.value(),
+      ) as _i6.Future<void>);
 
   @override
-  _i5.Future<void> stopRecognition() => (super.noSuchMethod(
+  _i6.Future<void> stopRecognition() => (super.noSuchMethod(
         Invocation.method(
           #stopRecognition,
           [],
         ),
-        returnValue: _i5.Future<void>.value(),
-        returnValueForMissingStub: _i5.Future<void>.value(),
-      ) as _i5.Future<void>);
+        returnValue: _i6.Future<void>.value(),
+        returnValueForMissingStub: _i6.Future<void>.value(),
+      ) as _i6.Future<void>);
 
   @override
   void dispose() => super.noSuchMethod(

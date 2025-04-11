@@ -41,10 +41,27 @@ import 'interactive_exercise/conversational_agent_service.dart';
 import 'interactive_exercise/feedback_analysis_service.dart';
 import 'interactive_exercise/realtime_audio_pipeline.dart';
 import '../presentation/providers/interaction_manager.dart'; // Assurez-vous que le chemin est correct
+// Importer les interfaces et implémentations des nouveaux plugins
+// TODO: Décommenter ces imports une fois les packages ajoutés au pubspec.yaml
+// import 'package:whisper_stt_plugin/whisper_stt_plugin.dart';
+// import 'package:piper_tts_plugin/piper_tts_plugin.dart';
+// import 'package:kaldi_gop_plugin/kaldi_gop_plugin.dart';
+// Importer les implémentations locales des repositories/services
+// import '../infrastructure/repositories/whisper_speech_repository_impl.dart';
+// import '../infrastructure/repositories/kaldi_gop_repository_impl.dart';
+import 'tts/piper_tts_service.dart';
+import 'tts/tts_service_interface.dart';
+import 'feedback/feedback_service_interface.dart';
+import 'mistral/mistral_feedback_service.dart';
 
 final serviceLocator = GetIt.instance;
 
+// Lire la variable d'environnement pour déterminer le mode
+const String appMode = String.fromEnvironment('APP_MODE', defaultValue: 'cloud'); // 'cloud' ou 'local'
+
 void setupServiceLocator() {
+  print("--- Setting up Service Locator in mode: $appMode ---");
+
   // Supabase client
   final supabaseClient = Supabase.instance.client;
   serviceLocator.registerLazySingleton<SupabaseClient>(() => supabaseClient);
@@ -87,130 +104,163 @@ void setupServiceLocator() {
   // Elle a généralement un constructeur par défaut.
   serviceLocator.registerLazySingleton<AzureSpeechApi>(() => AzureSpeechApi());
 
-  // 2. Enregistrer l'implémentation du Repository en injectant l'API Pigeon
-  serviceLocator.registerLazySingleton<IAzureSpeechRepository>(
-    () => AzureSpeechRepositoryImpl(serviceLocator<AzureSpeechApi>())
-  );
+  // 2. Enregistrer l'implémentation du Repository Speech (conditionnel)
+  if (appMode == 'local') {
+    // TODO: Créer et enregistrer LocalSpeechRepositoryImpl
+    // Cette implémentation devra utiliser WhisperSttPlugin et KaldiGopPlugin
+    // et mapper leurs résultats à la structure attendue par IAzureSpeechRepository
+    // ou définir une nouvelle interface commune.
+    /*
+    serviceLocator.registerLazySingleton<IAzureSpeechRepository>(
+      () => LocalSpeechRepositoryImpl(
+        // Injecter les plugins locaux
+        // whisperPlugin: serviceLocator<WhisperSttPlugin>(),
+        // kaldiPlugin: serviceLocator<KaldiGopPlugin>(),
+      )
+    );
+    */
+     print("WARNING: LocalSpeechRepositoryImpl not yet implemented. Registering Azure version as fallback.");
+     // Fallback temporaire sur Azure pour que l'app compile
+     serviceLocator.registerLazySingleton<IAzureSpeechRepository>(
+       () => AzureSpeechRepositoryImpl(serviceLocator<AzureSpeechApi>())
+     );
+  } else {
+    // Mode Cloud: Enregistrer l'implémentation Azure
+    serviceLocator.registerLazySingleton<IAzureSpeechRepository>(
+      () => AzureSpeechRepositoryImpl(serviceLocator<AzureSpeechApi>())
+    );
+  }
+  // --- Fin de la configuration Speech Repository ---
 
-  // --- Fin de la nouvelle configuration ---
-
-
-  // Azure Services (TTS retiré, SpeechService gardé pour l'instant si PronunciationEvaluationResult est utilisé ailleurs)
-  // TODO: Vérifier si AzureSpeechService est encore nécessaire après la refactorisation complète.
-  // Si non, supprimer cet enregistrement.
-  // Mettre à jour pour injecter IAzureSpeechRepository
-  // Utiliser registerLazySingleton pour garantir qu'une seule instance est utilisée
-  // tout au long du cycle de vie de l'application
+  // Enregistrer AzureSpeechService (qui dépend de IAzureSpeechRepository)
+  // Ce service est utilisé par RealTimeAudioPipeline pour traiter les événements.
+  // Il devra peut-être être rendu plus générique ou remplacé si les formats d'événements locaux diffèrent trop.
   serviceLocator.registerLazySingleton<AzureSpeechService>(
     () => AzureSpeechService(serviceLocator<IAzureSpeechRepository>())
   );
 
-  // OpenAI Service (Azure OpenAI) - Gardé pour référence future
-  serviceLocator.registerLazySingleton<OpenAIFeedbackService>(
-    () => OpenAIFeedbackService(
-      apiKey: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_KEY'] ?? '',
-      endpoint: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_ENDPOINT'] ?? '',
-      deploymentName: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_DEPLOYMENT_NAME'] ?? '',
-      // apiVersion: '...', // Optionnel, utilise la valeur par défaut définie dans le service
-    )
-  );
 
-  // Audio Services (AudioPlayerManager retiré, FlutterTts ajouté)
-  // serviceLocator.registerLazySingleton<AudioPlayerManager>(
-  //   () => AudioPlayerManager()
-  // );
+  // Enregistrer les plugins locaux
+  if (appMode == 'local') {
+    // TODO: Décommenter ces enregistrements une fois les packages ajoutés au pubspec.yaml
+    // // Enregistrer les plugins pour les services locaux
+    // serviceLocator.registerLazySingleton<WhisperSttPlugin>(() => WhisperSttPlugin());
+    // serviceLocator.registerLazySingleton<PiperTtsPlugin>(() => PiperTtsPlugin());
+    // serviceLocator.registerLazySingleton<KaldiGopPlugin>(() => KaldiGopPlugin());
+  }
 
-  // Enregistrer AudioPlayer (nécessaire pour AzureTtsService)
-  // Utiliser registerLazySingleton pour garantir qu'une seule instance est utilisée
-  // tout au long du cycle de vie de l'application
+  // Enregistrer le service de Feedback IA (conditionnel)
+  if (appMode == 'local') {
+    // Enregistrer MistralFeedbackService
+    serviceLocator.registerLazySingleton<IFeedbackService>(
+      () => MistralFeedbackService(
+        apiKey: dotenv.env['MISTRAL_API_KEY'] ?? '',
+        endpoint: dotenv.env['MISTRAL_ENDPOINT'] ?? '',
+        modelName: dotenv.env['MISTRAL_MODEL_NAME'] ?? 'mistral-large-latest',
+      )
+    );
+  } else {
+    // Mode Cloud: Enregistrer OpenAI (via Azure OpenAI)
+    serviceLocator.registerLazySingleton<IFeedbackService>(
+      () => OpenAIFeedbackService(
+        apiKey: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_KEY'] ?? '',
+        endpoint: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_ENDPOINT'] ?? '',
+        deploymentName: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_DEPLOYMENT_NAME'] ?? '',
+      )
+    );
+  }
+
+
+  // Enregistrer AudioPlayer (commun aux deux modes)
   serviceLocator.registerLazySingleton<AudioPlayer>(() => AudioPlayer());
 
-  // Enregistrer AzureTtsService (qui utilise AudioPlayer)
-  // Utiliser registerLazySingleton pour garantir qu'une seule instance est utilisée
-  // tout au long du cycle de vie de l'application, évitant ainsi les problèmes de disposition
-  serviceLocator.registerLazySingleton<AzureTtsService>(
-    () => AzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
-  );
+  // Enregistrer le service TTS (conditionnel)
+  if (appMode == 'local') {
+      // TODO: Décommenter ce bloc une fois le plugin Piper disponible
+      // // Enregistrer PiperTtsService
+      // serviceLocator.registerLazySingleton<ITtsService>(
+      //   () => PiperTtsService(
+      //     audioPlayer: serviceLocator<AudioPlayer>(),
+      //     piperPlugin: serviceLocator<PiperTtsPlugin>(),
+      //   )
+      // );
+      
+      // Utiliser AzureTtsService comme fallback temporaire
+      print("WARNING: PiperTtsService not yet fully implemented. Registering Azure version as fallback.");
+      serviceLocator.registerLazySingleton<ITtsService>(
+        () => AzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
+      );
+  } else {
+      // Mode Cloud: Enregistrer AzureTtsService
+      serviceLocator.registerLazySingleton<ITtsService>(
+        () => AzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
+      );
+  }
 
-  // Supprimer l'enregistrement de FlutterTts
-  // serviceLocator.registerLazySingleton<FlutterTts>(() => FlutterTts());
-
-  // Mettre à jour ExampleAudioProvider (il récupère AzureTtsService en interne)
+  // Mettre à jour ExampleAudioProvider pour utiliser le service TTS enregistré via l'interface
   serviceLocator.registerLazySingleton<ExampleAudioProvider>(
-    () => ExampleAudioProvider() // N'a plus besoin de dépendances injectées ici
+    () => ExampleAudioProvider(ttsService: serviceLocator<ITtsService>())
   );
 
-  // Evaluation Services (Simplifié pour être offline)
+  // Evaluation Services
+  // ArticulationEvaluationService n'a pas de paramètre dans son constructeur
   serviceLocator.registerLazySingleton<ArticulationEvaluationService>(
-    () => ArticulationEvaluationService(
-      // feedbackService: serviceLocator<OpenAIFeedbackService>(), // Supprimé pour l'instant
-    ) // Correction: Supprimer les paramètres
+    () => ArticulationEvaluationService()
   );
 
-  // Supprimer l'enregistrement de WhisperService FFI
-  // serviceLocator.registerLazySingleton<WhisperBindings>(() => WhisperBindings());
-  // serviceLocator.registerLazySingleton<WhisperService>(
-  //   () => WhisperService(bindings: serviceLocator<WhisperBindings>())
-  // );
+  // Supprimer les enregistrements FFI Whisper (déjà fait)
+  // ...
 
-  // Enregistrer AzureWhisperService si nous décidons de l'utiliser
-  // serviceLocator.registerLazySingleton<AzureWhisperService>(() => AzureWhisperService());
-
-  // Enregistrer le service de syllabification
+  // Enregistrer le service de syllabification (commun)
   serviceLocator.registerLazySingleton<SyllabificationService>(() => SyllabificationService());
 
-  // AJOUT: Enregistrer AudioAnalysisService (même si c'est un placeholder pour l'instant)
-  // TODO: Remplacer par la vraie implémentation quand elle sera prête
+  // Enregistrer AudioAnalysisService (commun)
   serviceLocator.registerLazySingleton<AudioAnalysisService>(() => AudioAnalysisService());
 
-  // AJOUT: Enregistrer AudioService (constructeur par défaut pour l'instant)
-  // TODO: Implémenter AudioService et ajouter les dépendances si nécessaire
-  serviceLocator.registerLazySingleton<AudioService>(
-    () => AudioService() // Appel du constructeur par défaut
-  );
+  // Enregistrer AudioService (commun)
+  serviceLocator.registerLazySingleton<AudioService>(() => AudioService());
 
   // --- Services pour les Exercices Interactifs ---
 
-  // Enregistrer le service OpenAI générique pour Azure OpenAI
+  // Enregistrer le service OpenAI générique (utilisé par les services suivants)
+  // Note: Ce service pointe vers Azure OpenAI actuellement. Si Mistral doit être utilisé
+  // par ScenarioGeneratorService etc., il faudra adapter ces services ou fournir
+  // une implémentation Mistral de OpenAIService (si l'API est compatible).
+  // Pour l'instant, on garde l'enregistrement unique pointant vers Azure OpenAI.
   serviceLocator.registerLazySingleton<OpenAIService>(
     () => OpenAIService(
-      apiKey: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_KEY'] ?? '',
-      endpoint: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_ENDPOINT'] ?? '',
-      deploymentName: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_DEPLOYMENT_NAME'] ?? '',
+      apiKey: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_KEY'] ?? '', // Clé Azure OpenAI
+      endpoint: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_ENDPOINT'] ?? '', // Endpoint Azure OpenAI
+      deploymentName: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_DEPLOYMENT_NAME'] ?? '', // Déploiement Azure OpenAI
     )
   );
 
-  // Enregistrer les services spécifiques aux exercices interactifs
-  serviceLocator.registerLazySingleton<ScenarioGeneratorService>(
-    () => ScenarioGeneratorService(serviceLocator<OpenAIService>())
-  );
-  serviceLocator.registerLazySingleton<ConversationalAgentService>(
-    () => ConversationalAgentService(serviceLocator<OpenAIService>())
-  );
-  serviceLocator.registerLazySingleton<FeedbackAnalysisService>(
-    () => FeedbackAnalysisService(serviceLocator<OpenAIService>())
-  );
+  // Enregistrer les services spécifiques aux exercices interactifs (communs)
+  serviceLocator.registerLazySingleton<ScenarioGeneratorService>(() => ScenarioGeneratorService(serviceLocator<OpenAIService>()));
+  serviceLocator.registerLazySingleton<ConversationalAgentService>(() => ConversationalAgentService(serviceLocator<OpenAIService>()));
+  // FeedbackAnalysisService dépend de OpenAIService, il utilisera donc Azure OpenAI pour l'instant.
+  // Si Mistral doit faire l'analyse, il faudra créer une implémentation spécifique.
+  serviceLocator.registerLazySingleton<FeedbackAnalysisService>(() => FeedbackAnalysisService(serviceLocator<OpenAIService>()));
 
   // Enregistrer le pipeline audio temps réel
-  // MODIFICATION: Utiliser registerLazySingleton pour garantir qu'une seule instance est utilisée
-  // tout au long du cycle de vie de l'application, évitant ainsi les problèmes de ValueNotifier disposés.
+  // MODIFICATION: Dépend de IAzureSpeechRepository et du service TTS enregistré via l'interface
   serviceLocator.registerLazySingleton<RealTimeAudioPipeline>(
     () => RealTimeAudioPipeline(
       serviceLocator<AudioService>(),
-      serviceLocator<AzureSpeechService>(),
-      serviceLocator<AzureTtsService>(),
+      serviceLocator<IAzureSpeechRepository>(), // Injection correcte du Repository
+      serviceLocator<ITtsService>(), // Injection du service TTS via l'interface
     )
   );
 
-  // Enregistrer InteractionManager comme Factory car il est stateful pour une session
+  // Enregistrer InteractionManager (commun)
+  // Il dépend de RealTimeAudioPipeline qui encapsule maintenant le repo speech.
   serviceLocator.registerFactory<InteractionManager>(
     () => InteractionManager(
       serviceLocator<ScenarioGeneratorService>(),
       serviceLocator<ConversationalAgentService>(),
       serviceLocator<RealTimeAudioPipeline>(),
       serviceLocator<FeedbackAnalysisService>(),
-      // AJOUT: Passer la dépendance AzureSpeechService
-      serviceLocator<AzureSpeechService>(),
+      // AzureSpeechService n'est plus injecté directement, il est dans RealTimeAudioPipeline
     )
   );
 

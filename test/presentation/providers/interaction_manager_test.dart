@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:eloquence_flutter/domain/entities/interactive_exercise/conversation_turn.dart';
 import 'package:eloquence_flutter/domain/entities/interactive_exercise/scenario_context.dart';
+import 'package:eloquence_flutter/domain/repositories/azure_speech_repository.dart'; // Ajout de l'import
 import 'package:eloquence_flutter/presentation/providers/interaction_manager.dart';
 import 'package:eloquence_flutter/services/interactive_exercise/conversational_agent_service.dart';
 import 'package:eloquence_flutter/services/interactive_exercise/feedback_analysis_service.dart';
@@ -41,15 +42,16 @@ void main() {
     // Simuler le canal HapticFeedback
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform, // CORRECTION: Utiliser le bon canal
-      (MethodCall methodCall) async {
-        // Vérifier la méthode spécifique pour HapticFeedback.lightImpact etc.
-        if (methodCall.method == 'HapticFeedback.vibrate') {
-          // Simule une réponse réussie (ou retourne null si la méthode ne renvoie rien)
-          return null;
-        }
-        return null; // Gérer d'autres appels de méthode si nécessaire
-      },
-    );
+       (MethodCall? methodCall) { // REMOVED async, nullable MethodCall
+         // Vérifier la méthode spécifique pour HapticFeedback.lightImpact etc.
+         if (methodCall?.method == 'HapticFeedback.vibrate') {
+           // Simule une réponse réussie
+            return Future<dynamic>.value(null); // Explicitly return Future<dynamic>?
+          }
+          // Ensure all paths return a value for Future<dynamic>?
+          return Future<dynamic>.value(null); // Explicitly return Future<dynamic>?
+       },
+     );
   });
 
   tearDownAll(() {
@@ -107,7 +109,7 @@ void main() {
     when(mockAudioPipeline.start(any)).thenAnswer((_) async => {});
     when(mockAudioPipeline.stop()).thenAnswer((_) async => {});
     when(mockAudioPipeline.speakText(any)).thenAnswer((_) async => {});
-    when(mockAudioPipeline.dispose()).thenAnswer((_) {});
+    when(mockAudioPipeline.dispose()).thenAnswer((_) async {}); // Return a completed Future<void>
     // CORRECTION: Clear feedback service interactions in main setup
     clearInteractions(mockFeedbackService);
 
@@ -117,15 +119,14 @@ void main() {
 
 
     // Create the InteractionManager instance with mocks, including the new one
-    interactionManager = InteractionManager(
-      mockScenarioService,
-      mockAgentService,
-      mockAudioPipeline,
-      mockFeedbackService,
-      // AJOUT: Passer le mock AzureSpeechService
-      mockAzureSpeechService,
-    );
-  });
+      interactionManager = InteractionManager(
+        mockScenarioService,
+        mockAgentService,
+        mockAudioPipeline,
+        mockFeedbackService, // Correction: Utiliser le nom de variable correct
+        // AzureSpeechService n'est plus injecté directement
+      );
+    });
 
   tearDown(() {
     // Close streams after each test
@@ -295,9 +296,10 @@ void main() {
          mockAgentService,
          mockAudioPipeline,
          mockFeedbackService,
-         mockAzureSpeechService,
+         // AzureSpeechService n'est plus injecté directement
        );
-       when(mockAzureSpeechService.recognitionStream).thenAnswer((_) => azureEventController.stream);
+       // Note: We might need to adjust how the stream is mocked later if accessed via pipeline
+       // when(mockAudioPipeline.azureSpeechService.recognitionStream).thenAnswer((_) => azureEventController.stream); // Example if needed
        expect(interactionManager.currentState, InteractionState.idle);
 
        // Act
@@ -665,7 +667,7 @@ void main() {
          mockAgentService,
          mockAudioPipeline,
          mockFeedbackService,
-         mockAzureSpeechService, // AJOUT: Argument manquant
+         // AzureSpeechService n'est plus injecté directement
        );
        when(mockScenarioService.generateScenario(testExerciseId)).thenAnswer((_) async => mockScenario);
        await interactionManager.prepareScenario(testExerciseId);

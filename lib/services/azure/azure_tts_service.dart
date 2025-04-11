@@ -8,6 +8,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart'; // Ajouté pour temporary directory
 import 'package:path/path.dart' as path; // Ajouté pour path joining
 import '../../../core/utils/console_logger.dart';
+import '../tts/tts_service_interface.dart'; // Importer l'interface
 
 // Classe BytesAudioSource n'est plus nécessaire si on sauvegarde en fichier
 /*
@@ -17,7 +18,7 @@ class BytesAudioSource extends StreamAudioSource {
 */
 
 
-class AzureTtsService {
+class AzureTtsService implements ITtsService {
   final AudioPlayer _audioPlayer;
   String? _subscriptionKey;
   String? _region;
@@ -26,13 +27,18 @@ class AzureTtsService {
 
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
-  bool _manuallyStopped = false; // Flag pour gérer l'arrêt manuel
+  // bool _manuallyStopped = false; // Flag supprimé, complexité inutile
 
   // StreamController pour l'état de lecture
   final StreamController<bool> _isPlayingController = StreamController<bool>.broadcast();
+  @override
   Stream<bool> get isPlayingStream => _isPlayingController.stream;
+  /// AJOUT: Stream for the detailed processing state of the audio player.
+  @override
+  Stream<ProcessingState> get processingStateStream => _audioPlayer.playerStateStream.map((state) => state.processingState).distinct();
   // Utiliser le stream pour déterminer l'état externe, mais garder isPlaying pour la logique interne si besoin
-  bool get isPlaying => _audioPlayer.playing; 
+  @override
+  bool get isPlaying => _audioPlayer.playing;
 
   // Voix par défaut
   final String defaultVoice = 'fr-FR-HenriNeural'; // Voix neurale masculine française
@@ -42,7 +48,18 @@ class AzureTtsService {
   }
 
   /// Initialise le service avec les clés Azure
-  Future<bool> initialize({required String subscriptionKey, required String region}) async {
+  @override
+  Future<bool> initialize({
+    String? subscriptionKey, // Requis pour Azure
+    String? region, // Requis pour Azure
+    String? modelPath, // Ignoré pour Azure
+    String? configPath, // Ignoré pour Azure
+    String? defaultVoice, // Optionnel pour Azure
+  }) async {
+    if (subscriptionKey == null || region == null) {
+      ConsoleLogger.error('[AzureTtsService] Clé d\'abonnement et région sont requises pour l\'initialisation.');
+      return false;
+    }
     _subscriptionKey = subscriptionKey;
     _region = region;
     // Obtenir un token initial
@@ -108,32 +125,22 @@ class AzureTtsService {
   /// Configure le listener pour l'état du lecteur audio
   void _setupPlayerListener() {
     _audioPlayer.playerStateStream.listen((state) {
-      bool stateToEmit;
-      // Si on a manuellement arrêté, forcer l'état à false jusqu'à ce que le lecteur soit idle
-      if (_manuallyStopped && state.processingState != ProcessingState.idle) {
-        stateToEmit = false;
+      // Émettre directement si le lecteur joue et n'est pas terminé/idle
+      // Note: state.playing peut être true brièvement même en état completed/idle,
+      // donc on vérifie aussi processingState.
+      bool isCurrentlyPlaying = state.playing &&
+                                state.processingState != ProcessingState.completed &&
+                                state.processingState != ProcessingState.idle;
+
+      ConsoleLogger.info('[AzureTtsService Listener] State: ${state.processingState}, Playing: ${state.playing}. Emitting: $isCurrentlyPlaying');
+
+      if (!_isPlayingController.isClosed) {
+        _isPlayingController.add(isCurrentlyPlaying);
+        // ConsoleLogger.info('[AzureTtsService Listener POST-EMIT] Emitted: $isCurrentlyPlaying'); // Peut être bruyant
       } else {
-         // Sinon, utiliser l'état réel du lecteur
-         stateToEmit = state.playing;
-         // Si le lecteur est devenu idle (après stop() ou fin naturelle), reset le flag
-         if (state.processingState == ProcessingState.idle) {
-            _manuallyStopped = false; 
-         }
-       }
-
-       // Log avant l'émission
-       ConsoleLogger.info('[AzureTtsService Listener PRE-EMIT] Received State: ${state.processingState}, Playing: ${state.playing}, ManuallyStopped: $_manuallyStopped. Will emit: $stateToEmit');
-
-       if (!_isPlayingController.isClosed) {
-          // Vérifier si la valeur à émettre est différente de la dernière valeur émise (si possible, pour éviter bruit)
-          // Note: just_audio peut émettre des états redondants.
-          // Pour l'instant, on émet toujours pour un débogage complet.
-          _isPlayingController.add(stateToEmit);
-          ConsoleLogger.info('[AzureTtsService Listener POST-EMIT] Emitted: $stateToEmit');
-       } else {
-         ConsoleLogger.warning('[AzureTtsService Listener] Attempted to emit on closed controller.');
-       }
-     });
+        ConsoleLogger.warning('[AzureTtsService Listener] Attempted to emit on closed controller.');
+      }
+    });
      // Gérer les erreurs du lecteur
      _audioPlayer.playbackEventStream.listen((event) {},
          onError: (Object e, StackTrace stackTrace) {
@@ -145,6 +152,7 @@ class AzureTtsService {
   }
 
   /// Synthétise le texte donné avec la voix et le style spécifiés et le joue
+  @override
   Future<void> synthesizeAndPlay(String text, {String? voiceName, String? style}) async {
     if (!_isInitialized) {
       ConsoleLogger.error('[AzureTtsService] Service non initialisé.');
@@ -186,15 +194,17 @@ class AzureTtsService {
       </speak>
     ''';
 
+    File? tempFile; // Déclarer ici pour accès dans finally
     try {
-       ConsoleLogger.info('[AzureTtsService] Demande de synthèse pour: "$text" avec voix $effectiveVoice${style != null ? ' et style $style' : ''}');
-       // Arrêter la lecture précédente. L'appel à stop() mettra _manuallyStopped à true.
-       await stop();
-       // Réinitialiser le flag d'arrêt manuel MAINTENANT, *après* l'arrêt et *avant* la nouvelle lecture.
-       _manuallyStopped = false;
+      ConsoleLogger.info('[AzureTtsService] Demande de synthèse pour: "$text" avec voix $effectiveVoice${style != null ? ' et style $style' : ''}');
+      // Arrêter la lecture précédente et attendre un court instant
+      await stop();
+      await Future.delayed(const Duration(milliseconds: 100)); // Petite pause
 
-       final response = await http.post(
-         Uri.parse(ttsUrl),
+      // Réinitialiser le flag d'arrêt manuel n'est plus nécessaire
+
+      final response = await http.post(
+        Uri.parse(ttsUrl),
         headers: {
           'Authorization': 'Bearer $_token',
           'Content-Type': 'application/ssml+xml',
@@ -218,61 +228,38 @@ class AzureTtsService {
 
         // Enregistrer les bytes dans un fichier temporaire .mp3
         final tempDir = await getTemporaryDirectory();
-        final tempFilePath = path.join(tempDir.path, 'tts_feedback_${DateTime.now().millisecondsSinceEpoch}.mp3'); // Change extension to .mp3
-        final tempFile = File(tempFilePath);
+        final tempFilePath = path.join(tempDir.path, 'tts_feedback_${DateTime.now().millisecondsSinceEpoch}.mp3');
+        tempFile = File(tempFilePath); // Assigner à la variable déclarée plus haut
         await tempFile.writeAsBytes(audioBytes, flush: true);
         ConsoleLogger.info('[AzureTtsService] Fichier audio temporaire MP3 créé: $tempFilePath (${audioBytes.length} bytes)');
 
-        // Vérifier l'existence du fichier avant de le lire
+        // Vérifier l'existence juste avant utilisation
         if (!await tempFile.exists()) {
-          ConsoleLogger.error('[AzureTtsService] Le fichier temporaire MP3 n\'existe pas avant la lecture: $tempFilePath');
-          if (_isPlayingController.hasListener) _isPlayingController.add(false);
-          return;
+          throw Exception('Le fichier temporaire MP3 n\'existe pas juste avant la lecture: $tempFilePath');
         }
 
-        // Utiliser just_audio pour lire le fichier temporaire via setAudioSource
+        // Utiliser just_audio pour lire le fichier
         final fileUri = Uri.file(tempFilePath);
         ConsoleLogger.info('[AzureTtsService] Tentative de lecture MP3 via setAudioSource: ${fileUri.toString()}');
-        try {
-          ConsoleLogger.info('[AzureTtsService] Vérification de l\'existence du fichier: ${tempFile.path}');
-          if (await tempFile.exists()) {
-            ConsoleLogger.info('[AzureTtsService] Fichier existe, taille: ${await tempFile.length()} bytes');
-            // Charger la source audio
-            await _audioPlayer.setAudioSource(AudioSource.uri(fileUri));
-            // Jouer l'audio ET attendre sa complétion
-            await _audioPlayer.play(); 
-            // Attendre explicitement que la lecture soit terminée.
-            // Le stream playerStateStream est utilisé pour mettre à jour l'UI (via _isPlayingController),
-            // mais ici on attend la fin réelle avant de continuer.
-            await _audioPlayer.processingStateStream.firstWhere(
-              (state) => state == ProcessingState.completed || state == ProcessingState.idle
-            );
-            ConsoleLogger.info('[AzureTtsService] Lecture audio terminée (détectée par await play/processingStateStream).');
-            // Note: Le listener _setupPlayerListener mettra aussi à jour _isPlayingController à false.
-          } else {
-            ConsoleLogger.error('[AzureTtsService] Le fichier temporaire n\'existe pas.');
-            if (_isPlayingController.hasListener) _isPlayingController.add(false);
-          }
-        } catch (e) {
-          ConsoleLogger.error('[AzureTtsService] Erreur lors de setAudioSource ou play: $e');
-          if (e is PlatformException) {
-            ConsoleLogger.error('[AzureTtsService] PlatformException Code: ${e.code}, Message: ${e.message}, Details: ${e.details}');
-          }
-          if (_isPlayingController.hasListener) _isPlayingController.add(false);
-          // Rethrow ou gérer l'erreur comme approprié
-          rethrow;
+
+        // S'assurer que le lecteur est prêt avant de charger
+        if (_audioPlayer.processingState != ProcessingState.idle) {
+          ConsoleLogger.warning('[AzureTtsService] Player not idle (${_audioPlayer.processingState}) before setAudioSource. Stopping again.');
+          await _audioPlayer.stop();
+          await Future.delayed(const Duration(milliseconds: 50)); // Courte pause
         }
 
-        // Supprimer le fichier temporaire après lecture
-        // Utiliser un try-catch au cas où la suppression échouerait
-        try {
-          if (await tempFile.exists()) {
-            await tempFile.delete();
-            ConsoleLogger.info('[AzureTtsService] Fichier audio temporaire supprimé: $tempFilePath');
-          }
-        } catch (e) {
-          ConsoleLogger.warning('[AzureTtsService] Échec de la suppression du fichier temporaire: $e');
-        }
+        // Charger et jouer
+        await _audioPlayer.setAudioSource(AudioSource.uri(fileUri));
+        await _audioPlayer.play();
+
+        // Attendre la fin de la lecture (ou l'état idle)
+        await _audioPlayer.processingStateStream.firstWhere(
+          (state) => state == ProcessingState.completed || state == ProcessingState.idle,
+          // Ajouter un timeout pour éviter un blocage infini si l'état n'arrive jamais
+          // ouElse: () => throw TimeoutException('Timeout waiting for audio playback completion')
+        );
+        ConsoleLogger.info('[AzureTtsService] Lecture audio terminée (détectée par await processingStateStream).');
 
       } else {
         ConsoleLogger.error('[AzureTtsService] Échec de la synthèse: ${response.statusCode} - ${response.reasonPhrase}');
@@ -287,39 +274,63 @@ class AzureTtsService {
       }
     } catch (e) {
       ConsoleLogger.error('[AzureTtsService] Erreur lors de la synthèse ou lecture: $e');
-      if (_isPlayingController.hasListener) _isPlayingController.add(false);
+      if (e is PlatformException) {
+        ConsoleLogger.error('[AzureTtsService] PlatformException Details: Code: ${e.code}, Message: ${e.message}, Details: ${e.details}');
+      }
+      // Assurer que l'état de lecture est mis à jour en cas d'erreur
+      if (!_isPlayingController.isClosed) _isPlayingController.add(false);
+      // Rethrow pour que l'appelant soit informé de l'erreur
+      // throw; // Ou gérer l'erreur plus spécifiquement si nécessaire
+    } finally {
+      // Assurer la suppression du fichier temporaire dans tous les cas (succès ou erreur)
+      try {
+        if (tempFile != null && await tempFile.exists()) {
+          await tempFile.delete();
+          ConsoleLogger.info('[AzureTtsService] Fichier audio temporaire supprimé: ${tempFile.path}');
+        }
+      } catch (e) {
+        ConsoleLogger.warning('[AzureTtsService] Échec de la suppression du fichier temporaire dans finally: $e');
+      }
     }
   }
 
   /// Arrête la lecture audio en cours
+  @override
   Future<void> stop() async {
-    try {
-      ConsoleLogger.info('[AzureTtsService] Appel de stop().');
-      _manuallyStopped = true; // <<< AJOUT: Indiquer un arrêt manuel immédiat
-      await _audioPlayer.stop(); // Arrête la lecture
-      // Le listener devrait maintenant détecter state.playing == false et émettre via _isPlayingController.
-      // Grâce à _manuallyStopped = true, le listener forcera l'émission de 'false' immédiatement.
-      // Le listener est la source de vérité pour l'état 'playing'.
-      ConsoleLogger.info('[AzureTtsService] _audioPlayer.stop() exécuté.');
-    } catch (e) {
-      ConsoleLogger.error('[AzureTtsService] Erreur lors de l\'arrêt de la lecture: $e');
-      // Assurer que l'état est non-joueur en cas d'erreur d'arrêt
-      // Le listener devrait aussi gérer cela, mais une sécurité ici peut être utile.
-      if (!_isPlayingController.isClosed && _audioPlayer.playing) {
-         _isPlayingController.add(false);
+    // Arrêter seulement si le lecteur est actif (playing, loading, buffering)
+    if (_audioPlayer.playing ||
+        _audioPlayer.processingState == ProcessingState.loading ||
+        _audioPlayer.processingState == ProcessingState.buffering) {
+      try {
+        ConsoleLogger.info('[AzureTtsService] Appel de stop(). Current state: ${_audioPlayer.processingState}');
+        await _audioPlayer.stop(); // Arrête la lecture et remet à l'état initial
+        ConsoleLogger.info('[AzureTtsService] _audioPlayer.stop() exécuté.');
+        // Le listener mettra à jour _isPlayingController lorsque l'état passera à idle.
+      } catch (e) {
+        ConsoleLogger.error('[AzureTtsService] Erreur lors de l\'arrêt de la lecture: $e');
+        // Forcer l'état isPlaying à false en cas d'erreur d'arrêt
+        if (!_isPlayingController.isClosed) {
+           _isPlayingController.add(false);
+        }
       }
+    } else {
+      ConsoleLogger.info('[AzureTtsService] stop() called but player not active. State: ${_audioPlayer.processingState}');
     }
   } // Fin de la méthode stop()
 
   /// Libère les ressources
+  @override
   Future<void> dispose() async {
+    ConsoleLogger.info('[AzureTtsService] Libération des ressources.');
+    // Fermer le controller en premier
+    await _isPlayingController.close();
     try {
-      ConsoleLogger.info('[AzureTtsService] Libération des ressources.');
+      // Attendre la libération du lecteur audio
       await _audioPlayer.dispose();
-      await _isPlayingController.close();
-      ConsoleLogger.success('[AzureTtsService] Ressources libérées.');
+      ConsoleLogger.success('[AzureTtsService] AudioPlayer disposé.');
     } catch (e) {
-      ConsoleLogger.error('[AzureTtsService] Erreur lors de la libération des ressources: $e');
+      ConsoleLogger.error('[AzureTtsService] Erreur lors de la libération de AudioPlayer: $e');
     }
+    ConsoleLogger.success('[AzureTtsService] Ressources libérées.');
   }
 }

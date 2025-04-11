@@ -1,3 +1,9 @@
 [submodule "native/whisper.cpp"]
 	path = native/whisper.cpp
 	url = https://github.com/ggerganov/whisper.cpp.git
+[submodule "whisper_stt_plugin/native/whisper.cpp"]
+	path = whisper_stt_plugin/native/whisper.cpp
+	url = https://github.com/ggerganov/whisper.cpp.git
+[submodule "piper_tts_plugin/native/piper"]
+	path = piper_tts_plugin/native/piper
+	url = https://github.com/rhasspy/piper.git

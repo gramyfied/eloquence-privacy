@@ -7,7 +7,6 @@ import '../domain/repositories/auth_repository.dart';
 import '../domain/repositories/audio_repository.dart';
 import '../domain/repositories/speech_recognition_repository.dart';
 // import '../infrastructure/repositories/flutter_sound_audio_repository.dart'; // Retiré
-import '../infrastructure/repositories/azure_speech_recognition_repository.dart';
 import '../infrastructure/repositories/supabase_profile_repository.dart';
 import '../infrastructure/repositories/supabase_statistics_repository.dart';
 import '../infrastructure/repositories/supabase_session_repository.dart';
@@ -22,7 +21,7 @@ class App extends StatefulWidget {
 
 class _AppState extends State<App> {
   bool _initialized = false;
-  String? _error;
+  // String? _error; // Champ inutilisé, supprimé
 
   @override
   void initState() {
@@ -67,7 +66,7 @@ class _AppState extends State<App> {
     // Note: Ces appels supposent que setupServiceLocator a réussi dans main.dart
     final authRepository = serviceLocator<AuthRepository>();
     final audioRepository = serviceLocator<AudioRepository>();
-    final speechRepository = AzureSpeechRecognitionRepository(); // TODO: Remplacer par locator si nécessaire
+    final speechRepository = serviceLocator<SpeechRecognitionRepository>(); // Utiliser locator
     final profileRepository = serviceLocator<SupabaseProfileRepository>();
     final statisticsRepository = serviceLocator<SupabaseStatisticsRepository>();
     final sessionRepository = serviceLocator<SupabaseSessionRepository>();

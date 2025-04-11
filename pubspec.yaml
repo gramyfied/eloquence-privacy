@@ -78,6 +78,8 @@ dependencies:
   flutter_dotenv: ^5.1.0
   audio_signal_processor:
     path: audio_signal_processor # Correct path relative to pubspec.yaml
+  whisper_stt_plugin:
+    path: whisper_stt_plugin # Ajout de la dépendance locale
 
 dev_dependencies:
   # ffigen: ^11.0.0 # Supprimé car Whisper FFI n'est plus utilisé

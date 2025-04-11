@@ -1537,6 +1537,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.2"
+  whisper_stt_plugin:
+    dependency: "direct main"
+    description:
+      path: whisper_stt_plugin
+      relative: true
+    source: path
+    version: "0.0.1"
   xdg_directories:
     dependency: transitive
     description:

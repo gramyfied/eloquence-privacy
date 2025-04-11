@@ -11,12 +11,15 @@ import '../../../domain/entities/exercise.dart';
 // Pour ExerciseCategoryType
 import '../../../services/service_locator.dart';
 import '../../../domain/repositories/audio_repository.dart';
-import '../../../services/azure/azure_speech_service.dart'; // Pour STT
-import '../../../services/openai/openai_feedback_service.dart'; // Pour feedback IA
+// Importer depuis le repository où les événements sont maintenant définis
+import '../../../domain/repositories/azure_speech_repository.dart'; // Pour AzureSpeechEvent, AzureSpeechEventType
+import '../../../services/openai/openai_feedback_service.dart'; // Pour le feedback IA
 import '../../../services/audio/example_audio_provider.dart'; // Pour démo TTS
 import '../../widgets/microphone_button.dart';
 import '../../widgets/visual_effects/info_modal.dart';
-// TODO: Importer d'autres widgets nécessaires (ex: visualisation feedback)
+// Pour parser le résultat
+// Supprimer l'import de AzureSpeechService car on utilise le repository
+// import '../../../services/azure/azure_speech_service.dart';
 
 // --- Data Structures for Pauses ---
 enum PauseType { short, medium, long } // Ajuster si nécessaire basé sur les marqueurs réels
@@ -123,13 +126,10 @@ class _RhythmAndPausesExerciseScreenState
   // Variables pour accumuler les résultats Azure
   String _accumulatedRecognizedText = '';
   List<Map<String, dynamic>> _accumulatedWords = [];
-  // Completer supprimé car il causait des problèmes de timing
-  // Completer<List<Map<String, dynamic>>>? _finalResultCompleter;
-
 
   // Services
   late AudioRepository _audioRepository;
-  late AzureSpeechService _azureSpeechService;
+  late IAzureSpeechRepository _speechRepository; // Utiliser l'interface
   late OpenAIFeedbackService _openAIFeedbackService;
   late ExampleAudioProvider _exampleAudioProvider;
 
@@ -153,7 +153,7 @@ class _RhythmAndPausesExerciseScreenState
          ConsoleLogger.error("Erreur lors de l'arrêt pendant dispose: $e");
        });
     } else if (_isProcessing) {
-        _azureSpeechService.stopRecognition().catchError((e) {
+        _speechRepository.stopRecognition().catchError((e) { // Utiliser le repository
            ConsoleLogger.error("Erreur lors de stopRecognition pendant dispose (processing): $e");
         });
     }
@@ -167,13 +167,13 @@ class _RhythmAndPausesExerciseScreenState
     try {
       ConsoleLogger.info('Initialisation Exercice: Rythme et Pauses');
       _audioRepository = serviceLocator<AudioRepository>();
-      _azureSpeechService = serviceLocator<AzureSpeechService>();
+      _speechRepository = serviceLocator<IAzureSpeechRepository>(); // Utiliser l'interface
       _openAIFeedbackService = serviceLocator<OpenAIFeedbackService>();
       _exampleAudioProvider = serviceLocator<ExampleAudioProvider>();
 
-      if (!_azureSpeechService.isInitialized) {
-        ConsoleLogger.warning('AzureSpeechService non initialisé.');
-         throw Exception('Azure Speech Service non initialisé.');
+      if (!_speechRepository.isInitialized) { // Utiliser le repository
+        ConsoleLogger.warning('IAzureSpeechRepository non initialisé.');
+         throw Exception('Speech Repository non initialisé.');
       }
 
       // Générer le texte via OpenAI au lieu d'utiliser le texte par défaut
@@ -200,80 +200,78 @@ class _RhythmAndPausesExerciseScreenState
 
   void _subscribeToRecognitionStream() {
     _recognitionSubscription?.cancel();
-    _recognitionSubscription = _azureSpeechService.recognitionStream.listen(
-      (event) {
+    // Écouter le stream du repository
+    _recognitionSubscription = _speechRepository.recognitionEvents.listen(
+      (event) { // event est de type dynamic ici
         if (!mounted) return;
-        ConsoleLogger.info('[RhythmScreen] Azure Event: ${event.type}');
+        ConsoleLogger.info('[RhythmScreen] Speech Event: ${event.runtimeType}');
 
-        switch (event.type) {
-          case AzureSpeechEventType.partial:
-            // Optionnel: Mettre à jour un texte partiel affiché à l'utilisateur
-            break;
-          case AzureSpeechEventType.finalResult:
-            ConsoleLogger.info('[RhythmScreen] Événement final reçu (accumulation).');
-            // Accumuler le texte reconnu
-            if (event.text != null && event.text!.isNotEmpty) {
-              _accumulatedRecognizedText += "${event.text} ";
-            }
-
-            // Accumuler les mots du résultat de prononciation (Correction: chemin imbriqué)
-            List<Map<String, dynamic>>? words;
-            try {
-              final nBestList = (event.pronunciationResult?['NBest'] as List?);
-              if (nBestList != null && nBestList.isNotEmpty && nBestList[0] is Map) {
-                final dynamicWordsList = nBestList[0]['Words'] as List?;
-                 if (dynamicWordsList != null) {
-                    words = dynamicWordsList
-                        .whereType<Map>()
-                        .map((item) => Map<String, dynamic>.from(item))
-                        .toList();
-                 }
+        // Tenter de traiter comme AzureSpeechEvent
+        if (event is AzureSpeechEvent) {
+          switch (event.type) {
+            case AzureSpeechEventType.partial:
+              // Optionnel: Mettre à jour un texte partiel affiché à l'utilisateur
+              break;
+            case AzureSpeechEventType.finalResult:
+              ConsoleLogger.info('[RhythmScreen] Événement final reçu (accumulation).');
+              // Accumuler le texte reconnu
+              if (event.text != null && event.text!.isNotEmpty) {
+                _accumulatedRecognizedText += "${event.text} ";
               }
-            } catch (e) {
-               ConsoleLogger.error('[RhythmScreen] Erreur extraction mots de NBest: $e');
-            }
 
-            if (words != null && words.isNotEmpty) {
-              _accumulatedWords.addAll(words);
-               // Log simplifié
-               // ConsoleLogger.info('[RhythmScreen] Mots ajoutés. Taille _accumulatedWords: ${_accumulatedWords.length}');
-            } else {
-               // ConsoleLogger.warning('[RhythmScreen] Aucun mot trouvé dans NBest[0][\'Words\'] pour cet événement final.');
-            }
-            // Stocker le dernier événement final reçu (peut être utile pour le texte)
-            // _finalAzureResultFromStream = event;
-            break; // Completer supprimé
-          case AzureSpeechEventType.error:
-            ConsoleLogger.error('[RhythmScreen] Erreur Azure: ${event.errorCode} - ${event.errorMessage}');
-            if (mounted) {
-              setState(() {
-                _isProcessing = false; // Arrêter le traitement en cas d'erreur
-                _azureError = 'Erreur Azure: ${event.errorMessage} (${event.errorCode})';
-              });
-              // Completer supprimé
-            }
-            break;
-          case AzureSpeechEventType.status:
-             ConsoleLogger.info('[RhythmScreen] Statut Azure: ${event.statusMessage}');
-             if (event.statusMessage?.contains('Session stopped') ?? false) {
-                // Completer supprimé
-             }
-             break;
+              // Accumuler les mots du résultat de prononciation
+              List<Map<String, dynamic>>? words;
+              try {
+                final nBestList = (event.pronunciationResult?['NBest'] as List?);
+                if (nBestList != null && nBestList.isNotEmpty && nBestList[0] is Map) {
+                  final dynamicWordsList = nBestList[0]['Words'] as List?;
+                   if (dynamicWordsList != null) {
+                      words = dynamicWordsList
+                          .whereType<Map>()
+                          .map((item) => Map<String, dynamic>.from(item))
+                          .toList();
+                   }
+                }
+              } catch (e) {
+                 ConsoleLogger.error('[RhythmScreen] Erreur extraction mots de NBest: $e');
+              }
+
+              if (words != null && words.isNotEmpty) {
+                _accumulatedWords.addAll(words);
+              }
+              break;
+            case AzureSpeechEventType.error:
+              ConsoleLogger.error('[RhythmScreen] Erreur Azure: ${event.errorCode} - ${event.errorMessage}');
+              if (mounted) {
+                setState(() {
+                  _isProcessing = false;
+                  _azureError = 'Erreur Azure: ${event.errorMessage} (${event.errorCode})';
+                });
+              }
+              break;
+            case AzureSpeechEventType.status:
+               ConsoleLogger.info('[RhythmScreen] Statut Azure: ${event.statusMessage}');
+               if (event.statusMessage?.contains('Session stopped') ?? false) {
+                  // Gérer l'arrêt de session si nécessaire
+               }
+               break;
+          }
+        } else {
+           ConsoleLogger.warning('[RhythmScreen] Received non-AzureSpeechEvent: ${event.runtimeType}');
+           // Gérer d'autres types d'événements si nécessaire
         }
       },
       onError: (error) {
-        ConsoleLogger.error('[RhythmScreen] Erreur Stream Azure: $error');
+        ConsoleLogger.error('[RhythmScreen] Erreur Stream Speech: $error');
         if (mounted) {
           setState(() {
             _isProcessing = false;
-            _azureError = 'Erreur Stream Azure: $error';
+            _azureError = 'Erreur Stream Speech: $error';
           });
-           // Completer supprimé
         }
       },
       onDone: () {
-        ConsoleLogger.info('[RhythmScreen] Stream Azure terminé.');
-         // Completer supprimé
+        ConsoleLogger.info('[RhythmScreen] Stream Speech terminé.');
       }
     );
   }
@@ -341,9 +339,9 @@ class _RhythmAndPausesExerciseScreenState
        );
        return;
     }
-    if (!_azureSpeechService.isInitialized) {
+    if (!_speechRepository.isInitialized) { // Utiliser le repository
        ScaffoldMessenger.of(context).showSnackBar(
-         const SnackBar(content: Text('Service Azure non prêt.'), backgroundColor: Colors.red),
+         const SnackBar(content: Text('Service vocal non prêt.'), backgroundColor: Colors.red),
        );
        return;
     }
@@ -362,18 +360,17 @@ class _RhythmAndPausesExerciseScreenState
         _accumulatedWords = [];
       });
 
-      // Ne plus initialiser le completer
-      // _finalResultCompleter = Completer<List<Map<String, dynamic>>>();
+      // Utiliser le repository pour démarrer l'évaluation
+      await _speechRepository.startPronunciationAssessment(_textToRead, 'fr-FR'); // Adapter la langue si nécessaire
+      ConsoleLogger.info('[RhythmScreen] startPronunciationAssessment appelé via Repository.');
 
-      await _azureSpeechService.startRecognition(referenceText: _textToRead);
-      ConsoleLogger.info('[RhythmScreen] Azure startRecognition appelé.');
-
-      final audioStream = await _audioRepository.startRecordingStream();
-      ConsoleLogger.recording('Enregistrement Rythme/Pauses démarré...');
-      _subscribeToAudioStream(audioStream);
+      // L'enregistrement audio est géré par le SDK natif (via Pigeon/Repository)
+      // Pas besoin de démarrer _audioRepository.startRecordingStream ici
+      ConsoleLogger.recording('Enregistrement Rythme/Pauses démarré (via Repository)...');
+      // _subscribeToAudioStream(audioStream); // Supprimé
 
     } catch (e) {
-      ConsoleLogger.error('Erreur démarrage enregistrement/Azure: $e');
+      ConsoleLogger.error('Erreur démarrage enregistrement/évaluation: $e');
       if (mounted) {
         setState(() {
           _isRecording = false;
@@ -384,28 +381,7 @@ class _RhythmAndPausesExerciseScreenState
     }
   }
 
-  void _subscribeToAudioStream(Stream<Uint8List> audioStream) {
-     _audioSubscription?.cancel();
-     ConsoleLogger.info('[RhythmScreen] Subscribing to Audio Stream...');
-     _audioSubscription = audioStream.listen(
-       (data) {
-         // Ne plus envoyer les chunks audio manuellement, le SDK natif gère le micro
-         // if (_isRecording && _azureSpeechService.isInitialized) {
-         //   _azureSpeechService.sendAudioChunk(data);
-         // }
-       },
-       onError: (error) {
-         ConsoleLogger.error('[RhythmScreen] Audio Stream Error: $error');
-         if (mounted) {
-           setState(() { _azureError = "Erreur Stream Audio: $error"; });
-           _stopRecordingAndProcess(forceStop: true).catchError((e) => ConsoleLogger.error("Erreur lors de l'arrêt forcé: $e"));
-         }
-       },
-       onDone: () {
-         ConsoleLogger.info('[RhythmScreen] Audio Stream Done.');
-       }
-     );
-   }
+  // Supprimer _subscribeToAudioStream car plus nécessaire
 
   Future<void> _stopRecordingAndProcess({bool isDisposing = false, bool forceStop = false}) async {
     if (!_isRecording && !forceStop) return;
@@ -415,7 +391,7 @@ class _RhythmAndPausesExerciseScreenState
     if (mounted && !isDisposing) {
       setState(() {
         _isRecording = false;
-        _isProcessing = true; // On attend le résultat d'Azure
+        _isProcessing = true; // On attend le résultat final via le stream
         _azureError = '';
       });
     } else {
@@ -424,17 +400,15 @@ class _RhythmAndPausesExerciseScreenState
     }
 
     try {
-      await _audioRepository.stopRecordingStream();
-      await _audioSubscription?.cancel();
-      _audioSubscription = null;
-      ConsoleLogger.info('[RhythmScreen] Stream audio local arrêté.');
+      // Arrêter l'enregistrement local n'est plus nécessaire si le SDK natif gère le micro
+      // await _audioRepository.stopRecordingStream();
+      // await _audioSubscription?.cancel();
+      // _audioSubscription = null;
+      // ConsoleLogger.info('[RhythmScreen] Stream audio local arrêté.');
 
-      await Future.delayed(const Duration(seconds: 1)); // Délai pour Azure
-
-      if (!mounted || (isDisposing)) return;
-
-      await _azureSpeechService.stopRecognition();
-      ConsoleLogger.info('[RhythmScreen] Azure stopRecognition appelé.');
+      // Demander l'arrêt de la reconnaissance/évaluation via le repository
+      await _speechRepository.stopRecognition();
+      ConsoleLogger.info('[RhythmScreen] stopRecognition appelé via Repository.');
 
       // Attendre un délai fixe pour laisser le temps au stream de traiter les derniers événements
       ConsoleLogger.info('[RhythmScreen] Attente de 2 secondes pour la finalisation...');
@@ -443,27 +417,24 @@ class _RhythmAndPausesExerciseScreenState
       if (!mounted || (isDisposing)) return;
 
       // --- Nouvelle Logique de Traitement (après délai) ---
-      // Vérifier directement _accumulatedWords
       if (_accumulatedWords.isNotEmpty) {
          ConsoleLogger.info('[RhythmScreen] Traitement basé sur les ${_accumulatedWords.length} mots accumulés après délai.');
-         // Passer une copie pour éviter les modifications concurrentes potentielles
          await _processAccumulatedResults(List.from(_accumulatedWords));
       }
-      // SINON (si la liste est toujours vide)
       else {
-        ConsoleLogger.error('[RhythmScreen] ERREUR: Aucun mot accumulé trouvé après délai. Vérifier si la reconnaissance a démarré ou si l\'utilisateur a parlé.');
+        ConsoleLogger.error('[RhythmScreen] ERREUR: Aucun mot accumulé trouvé après délai.');
         if (mounted && !isDisposing) {
            setState(() {
              _isProcessing = false;
              _azureError = _azureError.isNotEmpty ? _azureError : 'Aucun résultat d\'analyse final reçu.';
            });
            final errorAnalysis = PauseAnalysisResult(placementScore: 0, durationScore: 0, overallScore: 0, details: [_azureError]);
-           _showResults(errorAnalysis, _accumulatedRecognizedText.trim()); // Afficher l'erreur avec le texte accumulé si dispo
+           _showResults(errorAnalysis, _accumulatedRecognizedText.trim());
         }
       }
 
     } catch (e) {
-      ConsoleLogger.error('Erreur lors de l\'arrêt de l\'enregistrement/Azure: $e');
+      ConsoleLogger.error('Erreur lors de l\'arrêt de l\'enregistrement/évaluation: $e');
       if (mounted && !isDisposing) {
         setState(() {
           _isProcessing = false;
@@ -478,23 +449,19 @@ class _RhythmAndPausesExerciseScreenState
      if (!mounted) return;
      ConsoleLogger.info('[RhythmScreen] Traitement des ${wordsToProcess.length} mots reçus...');
 
-     // Assurer que _isProcessing est true
      if (!_isProcessing) {
         ConsoleLogger.warning('[RhythmScreen] _processFinalResult appelé alors que _isProcessing était false.');
         if (mounted) setState(() => _isProcessing = true);
      }
 
      try {
-        // Utiliser la liste de mots PASSÉE EN PARAMÈTRE
         _detectedPauses = _extractDetectedPausesFromWords(wordsToProcess);
         ConsoleLogger.info('Pauses détectées: ${_detectedPauses.length}');
 
-        // Utiliser la liste de mots PASSÉE EN PARAMÈTRE
         final analysis = _analyzeTiming(_detectedPauses, _markedPauses, wordsToProcess);
         if (mounted) setState(() => _analysisResult = analysis);
         ConsoleLogger.info('Résultats analyse timing: ${analysis.toJson()}');
 
-        // Utiliser le texte ACCUMULÉ pour OpenAI
         final fullRecognizedText = _accumulatedRecognizedText.trim();
         _openAiFeedback = await _getOpenAiFeedback(analysis.toJson(), fullRecognizedText);
         ConsoleLogger.info('Feedback OpenAI (accumulé): $_openAiFeedback');
@@ -506,7 +473,6 @@ class _RhythmAndPausesExerciseScreenState
          if (mounted) {
            setState(() { _azureError = 'Erreur analyse: $e'; });
            final errorAnalysis = PauseAnalysisResult(placementScore: 0, durationScore: 0, overallScore: 0, details: ['Erreur analyse: $e']);
-           // Utiliser le texte accumulé global ici aussi en cas d'erreur
            _showResults(errorAnalysis, _accumulatedRecognizedText.trim());
          }
      } finally {
@@ -515,10 +481,6 @@ class _RhythmAndPausesExerciseScreenState
         }
      }
   }
-
-  // Fonction fallback supprimée
-  // Future<void> _processFinalResult(AzureSpeechEvent finalEvent) async { ... }
-
 
   // --- Pause Extraction & Analysis ---
 
@@ -532,39 +494,30 @@ class _RhythmAndPausesExerciseScreenState
      }
 
      const ticksPerMillisecond = 10000;
-     const minPauseDuration = Duration(milliseconds: 150); // Seuil minimum pour considérer un silence comme une pause
+     const minPauseDuration = Duration(milliseconds: 150); // Seuil minimum
 
      for (int i = 0; i < words.length - 1; i++) {
        final word1 = words[i];
        final word2 = words[i + 1];
 
-       // Vérifier si les données de timing sont présentes et valides
        final offset1 = (word1['Offset'] as num?)?.toInt();
        final duration1 = (word1['Duration'] as num?)?.toInt();
        final offset2 = (word2['Offset'] as num?)?.toInt();
 
        if (offset1 != null && duration1 != null && offset2 != null) {
-         // Calculer l'écart en ticks (100 nanosecondes)
          final gapTicks = offset2 - (offset1 + duration1);
-
-         // S'assurer que l'écart est positif (évite les chevauchements théoriques)
          if (gapTicks > 0) {
            final gapDuration = Duration(milliseconds: gapTicks ~/ ticksPerMillisecond);
-
-           // Si l'écart est supérieur au seuil minimum, c'est une pause détectée
            if (gapDuration >= minPauseDuration) {
               detected.add(DetectedPause(
-                precedingWordIndex: i, // Index du mot *avant* la pause
+                precedingWordIndex: i,
                 duration: gapDuration,
-                offset: offset1 + duration1 // Offset de début de la pause
+                offset: offset1 + duration1
               ));
-              // Log optionnel pour le débogage
-              // ConsoleLogger.info("Pause détectée après mot $i ('${word1['Word']}'): ${gapDuration.inMilliseconds} ms");
            }
          }
        } else {
-          // Log si des données de timing manquent pour une paire de mots
-          ConsoleLogger.warning("Données de timing manquantes pour analyser l'écart entre le mot $i ('${word1['Word']}') et ${i+1} ('${word2['Word']}')");
+          ConsoleLogger.warning("Données de timing manquantes pour analyser l'écart entre le mot $i et ${i+1}");
        }
      }
      return detected;
@@ -575,7 +528,6 @@ class _RhythmAndPausesExerciseScreenState
     ConsoleLogger.info("Analyse du timing avec ${words.length} mots accumulés...");
 
     if (markedPauses.isEmpty) {
-      // Calculer WPM même s'il n'y a pas de pauses marquées
        double? averageWpm = _calculateWpmFromWords(words);
       return PauseAnalysisResult(placementScore: 1.0, durationScore: 1.0, overallScore: 100.0, details: ["Aucune pause marquée dans ce texte."], averageWpm: averageWpm);
     }
@@ -583,44 +535,36 @@ class _RhythmAndPausesExerciseScreenState
     int correctlyPlaced = 0;
     int durationMatches = 0;
     List<String> feedbackDetails = [];
-    // Utiliser un Set pour suivre les indices des pauses détectées déjà utilisées
     final Set<int> usedDetectedPauseIndices = {};
 
     for (int i = 0; i < markedPauses.length; i++) {
       final marked = markedPauses[i];
       final expectedPrecedingWordIdx = marked.precedingWordIndex;
-      DetectedPause? matchedDetectedPause; // Pour stocker la meilleure correspondance
+      DetectedPause? matchedDetectedPause;
 
       if (expectedPrecedingWordIdx == null) {
          feedbackDetails.add("Pause ${i+1} (${marked.marker}): Erreur interne (index mot manquant).");
          continue;
       }
 
-      // Chercher la meilleure correspondance non utilisée pour cette pause marquée
       int bestMatchIndex = -1;
-      int minIndexDifference = 2; // Tolérance: chercher la pause détectée la plus proche (+/- 1 mot)
+      int minIndexDifference = 2;
 
       for (int j = 0; j < detectedPauses.length; j++) {
-         if (usedDetectedPauseIndices.contains(j)) continue; // Ignorer si déjà utilisée
-
+         if (usedDetectedPauseIndices.contains(j)) continue;
          final detected = detectedPauses[j];
          final indexDifference = (detected.precedingWordIndex - expectedPrecedingWordIdx).abs();
-
-         // Si cette pause détectée est plus proche que la meilleure trouvée jusqu'à présent
-         // (et dans la limite de tolérance de 1 mot d'écart)
          if (indexDifference < minIndexDifference) {
             minIndexDifference = indexDifference;
             bestMatchIndex = j;
          }
       }
 
-      // Si une correspondance suffisamment proche (tolérance de 1) et non utilisée a été trouvée
       if (bestMatchIndex != -1) {
          matchedDetectedPause = detectedPauses[bestMatchIndex];
-         usedDetectedPauseIndices.add(bestMatchIndex); // Marquer comme utilisée
+         usedDetectedPauseIndices.add(bestMatchIndex);
          correctlyPlaced++;
 
-         // Vérifier la durée
          final targetDuration = marked.targetDuration;
          final detectedDuration = matchedDetectedPause.duration;
          final tolerance = marked.durationTolerance;
@@ -909,3 +853,4 @@ class _RhythmAndPausesExerciseScreenState
   }
 
 } // Fin de _RhythmAndPausesExerciseScreenState
+

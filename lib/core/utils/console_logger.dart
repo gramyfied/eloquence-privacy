@@ -29,13 +29,12 @@ class ConsoleLogger {
     LogType.azureTTS,
   };
   
-  /// Mode de filtrage des logs
-  /// Si true, seuls les logs liés au flux de travail d'enregistrement, TTS et STT sont affichés
-  static bool _workflowFilterEnabled = false;
+  // Mode de filtrage des logs (champ inutilisé, supprimé)
+  // static bool _workflowFilterEnabled = false;
   
   /// Active le mode de filtrage des logs pour n'afficher que ceux liés au flux de travail
   static void enableWorkflowFilter() {
-    _workflowFilterEnabled = true;
+    // _workflowFilterEnabled = true; // Champ supprimé
     _enabledLogTypes.clear();
     _enabledLogTypes.addAll({
       LogType.recording,
@@ -47,7 +46,7 @@ class ConsoleLogger {
   
   /// Désactive le mode de filtrage des logs
   static void disableWorkflowFilter() {
-    _workflowFilterEnabled = false;
+    // _workflowFilterEnabled = false; // Champ supprimé
     _enabledLogTypes.clear();
     _enabledLogTypes.addAll({
       LogType.info,

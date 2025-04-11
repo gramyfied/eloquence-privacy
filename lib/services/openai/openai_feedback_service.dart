@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../core/utils/console_logger.dart';
+import '../feedback/feedback_service_interface.dart';
 
 /// Service pour générer un feedback personnalisé via Azure OpenAI
-class OpenAIFeedbackService {
+class OpenAIFeedbackService implements IFeedbackService {
   final String apiKey;
   final String endpoint; // Endpoint Azure OpenAI
   final String deploymentName; // Nom du déploiement Azure OpenAI
@@ -17,6 +18,7 @@ class OpenAIFeedbackService {
   });
 
   /// Génère un feedback personnalisé basé sur les résultats d'évaluation
+  @override
   Future<String> generateFeedback({
     required String exerciseType,
     required String exerciseLevel,
@@ -214,6 +216,7 @@ Limite ta réponse à 3-4 phrases maximum.
   }
 
   /// Génère une phrase pour un exercice d'articulation
+  @override
   Future<String> generateArticulationSentence({
     String? targetSounds, // Optionnel: pour cibler des sons spécifiques
     int minWords = 8,
@@ -296,6 +299,7 @@ Contraintes:
   }
 
   /// Génère un texte pour un exercice de rythme et pauses
+  @override
   Future<String> generateRhythmExerciseText({
     required String exerciseLevel, // Niveau de difficulté pour adapter le texte
     int minWords = 20,
@@ -381,6 +385,7 @@ Exemple de format attendu: "La communication efficace... repose sur l'écoute ac
   }
 
   /// Génère une phrase pour un exercice d'intonation expressive avec une émotion cible.
+  @override
   Future<String> generateIntonationSentence({
     required String targetEmotion, // Émotion à exprimer (ex: joyeux, triste, en colère)
     int minWords = 6,
@@ -477,21 +482,21 @@ Ne fournis que la phrase générée, sans aucune introduction, explication ou gu
     }
   }
 
-
   /// Génère un feedback spécifique pour l'intonation expressive.
+  @override
   Future<String> getIntonationFeedback({
     required String audioPath, // Gardé pour référence future, mais non utilisé par le modèle texte
     required String targetEmotion,
     required String referenceSentence,
     Map<String, double>? audioMetrics, // Nouveau paramètre optionnel (remplace pitchMetrics)
   }) async {
-    _log("Génération de feedback pour l'intonation...");
-    _log("- Émotion cible: $targetEmotion");
-    _log("- Phrase référence: \"$referenceSentence\"");
+    ConsoleLogger.info('🤖 [OPENAI Feedback] Génération de feedback pour l\'intonation...');
+    ConsoleLogger.info('🤖 [OPENAI Feedback] - Émotion cible: $targetEmotion');
+    ConsoleLogger.info('🤖 [OPENAI Feedback] - Phrase référence: \"$referenceSentence\"');
     if (audioMetrics != null && audioMetrics.isNotEmpty) {
-      _log("- Métriques audio fournies: ${audioMetrics.entries.map((e) => '${e.key}: ${e.value.toStringAsFixed(2)}').join(', ')}");
+      ConsoleLogger.info('🤖 [OPENAI Feedback] - Métriques audio fournies: ${audioMetrics.entries.map((e) => '${e.key}: ${e.value.toStringAsFixed(2)}').join(', ')}');
     } else {
-      _log("- Aucune métrique audio fournie.");
+      ConsoleLogger.info('🤖 [OPENAI Feedback] - Aucune métrique audio fournie.');
     }
 
     // Construire la partie du prompt concernant les métriques
@@ -524,7 +529,6 @@ $metricsString
     final userPrompt = """
 Évalue mon intonation pour l'émotion '$targetEmotion' sur la phrase '$referenceSentence', en tenant compte des métriques si elles ont été fournies.
 """.trim();
-
 
     // Vérifier la configuration Azure OpenAI
     if (apiKey.isEmpty || endpoint.isEmpty || deploymentName.isEmpty) {
@@ -581,6 +585,7 @@ $metricsString
   }
 
   /// Génère une liste de mots avec des finales spécifiques pour l'exercice "Finales Nettes".
+  @override
   Future<List<Map<String, dynamic>>> generateFinalesNettesWords({
     required String exerciseLevel,
     int wordCount = 6, // Nombre de mots à générer
@@ -713,23 +718,33 @@ Ne fournis que le JSON, sans aucune introduction, explication ou formatage suppl
     }
   }
 
-
   /// Génère une liste de mots avec leur décomposition syllabique pour l'exercice de précision syllabique.
+  @override
   Future<List<Map<String, dynamic>>> generateSyllabicWords({
     required String exerciseLevel,
     int wordCount = 5, // Nombre de mots à générer par défaut
+    List<String>? targetSyllables, // Paramètre ajouté pour correspondre à l'interface
     String language = 'fr-FR',
   }) async {
     ConsoleLogger.info('🤖 [OPENAI] Génération de mots et syllabes...');
     ConsoleLogger.info('🤖 [OPENAI] - Niveau: $exerciseLevel');
     ConsoleLogger.info('🤖 [OPENAI] - Nombre de mots: $wordCount');
+    if (targetSyllables != null && targetSyllables.isNotEmpty) {
+      ConsoleLogger.info('🤖 [OPENAI] - Syllabes cibles: ${targetSyllables.join(', ')}');
+    }
 
     // Construire le prompt
     String prompt = '''
 Génère une liste de $wordCount mots en français ($language) adaptés pour un exercice de précision syllabique de niveau "$exerciseLevel".
 Pour chaque mot, fournis sa décomposition syllabique précise, basée sur la prononciation standard. Utilise un tiret (-) comme séparateur de syllabes.
 Assure-toi que les mots choisis sont pertinents pour un contexte professionnel et que leur complexité correspond au niveau demandé (ex: mots plus longs/complexes pour niveau Difficile).
-
+''';
+    if (targetSyllables != null && targetSyllables.isNotEmpty) {
+      prompt += '- Inclus si possible des mots contenant les syllabes suivantes : ${targetSyllables.join(', ')}.\n';
+    } else {
+      prompt += '- Varie les structures syllabiques des mots.\n';
+    }
+    prompt += '''
 Format de réponse attendu (strictement JSON):
 [
   {"word": "mot1", "syllables": ["syl1", "syl2"]},
@@ -878,10 +893,5 @@ Ne fournis que le JSON, sans aucune introduction, explication ou formatage suppl
         {"word": "optimisation", "syllables": ["op", "ti", "mi", "sa", "tion"]},
       ];
     }
-  }
-
-  // Helper pour logger
-  void _log(String message) {
-    ConsoleLogger.info('🤖 [OPENAI Feedback] $message');
   }
 }

@@ -7,6 +7,8 @@ import '../../../app/theme.dart';
 import '../../../app/routes.dart'; // Importer AppRoutes
 import '../../../core/utils/console_logger.dart'; // AJOUT: Importer ConsoleLogger
 import '../../../domain/entities/exercise.dart';
+import '../../../domain/repositories/azure_speech_repository.dart'; // Ajout de l'import
+// import '../../../domain/repositories/audio_repository.dart'; // This line is commented out in the actual file content!
 import '../../../infrastructure/repositories/record_audio_repository.dart'; // Chemin corrigé
 import '../../../services/azure/azure_speech_service.dart';
 import '../../../services/openai/openai_feedback_service.dart'; // Importer le service OpenAI

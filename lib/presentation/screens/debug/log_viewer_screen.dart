@@ -168,7 +168,6 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
   /// Partage les logs
   Future<void> _shareLogs() async {
     try {
-      final content = await FileLogger.getLogContent();
       
       // Ici, vous pourriez implémenter le partage du contenu
       // Par exemple, en utilisant le package share_plus

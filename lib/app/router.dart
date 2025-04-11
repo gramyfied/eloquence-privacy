@@ -41,7 +41,6 @@ import '../services/interactive_exercise/scenario_generator_service.dart';
 import '../services/interactive_exercise/conversational_agent_service.dart';
 import '../services/interactive_exercise/realtime_audio_pipeline.dart';
 import '../services/interactive_exercise/feedback_analysis_service.dart';
-import '../services/azure/azure_speech_service.dart';
 
 
 // Helper function to get the route path based on exercise ID
@@ -112,25 +111,25 @@ GoRouter createRouter(AuthRepository authRepository) {
     refreshListenable: authNotifier, // Écouter les changements d'auth
     redirect: (BuildContext context, GoRouterState state) { // Logique de redirection
       final bool loggedIn = authNotifier.isLoggedIn;
-      final String location = state.uri.toString(); 
+      final String location = state.uri.toString();
 
-      print("[GoRouter Redirect] loggedIn: $loggedIn, location: $location");
+      // print("[GoRouter Redirect] loggedIn: $loggedIn, location: $location");
 
       // Si l'utilisateur n'est PAS connecté ET n'est PAS déjà sur l'écran d'auth, rediriger vers l'auth
       if (!loggedIn && location != AppRoutes.auth) {
-        print("[GoRouter Redirect] Not logged in, redirecting to ${AppRoutes.auth}");
+        // print("[GoRouter Redirect] Not logged in, redirecting to ${AppRoutes.auth}");
         return AppRoutes.auth;
       }
 
       // Si l'utilisateur EST connecté ET est sur l'écran d'auth, rediriger vers l'accueil.
       // L'écran d'accueil récupérera lui-même les détails de l'utilisateur.
       if (loggedIn && location == AppRoutes.auth) {
-        print("[GoRouter Redirect] Logged in and on auth screen, redirecting to ${AppRoutes.home}");
+        // print("[GoRouter Redirect] Logged in and on auth screen, redirecting to ${AppRoutes.home}");
         return AppRoutes.home; // Redirection simple vers la route
       }
 
       // Dans tous les autres cas (connecté et ailleurs, ou non connecté et sur auth), ne pas rediriger
-      print("[GoRouter Redirect] No redirection needed.");
+      // print("[GoRouter Redirect] No redirection needed.");
       return null;
     },
     routes: [
@@ -146,7 +145,7 @@ GoRouter createRouter(AuthRepository authRepository) {
         builder: (context, state) {
           // HomeScreen récupère l'utilisateur lui-même.
           // On passe seulement les callbacks de navigation nécessaires.
-          print("[GoRouter Builder /home] Construire HomeScreen.");
+          // print("[GoRouter Builder /home] Construire HomeScreen.");
           return HomeScreen(
             // Ne pas passer 'user' ici
             onNewSessionPressed: () => context.push(AppRoutes.exerciseCategories),
@@ -162,7 +161,7 @@ GoRouter createRouter(AuthRepository authRepository) {
       GoRoute(
         path: AppRoutes.exerciseCategories,
         builder: (context, state) {
-          print("Tentative de récupération des catégories d'exercice...");
+          // print("Tentative de récupération des catégories d'exercice...");
           final exerciseRepository = serviceLocator<ExerciseRepository>();
           return FutureBuilder<List<ExerciseCategory>>(
             future: exerciseRepository.getCategories(),
@@ -171,16 +170,17 @@ GoRouter createRouter(AuthRepository authRepository) {
                 return const Scaffold(body: Center(child: CircularProgressIndicator()));
               }
               if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) { // Vérifier aussi si data est null ou vide
-                print("Erreur ou aucune catégorie récupérée de Supabase: ${snapshot.error}. Utilisation des catégories d'exemple.");
+                // print("Erreur ou aucune catégorie récupérée de Supabase: ${snapshot.error}. Utilisation des catégories d'exemple.");
                 final categories = getSampleCategories(); // Utilise les catégories d'exemple en cas d'erreur ou si vide
                 // ATTENTION: Les IDs ici sont descriptifs ('professional-application'), pas des UUIDs.
                 // La navigation échouera probablement pour les catégories récupérées par défaut si on se base sur l'ID.
                 return ExerciseCategoriesScreen(
                   categories: categories,
                   onCategorySelected: (category) async {
-                    print("[Router Nav] Catégorie sélectionnée (Fallback): ${category.name} (${category.id})");
+                    // print("[Router Nav] Catégorie sélectionnée (Fallback): ${category.name} (${category.id})");
                     // CORRECTION: Ne pas tenter de récupérer les exercices si on utilise les catégories par défaut
                     // car les IDs ne correspondent pas. Afficher un message ou désactiver.
+                    if (!context.mounted) return; // Check context after async gap
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text("Erreur: Impossible de charger les exercices pour '${category.name}'. Catégories par défaut utilisées.")),
                     );
@@ -190,19 +190,20 @@ GoRouter createRouter(AuthRepository authRepository) {
               }
               // Utiliser les catégories récupérées de Supabase (avec les vrais UUIDs)
               final categories = snapshot.data!;
-              print("Catégories récupérées de Supabase: ${categories.map((c) => '${c.name} (${c.id})').toList()}");
+              // print("Catégories récupérées de Supabase: ${categories.map((c) => '${c.name} (${c.id})').toList()}");
               return ExerciseCategoriesScreen(
                 categories: categories,
                 onCategorySelected: (category) async {
-                  print("[Router Nav] Catégorie sélectionnée (Supabase): ${category.name} (${category.id})");
+                  // print("[Router Nav] Catégorie sélectionnée (Supabase): ${category.name} (${category.id})");
                   final exerciseRepository = serviceLocator<ExerciseRepository>();
                   List<Exercise> exercises;
                   try {
                     exercises = await exerciseRepository.getExercisesByCategory(category.id);
-                    print("[Router Nav] Exercices récupérés pour ${category.name}: ${exercises.length}");
+                    // print("[Router Nav] Exercices récupérés pour ${category.name}: ${exercises.length}");
+                    if (!context.mounted) return; // Check context after async gap
 
                     if (exercises.isEmpty) {
-                      print("[Router Nav] Aucun exercice trouvé pour la catégorie ${category.name} (${category.id}).");
+                      // print("[Router Nav] Aucun exercice trouvé pour la catégorie ${category.name} (${category.id}).");
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text("Aucun exercice disponible pour la catégorie '${category.name}'.")),
                       );
@@ -214,22 +215,23 @@ GoRouter createRouter(AuthRepository authRepository) {
                       context: context,
                       exercises: exercises,
                     );
+                    if (!context.mounted) return; // Check context after async gap
 
                     if (selectedExercise != null) {
                       final exerciseId = selectedExercise.id;
-                      print("[Router Nav] Exercice sélectionné: ${selectedExercise.title} ($exerciseId)");
+                      // print("[Router Nav] Exercice sélectionné: ${selectedExercise.title} ($exerciseId)");
                       // Utiliser le type de catégorie RÉCUPÉRÉ de Supabase pour décider de la route
                       if (category.type == ExerciseCategoryType.applicationProfessionnelle) {
-                        print("[Router Nav] Navigation vers l'exercice interactif...");
+                        // print("[Router Nav] Navigation vers l'exercice interactif...");
                         // IMPORTANT: S'assurer que l'ID passé est bien l'UUID de l'exercice interactif
                         final targetRoute = AppRoutes.interactiveExercise.replaceFirst(':exerciseId', exerciseId);
                         context.push(targetRoute);
                       } else {
-                        print("[Router Nav] Navigation vers l'exercice standard...");
+                        // print("[Router Nav] Navigation vers l'exercice standard...");
                         final targetRoute = _getExerciseRoutePath(exerciseId);
                         // Vérifier si la route est valide avant de naviguer
                         if (targetRoute == AppRoutes.exerciseCategories) {
-                           print("[Router Nav] ERREUR: Route invalide générée pour l'exercice $exerciseId. Retour aux catégories.");
+                           // print("[Router Nav] ERREUR: Route invalide générée pour l'exercice $exerciseId. Retour aux catégories.");
                            ScaffoldMessenger.of(context).showSnackBar(
                              SnackBar(content: Text("Erreur de navigation pour l'exercice '${selectedExercise.title}'.")),
                            );
@@ -239,10 +241,11 @@ GoRouter createRouter(AuthRepository authRepository) {
                         }
                       }
                     } else {
-                      print("[Router Nav] Aucun exercice sélectionné dans la modale.");
+                      // print("[Router Nav] Aucun exercice sélectionné dans la modale.");
                     }
                   } catch (e) {
-                    print("[Router Nav] Erreur lors de la récupération ou navigation des exercices: $e");
+                    // print("[Router Nav] Erreur lors de la récupération ou navigation des exercices: $e");
+                    if (!context.mounted) return; // Check context after async gap
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text("Erreur lors du chargement des exercices pour '${category.name}'.")),
                     );
@@ -261,16 +264,16 @@ GoRouter createRouter(AuthRepository authRepository) {
         builder: (context, state) {
           // CORRECTION: Gérer le cas où extra n'est pas un Exercise
           if (state.extra is! Exercise) {
-            print("ERREUR: Données invalides passées à la route générique /exercise.");
+            // print("ERREUR: Données invalides passées à la route générique /exercise.");
             return Scaffold(body: Center(child: Text("Erreur: Données d'exercice invalides.")));
           }
           final exercise = state.extra as Exercise;
-          print("ATTENTION: Navigation vers l'écran générique pour ${exercise.id}. Vérifier la logique de routage.");
+          // print("ATTENTION: Navigation vers l'écran générique pour ${exercise.id}. Vérifier la logique de routage.");
           return ExerciseScreen(
             exercise: exercise,
             onBackPressed: () => context.pop(),
             onExerciseCompleted: () {
-              print("ERREUR: onExerciseCompleted de la route générique /exercise a été appelé !");
+              // print("ERREUR: onExerciseCompleted de la route générique /exercise a été appelé !");
               context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': {}});
             },
           );
@@ -328,7 +331,7 @@ GoRouter createRouter(AuthRepository authRepository) {
           // StatisticsScreen doit récupérer l'ID utilisateur actuel.
           final userId = Supabase.instance.client.auth.currentUser?.id;
           if (userId == null) {
-             print("ERREUR: Arrivé sur StatisticsScreen sans ID utilisateur valide !");
+             // print("ERREUR: Arrivé sur StatisticsScreen sans ID utilisateur valide !");
              return const Scaffold(body: Center(child: Text("Erreur: Utilisateur non connecté.")));
           }
           // Créer un User placeholder juste avec l'ID.
@@ -347,7 +350,7 @@ GoRouter createRouter(AuthRepository authRepository) {
            // ProfileScreen doit récupérer l'utilisateur actuel.
            final currentUser = Supabase.instance.client.auth.currentUser;
            if (currentUser == null) {
-              print("ERREUR: Arrivé sur ProfileScreen sans utilisateur connecté !");
+              // print("ERREUR: Arrivé sur ProfileScreen sans utilisateur connecté !");
               return const Scaffold(body: Center(child: Text("Erreur: Utilisateur non connecté.")));
            }
            // Créer l'objet User à partir des données Supabase
@@ -363,12 +366,13 @@ GoRouter createRouter(AuthRepository authRepository) {
             onSignOut: () => context.go(AppRoutes.auth),
             onProfileUpdate: (name, avatarUrl) {
               // Créer un nouvel utilisateur avec les informations mises à jour
-              final updatedUser = domain_user.User( 
-                id: appUser.id, // Utiliser l'ID de l'utilisateur actuel
-                email: appUser.email, // Utiliser l'email actuel
-                name: name,
-                avatarUrl: avatarUrl ?? appUser.avatarUrl,
-              );
+              // final updatedUser = domain_user.User( // Variable inutilisée
+              //   id: appUser.id, // Utiliser l'ID de l'utilisateur actuel
+              //   email: appUser.email, // Utiliser l'email actuel
+              //   name: name,
+              //   avatarUrl: avatarUrl ?? appUser.avatarUrl,
+              // );
+              if (!context.mounted) return; // Check context after async gap (bien que pas d'await ici, bonne pratique)
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Profil mis à jour avec succès'), backgroundColor: Colors.green),
               );
@@ -386,7 +390,7 @@ GoRouter createRouter(AuthRepository authRepository) {
            // HistoryScreen doit récupérer l'ID utilisateur actuel.
            final userId = Supabase.instance.client.auth.currentUser?.id;
            if (userId == null) {
-              print("ERREUR: Arrivé sur HistoryScreen sans ID utilisateur valide !");
+              // print("ERREUR: Arrivé sur HistoryScreen sans ID utilisateur valide !");
               return const Scaffold(body: Center(child: Text("Erreur: Utilisateur non connecté.")));
            }
            final userPlaceholder = domain_user.User(id: userId, name: '', email: '');
@@ -414,7 +418,7 @@ GoRouter createRouter(AuthRepository authRepository) {
           return LungCapacityExerciseScreen(
             exercise: exercise,
             onExerciseCompleted: (results) {
-              print("Résultats Capacité Pulmonaire: $results");
+              // print("Résultats Capacité Pulmonaire: $results");
               context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
             },
             onExitPressed: () => context.pop(),
@@ -442,7 +446,7 @@ GoRouter createRouter(AuthRepository authRepository) {
           return BreathingExerciseScreen(
             exercise: exercise,
             onExerciseCompleted: (results) {
-              print("Résultats Respiration Diaphragmatique: $results");
+              // print("Résultats Respiration Diaphragmatique: $results");
                context.pop(); 
             },
             onExitPressed: () => context.pop(),
@@ -458,7 +462,7 @@ GoRouter createRouter(AuthRepository authRepository) {
           return VolumeControlExerciseScreen(
             exercise: exercise,
             onExerciseCompleted: (results) {
-              print("Résultats Contrôle Volume: $results");
+              // print("Résultats Contrôle Volume: $results");
               context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
             },
             onExitPressed: () => context.pop(),
@@ -474,7 +478,7 @@ GoRouter createRouter(AuthRepository authRepository) {
           return ResonancePlacementExerciseScreen(
             exercise: exercise,
             onExerciseCompleted: (results) {
-              print("Résultats Résonance & Placement: $results");
+              // print("Résultats Résonance & Placement: $results");
               context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
             },
             onExitPressed: () => context.pop(),
@@ -490,7 +494,7 @@ GoRouter createRouter(AuthRepository authRepository) {
           return EffortlessProjectionExerciseScreen(
             exercise: exercise,
             onExerciseCompleted: (results) {
-              print("Résultats Projection Sans Forçage: $results");
+              // print("Résultats Projection Sans Forçage: $results");
               context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
             },
             onExitPressed: () => context.pop(),
@@ -505,7 +509,7 @@ GoRouter createRouter(AuthRepository authRepository) {
            return RhythmAndPausesExerciseScreen(
              exercise: exercise,
              onExerciseCompleted: (results) {
-               print("[Router] Résultats Rythme/Pauses reçus: $results");
+               // print("[Router] Résultats Rythme/Pauses reçus: $results");
                context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
              },
             onExitPressed: () => context.pop(),
@@ -549,7 +553,7 @@ GoRouter createRouter(AuthRepository authRepository) {
              exercise: exercise,
              onBackPressed: () => context.pop(),
              onExerciseCompleted: (results) {
-                print("[Router] ExpressiveIntonationExerciseScreen completed. Navigating to results with data: $results");
+                // print("[Router] ExpressiveIntonationExerciseScreen completed. Navigating to results with data: $results");
                 context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
              },
           );
@@ -592,7 +596,7 @@ GoRouter createRouter(AuthRepository authRepository) {
               serviceLocator<ConversationalAgentService>(),
               serviceLocator<RealTimeAudioPipeline>(),
               serviceLocator<FeedbackAnalysisService>(),
-              serviceLocator<AzureSpeechService>(), // Ajouter ce paramètre
+              // AzureSpeechService n'est plus injecté directement
             ),
             // Le child est l'écran lui-même, qui peut maintenant accéder au Manager
             child: InteractiveExerciseScreen(exerciseId: exerciseId),

@@ -1,29 +1,27 @@
 import 'dart:async';
-import 'dart:convert'; // Ajout pour parser le JSON
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+// Added import for WidgetsBinding
 
+import '../../core/utils/console_logger.dart';
 import '../../domain/entities/interactive_exercise/conversation_turn.dart';
-// Importer tous les types de feedback spécifiques
 import '../../domain/entities/interactive_exercise/scenario_context.dart';
-// AJOUT
 import '../../services/interactive_exercise/conversational_agent_service.dart';
 import '../../services/interactive_exercise/feedback_analysis_service.dart';
 import '../../services/interactive_exercise/realtime_audio_pipeline.dart';
 import '../../services/interactive_exercise/scenario_generator_service.dart';
-// AJOUT: Importer AzureSpeechService pour écouter son stream
-import '../../services/azure/azure_speech_service.dart';
-// AJOUT: Importer pour le calcul simple du rythme
+import '../../domain/repositories/azure_speech_repository.dart'; // Importer AzureSpeechEvent
+// Importer depuis le repository où les événements sont maintenant définis
+import '../../infrastructure/repositories/whisper_speech_repository_impl.dart'; // Importer l'implémentation Whisper
 
-// AJOUT: Nouvel état pour le briefing
 enum InteractionState { idle, initializing, generatingScenario, briefing, ready, listening, thinking, speaking, analyzing, finished, error }
 
-// AJOUT: Classe pour stocker les métriques vocales d'une intervention
 class UserVocalMetrics {
-  final double? pace; // Mots par minute
+  final double? pace;
   final int fillerWordCount;
-  final double? accuracyScore; // 0-100
-  final double? fluencyScore; // 0-100
-  final double? prosodyScore; // 0-100
+  final double? accuracyScore;
+  final double? fluencyScore;
+  final double? prosodyScore;
 
   UserVocalMetrics({
     this.pace,
@@ -51,228 +49,273 @@ class InteractionManager extends ChangeNotifier {
   ScenarioContext? _currentScenario;
   final List<ConversationTurn> _conversationHistory = [];
   String? _errorMessage;
-  Object? _feedbackResult; // MODIFICATION: Utiliser Object? pour FeedbackBase ou Error
-  bool _audioPipelineDisposed = false; // NOUVEAU: Suivre l'état de disposition de _audioPipeline
+  Object? _feedbackResult;
+  bool _audioPipelineDisposed = false;
+  bool _isStartingListening = false; // Flag to prevent concurrent startListening calls
+  AzureSpeechEvent? _pendingAzureFinalEvent; // Pour stocker un événement final reçu pendant thinking/speaking
 
   // Getters for UI
   InteractionState get currentState => _currentState;
   ScenarioContext? get currentScenario => _currentScenario;
   List<ConversationTurn> get conversationHistory => List.unmodifiable(_conversationHistory);
   String? get errorMessage => _errorMessage;
-  Object? get feedbackResult => _feedbackResult; // MODIFICATION: Retourner Object?
-  
-  // Getters pour l'état du pipeline audio
-  // Utiliser des getters sécurisés qui vérifient si le pipeline est disposé
+  Object? get feedbackResult => _feedbackResult;
+
   ValueListenable<bool> get isListening {
     if (_audioPipelineDisposed) {
-      // Retourner un ValueNotifier constant si le pipeline est disposé
       return ValueNotifier<bool>(false);
     }
     return _audioPipeline.isListening;
   }
-  
+
   ValueListenable<bool> get isSpeaking {
     if (_audioPipelineDisposed) {
-      // Retourner un ValueNotifier constant si le pipeline est disposé
       return ValueNotifier<bool>(false);
     }
     return _audioPipeline.isSpeaking;
   }
 
-  StreamSubscription? _azureEventSubscription; // REMPLACE: _transcriptSubscription
-  StreamSubscription? _pipelineErrorSubscription; // RENOMMÉ: _errorSubscription
+  // --- State & Event Subscriptions ---
+  StreamSubscription? _speechEventSubscription; // Renommé depuis _azureEventSubscription
+  StreamSubscription? _pipelineErrorSubscription;
+  StreamSubscription? _ttsCompletionSubscription; // Pour écouter la fin du TTS
 
-  // SUPPRESSION: Listeners pour la fin de parole ne sont plus nécessaires car speakText attend la fin.
-  // VoidCallback? _initialPromptListenerCallback;
-  // VoidCallback? _aiResponseListenerCallback;
-
-  // AJOUT: Stockage temporaire des métriques de la dernière intervention utilisateur
   UserVocalMetrics? _lastUserMetrics;
 
-  // AJOUT: Notifier pour la transcription partielle
   final ValueNotifier<String> _partialTranscriptNotifier = ValueNotifier<String>('');
   ValueListenable<String> get partialTranscript => _partialTranscriptNotifier;
-
-  // AJOUT: Stocker la dernière transcription finale reçue pendant l'écoute
-  String? _lastReceivedFinalTranscript;
-  Map<String, dynamic>? _lastReceivedPronunciationResult; // Pour stocker aussi les métriques associées
 
   InteractionManager(
     this._scenarioService,
     this._agentService,
     this._audioPipeline,
     this._feedbackService,
-    // AJOUT: Injecter AzureSpeechService pour écouter son stream
-    AzureSpeechService azureSpeechService,
   ) {
-    // Listen to Azure Speech Service events directly for richer data
-    _azureEventSubscription = azureSpeechService.recognitionStream.listen(
-      _handleAzureSpeechEvent, // Nouveau handler
-      onError: _handlePipelineError, // Peut aussi venir d'ici
+    // Subscribe to Speech events via the pipeline's raw stream
+    // pour pouvoir caster en AzureSpeechEvent (ou autre type si repo local)
+    _speechEventSubscription = _audioPipeline.rawRecognitionEventsStream.listen(
+       _handleSpeechEvent, // Utiliser le handler générique
+       onError: _handlePipelineError,
     );
-    
-    // Listen to pipeline specific errors (e.g., TTS errors)
+    // Écouter les partiels (qui sont juste des String)
+    _audioPipeline.userPartialTranscriptStream.listen((partial) {
+       _partialTranscriptNotifier.value = partial;
+    });
+
+    // Subscribe to general pipeline errors
     try {
-      _pipelineErrorSubscription = _audioPipeline.errorStream.listen(_handlePipelineError);
+      _pipelineErrorSubscription = _audioPipeline.errorStream.listen(_handlePipelineError, onError: (e) {
+        ConsoleLogger.error("InteractionManager: Error in pipeline error stream subscription: $e");
+      });
     } catch (e) {
-      print("InteractionManager: Error subscribing to pipeline error stream: $e");
-      // Ne pas échouer l'initialisation complète si cette écoute échoue
+      ConsoleLogger.error("InteractionManager: Failed to subscribe to pipeline error stream: $e");
     }
+
+    // Subscribe to TTS completion events
+    _ttsCompletionSubscription = _audioPipeline.ttsCompletionStream.listen(_handleTtsCompletion);
   }
 
-  // --- Méthodes de gestion du cycle de vie de l'exercice ---
+  /// Handles the completion of TTS playback.
+  Future<void> _handleTtsCompletion(bool success) async {
+    if (_audioPipelineDisposed) return;
+    ConsoleLogger.info("InteractionManager: TTS completion received (success: $success). Current state: $_currentState");
+
+    if (!success && _pendingAzureFinalEvent == null) {
+      ConsoleLogger.info("InteractionManager: TTS stopped or failed (success: false) without a pending final transcript.");
+    }
+
+    if (_currentState == InteractionState.speaking) {
+      if (_pendingAzureFinalEvent != null) {
+        ConsoleLogger.info("InteractionManager: Processing pending final transcript after TTS completion/stop.");
+        final eventToProcess = _pendingAzureFinalEvent;
+        _pendingAzureFinalEvent = null;
+        _processFinalTranscript(eventToProcess!);
+      } else {
+        ConsoleLogger.info("InteractionManager: TTS finished or stopped. Transitioning to ready and starting listening.");
+        setState(InteractionState.ready);
+        if (!_audioPipelineDisposed && _currentScenario != null) {
+           startListening(_currentScenario!.language);
+        }
+      }
+    } else {
+       ConsoleLogger.warning("InteractionManager: TTS completion received in unexpected state: $_currentState. Ignoring.");
+    }
+  }
 
   /// Prepares the scenario for the exercise.
   Future<void> prepareScenario(String exerciseId) async {
     if (_currentState != InteractionState.idle && _currentState != InteractionState.finished && _currentState != InteractionState.error) {
-      print("InteractionManager: Cannot prepare scenario, exercise already in progress or not reset.");
+      ConsoleLogger.info("InteractionManager: Cannot prepare scenario, exercise already in progress or not reset.");
       return;
     }
-    
-    // SUPPRESSION: Pas besoin de réinitialiser le pipeline audio car une nouvelle instance est créée à chaque fois
-    // grâce à registerFactory dans service_locator.dart
 
     resetState();
     setState(InteractionState.generatingScenario);
 
     try {
       _currentScenario = await _scenarioService.generateScenario(exerciseId);
-      // Ne pas ajouter le tour initial ici, seulement préparer le scénario
-       setState(InteractionState.briefing); // Passer à l'état de briefing
-       print("InteractionManager: Scenario prepared, state set to briefing.");
-     } catch (e) {
-       handleError("Failed to generate scenario: $e");
-     }
+      setState(InteractionState.briefing);
+      ConsoleLogger.info("InteractionManager: Scenario prepared, state set to briefing.");
+    } catch (e) {
+      handleError("Failed to generate scenario: $e");
+    }
   }
 
   /// Starts the actual interaction after the user has reviewed the briefing.
   Future<void> startInteraction() async {
     if (_currentState != InteractionState.briefing || _currentScenario == null) {
-      print("InteractionManager: Cannot start interaction. State is not 'briefing' or scenario is null.");
+      ConsoleLogger.info("InteractionManager: Cannot start interaction. State is not 'briefing' or scenario is null.");
       handleError("Impossible de démarrer l'interaction. Scénario non prêt.");
       return;
     }
 
-    print("InteractionManager: Starting interaction...");
-    // Ajouter le premier tour (prompt de l'IA) à l'historique
+    ConsoleLogger.info("InteractionManager: Starting interaction...");
     addTurn(Speaker.ai, _currentScenario!.startingPrompt);
-    setState(InteractionState.speaking); // L'IA commence par parler
-    // HapticFeedback.lightImpact(); // COMMENTÉ POUR TESTS UNITAIRES
+    setState(InteractionState.speaking);
 
     try {
-       if (_audioPipelineDisposed) {
-         print("InteractionManager: _audioPipeline has been disposed, cannot speak text.");
-         return;
-       }
-       
-       // Vérifier si le pipeline audio est dans un état valide
-       bool pipelineReady = true;
-       try {
-         // Tenter d'accéder aux valeurs. Si le notifier est disposé, cela lancera une exception.
-         final _ = _audioPipeline.isListening.value;
-         final __ = _audioPipeline.isSpeaking.value;
-       } catch (e) {
-         print("InteractionManager: Error accessing audio pipeline ValueNotifiers (likely disposed): $e");
-         pipelineReady = false;
-       }
-       
-       // Si le pipeline n'est pas prêt, afficher un message d'erreur et arrêter l'interaction
-       if (!pipelineReady) {
-         print("InteractionManager: Audio pipeline is not ready, cannot continue.");
-         handleError("Erreur interne du pipeline audio. Impossible de continuer."); // handleError gère l'état
-         return;
-       }
-
-       await _audioPipeline.speakText(_currentScenario!.startingPrompt);
-
-      // Speech finished, transition to ready IF NOT DISPOSED
-      if (_audioPipelineDisposed) return; // Vérification ajoutée
-      print("InteractionManager: Initial AI speech finished.");
-      setState(InteractionState.ready); // Set state to ready *after* speech completes
-
-      final language = _currentScenario!.language;
-      print("InteractionManager: Starting listening process immediately after initial AI speech.");
-      // Démarrer l'écoute immédiatement après la fin de la parole initiale de l'IA.
-      // SUPPRESSION du Future.delayed
-      if (!_audioPipelineDisposed && _currentState == InteractionState.ready) {
-         startListening(language);
-      } else if (!_audioPipelineDisposed) {
-         print("InteractionManager: State was not 'ready' ($_currentState) after initial prompt. Not starting listening.");
+      if (_audioPipelineDisposed) {
+        ConsoleLogger.info("InteractionManager: _audioPipeline has been disposed, cannot speak text.");
+        return;
       }
 
-     } catch (e) {
-       handleError("Failed to start interaction audio: $e");
-     }
+      bool pipelineReady = true;
+      try {
+        final _ = _audioPipeline.isListening.value;
+      } catch (e) {
+        ConsoleLogger.error("InteractionManager: Error accessing audio pipeline ValueNotifiers (likely disposed): $e");
+        pipelineReady = false;
+      }
+
+      if (!pipelineReady) {
+        ConsoleLogger.error("InteractionManager: Audio pipeline is not ready, cannot continue.");
+        handleError("Erreur interne du pipeline audio. Impossible de continuer.");
+        return;
+      }
+
+      await _audioPipeline.speakText(_currentScenario!.startingPrompt);
+
+      if (_audioPipelineDisposed) return;
+      ConsoleLogger.info("InteractionManager: Initial AI speech finished.");
+      setState(InteractionState.ready);
+
+      final language = _currentScenario!.language;
+      ConsoleLogger.info("InteractionManager: Starting listening process immediately after initial AI speech.");
+      if (!_audioPipelineDisposed && _currentState == InteractionState.ready) {
+        startListening(language);
+      } else if (!_audioPipelineDisposed) {
+        ConsoleLogger.info("InteractionManager: State was not 'ready' ($_currentState) after initial prompt. Not starting listening.");
+      }
+    } catch (e) {
+      handleError("Failed to start interaction audio: $e");
+    }
   }
 
-  /// Starts listening for user input via the audio pipeline. Handles barge-in (interrupting AI speech).
+  /// Starts listening for user input via the audio pipeline.
   Future<void> startListening(String language) async {
-    // Autoriser le démarrage de l'écoute depuis 'ready' ou 'speaking' (pour barge-in)
-    if (_currentState != InteractionState.ready && _currentState != InteractionState.speaking) {
-       print("InteractionManager: Cannot start listening in state $_currentState");
-       return;
-    }
-
     if (_audioPipelineDisposed) {
-      print("InteractionManager: _audioPipeline has been disposed, cannot start listening.");
+      ConsoleLogger.info("InteractionManager: Attempted startListening but pipeline is disposed.");
+      return;
+    }
+    if (_isStartingListening) {
+      ConsoleLogger.info("InteractionManager: Attempted startListening while already starting.");
+      return;
+    }
+    if (_currentState != InteractionState.ready) {
+      ConsoleLogger.info("InteractionManager: Cannot start listening in state $_currentState. Expected 'ready'.");
       return;
     }
 
-    // Gérer l'interruption (Barge-in): Si l'IA parle, l'arrêter d'abord.
-    if (_currentState == InteractionState.speaking && _audioPipeline.isSpeaking.value) {
-      print("InteractionManager: Barge-in detected. Stopping AI speech...");
-      await _audioPipeline.stop(); // Arrêter la parole de l'IA
-      // Attendre un court instant pour que l'arrêt soit effectif avant de démarrer l'écoute
-      await Future.delayed(const Duration(milliseconds: 100));
-      // S'assurer que l'état est prêt après l'arrêt forcé du TTS
-      if (_currentState != InteractionState.ready) {
-         setState(InteractionState.ready);
+    bool isCurrentlyListening = false;
+    try {
+      isCurrentlyListening = _audioPipeline.isListening.value;
+    } catch (e) {
+      ConsoleLogger.error("InteractionManager: Error checking isListening state (likely disposed): $e");
+      return;
+    }
+
+    if (isCurrentlyListening) {
+      ConsoleLogger.warning("InteractionManager: startListening called in 'ready' state, but pipeline reports already listening! Attempting to stop and restart.");
+      try {
+        await _audioPipeline.stop();
+        await Future.delayed(const Duration(milliseconds: 100));
+      } catch (e) {
+        ConsoleLogger.error("InteractionManager: Error stopping lingering listening session: $e");
       }
     }
 
-    // Mettre à jour l'état et démarrer l'écoute (seulement si on est prêt ou si le barge-in a réussi)
-    if (_currentState == InteractionState.ready) {
-       setState(InteractionState.listening);
-       // HapticFeedback.lightImpact(); // COMMENTÉ POUR TESTS UNITAIRES
-       print("InteractionManager: Starting audio pipeline listening for language $language");
-       await _audioPipeline.start(language);
-    } else {
-       print("InteractionManager: Could not start listening, state is $_currentState after barge-in attempt.");
+    _isStartingListening = true;
+
+    try {
+      isCurrentlyListening = _audioPipeline.isListening.value;
+      if (isCurrentlyListening) {
+         ConsoleLogger.info("InteractionManager: Re-checked pipeline state, already listening. Aborting startListening.");
+         if (_currentState != InteractionState.listening) {
+            setState(InteractionState.listening);
+         }
+         _isStartingListening = false;
+         return;
+      }
+
+      setState(InteractionState.listening);
+      ConsoleLogger.info("InteractionManager: Starting audio pipeline listening for language $language");
+      await _audioPipeline.start(language);
+
+      if (_currentState != InteractionState.listening && !_audioPipelineDisposed) {
+        ConsoleLogger.warning("InteractionManager: State changed during startListening await. Current: $_currentState. Attempting to stop potentially orphaned listening session.");
+        await _audioPipeline.stop();
+      } else {
+         ConsoleLogger.info("InteractionManager: Listening started successfully.");
+      }
+    } catch (e) {
+      handleError("Failed to start listening: $e");
+    } finally {
+      _isStartingListening = false;
     }
   }
 
   /// Stops listening for user input.
   Future<void> stopListening() async {
-     if (_currentState != InteractionState.listening) {
-        print("InteractionManager: Cannot stop listening, not in listening state.");
-        return;
-     }
-    print("InteractionManager: Stopping listening...");
-    await _audioPipeline.stop();
-     // Après l'arrêt de l'écoute, on passe généralement à 'thinking' si une transcription est reçue,
-     // La transition d'état après la fin de la parole utilisateur est gérée
-     // dans _handleAzureSpeechEvent.
-     // Si stopListening est appelé manuellement pendant l'écoute,
-     // on arrête le pipeline et on revient à l'état 'ready'.
-     if (_currentState == InteractionState.listening) {
-        setState(InteractionState.ready);
-        _partialTranscriptNotifier.value = ''; // Clear partial transcript on manual stop
-        _lastUserMetrics = null; // Reset metrics as well
-     }
-     // HapticFeedback.lightImpact(); // COMMENTÉ POUR TESTS UNITAIRES
-     print("InteractionManager: Stop listening requested. Current state: $_currentState");
+    if (_audioPipelineDisposed) {
+      ConsoleLogger.info("InteractionManager: _audioPipeline has been disposed, cannot stop listening.");
+      return;
+    }
+    if (_currentState != InteractionState.listening) {
+      ConsoleLogger.info("InteractionManager: stopListening called but not in listening state ($_currentState). Stopping pipeline anyway if possible.");
+      try {
+        await _audioPipeline.stop();
+      } catch (e) {
+         ConsoleLogger.error("InteractionManager: Error stopping pipeline from non-listening state: $e");
+      }
+      return;
+    }
+
+    ConsoleLogger.info("InteractionManager: Stopping listening...");
+    try {
+      await _audioPipeline.stop();
+    } catch (e) {
+       ConsoleLogger.error("InteractionManager: Error stopping audio pipeline: $e");
+    }
+
+    if (_currentState == InteractionState.listening) {
+      setState(InteractionState.ready);
+      _partialTranscriptNotifier.value = '';
+      _lastUserMetrics = null;
+      ConsoleLogger.info("InteractionManager: Listening stopped. State set to ready.");
+    } else {
+      ConsoleLogger.info("InteractionManager: State changed during stopListening await. Current: $_currentState. Not setting to ready.");
+    }
   }
 
   /// Ends the exercise and triggers feedback analysis.
   Future<void> finishExercise() async {
     if (_currentState == InteractionState.finished || _currentState == InteractionState.analyzing) return;
 
-    await _audioPipeline.stop(); // Assurer l'arrêt du pipeline
+    await _audioPipeline.stop();
     setState(InteractionState.analyzing);
 
     if (_currentScenario == null || _conversationHistory.isEmpty) {
       handleError("Cannot analyze feedback without scenario or history.");
-      // handleError mettra l'état à 'error' si nécessaire
       return;
     }
 
@@ -281,223 +324,261 @@ class InteractionManager extends ChangeNotifier {
         context: _currentScenario!,
         conversationHistory: _conversationHistory,
       );
-       setState(InteractionState.finished); // Set state on success
-     } catch (e) {
-       final errorMsg = "Failed to analyze feedback: $e";
-       handleError(errorMsg);
-       // L'état sera 'error' si handleError l'a défini.
-     }
+      setState(InteractionState.finished);
+    } catch (e) {
+      final errorMsg = "Failed to analyze feedback: $e";
+      handleError(errorMsg);
+    }
   }
 
-  // --- Méthodes de gestion des événements internes ---
 
-  // SUPPRESSION: Les méthodes onInitialPromptSpoken et onAiResponseSpoken ne sont plus nécessaires.
+  /// Handler pour les événements de reconnaissance (type dynamic)
+  void _handleSpeechEvent(dynamic event) { // Renommé et accepte dynamic
+    if (_audioPipelineDisposed) return;
 
-  // NOUVEAU: Handler pour les événements AzureSpeechEvent
-  void _handleAzureSpeechEvent(AzureSpeechEvent event) {
-    // Vérifier si le manager est disposé avant de traiter l'événement
-    if (_audioPipelineDisposed) {
-      print("InteractionManager: Ignoring Azure event because manager is disposed.");
-      return;
-    }
+    // Tenter de traiter comme AzureSpeechEvent (pour la compatibilité actuelle)
+    if (event is AzureSpeechEvent) {
+      ConsoleLogger.info("InteractionManager received Azure event: ${event.type}. Current state: $_currentState");
 
-    // Utiliser l'état ACTUEL (_currentState) pour décider du traitement,
-    // car l'état peut avoir changé depuis que l'événement a été émis.
-    print("InteractionManager received Azure event: ${event.type}. Current state: $_currentState");
-
-    switch (event.type) {
-      case AzureSpeechEventType.partial:
-        // Traiter la transcription partielle uniquement si l'état actuel est 'listening'.
-        if (_currentState == InteractionState.listening) {
-          _partialTranscriptNotifier.value = event.text ?? '';
-          // print("Partial: ${event.text}");
-        } else {
-          // Ignorer si on n'est pas en train d'écouter.
-          // Assurer que le notifier est vide si on reçoit tardivement.
-          if (_partialTranscriptNotifier.value.isNotEmpty) {
-             _partialTranscriptNotifier.value = '';
-          }
-          print("InteractionManager: Ignoring partial transcript received in state $_currentState");
-        }
-        break;
-      case AzureSpeechEventType.finalResult:
-        // Traiter le résultat final SEULEMENT si l'état actuel est 'listening'.
-        if (_currentState == InteractionState.listening) {
-          final String? transcript = event.text;
-          final Map<String, dynamic>? pronResult = event.pronunciationResult;
-          print("InteractionManager: Processing final transcript received while listening: '${transcript ?? ''}'");
-
-          // Effacer la transcription partielle
-          _partialTranscriptNotifier.value = '';
-
-          if (transcript != null && transcript.isNotEmpty) {
-            // --- Calcul des métriques ---
-            double? accuracyScore;
-            double? fluencyScore;
-            double? prosodyScore;
-            double? durationInSeconds; // Initialisé à null
-
-            if (pronResult != null &&
-                pronResult['NBest'] is List &&
-                (pronResult['NBest'] as List).isNotEmpty &&
-                pronResult['NBest'][0] is Map &&
-                pronResult['NBest'][0]['PronunciationAssessment'] is Map) {
-              final assessment = pronResult['NBest'][0]['PronunciationAssessment'];
-              accuracyScore = (assessment['AccuracyScore'] as num?)?.toDouble();
-              fluencyScore = (assessment['FluencyScore'] as num?)?.toDouble();
-              prosodyScore = (assessment['ProsodyScore'] as num?)?.toDouble();
-              // Extraire la durée (en unités de 100ns) et convertir en secondes
-              final durationTicks = assessment['Duration'];
-              if (durationTicks is num && durationTicks > 0) {
-                durationInSeconds = durationTicks / 10000000.0;
-                print("Extracted Duration: $durationInSeconds seconds");
-              } else {
-                 print("Warning: Duration not found or invalid in PronunciationAssessment.");
-              }
-              print("Extracted Scores: Accuracy=$accuracyScore, Fluency=$fluencyScore, Prosody=$prosodyScore");
-            } else {
-               print("Warning: PronunciationAssessment data not found or invalid.");
-            }
-
-            // Calculer le rythme (si durée disponible)
-            double? pace;
-            if (durationInSeconds != null && durationInSeconds > 0 && transcript.isNotEmpty) {
-              final wordCount = transcript.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).length;
-              if (wordCount > 0) {
-                pace = (wordCount / durationInSeconds) * 60; // Mots par minute
-                print("Calculated Pace: $pace WPM");
-              }
-            } else {
-              print("Warning: Utterance duration not available, cannot calculate pace.");
-            }
-
-            // Calculer les mots de remplissage (exemple simple)
-            final fillerWords = ['euh', 'hum', 'ben', 'alors', 'voilà', 'en fait', 'du coup']; // Liste à affiner
-            final words = transcript.toLowerCase().split(RegExp(r'\s+')).where((s) => s.isNotEmpty);
-            final fillerWordCount = words.where((word) => fillerWords.contains(word.replaceAll(RegExp(r'[^\w]'), ''))).length;
-            print("Calculated Fillers: $fillerWordCount");
-
-            // Stocker les métriques
-            _lastUserMetrics = UserVocalMetrics(
-              pace: pace,
-              fillerWordCount: fillerWordCount,
-              accuracyScore: accuracyScore,
-              fluencyScore: fluencyScore,
-              prosodyScore: prosodyScore,
-            );
-            // --- Fin Calcul des métriques ---
-
-            // Ajouter le tour de l'utilisateur
-            addTurn(Speaker.user, transcript, audioDuration: durationInSeconds != null ? Duration(milliseconds: (durationInSeconds * 1000).round()) : null);
-
-            // Passer à l'état 'thinking' et déclencher la réponse de l'IA
-            setState(InteractionState.thinking);
-            triggerAIResponse(); // triggerAIResponse va consommer _lastUserMetrics
-
+      switch (event.type) {
+        case AzureSpeechEventType.partial:
+          if (_currentState == InteractionState.listening) {
+            // Ne pas mettre à jour _partialTranscriptNotifier ici, géré par le stream dédié
+          } else if (_currentState == InteractionState.speaking) {
+            ConsoleLogger.info("InteractionManager: Barge-in detected via partial transcript while speaking. Stopping TTS.");
+            _stopTtsForBargeIn();
           } else {
-            // Transcription vide reçue, revenir à l'état 'ready' sans déclencher l'IA
-            print("InteractionManager: Empty final transcript received. Returning to ready state.");
-            setState(InteractionState.ready);
-            _lastUserMetrics = null; // Réinitialiser les métriques
+            ConsoleLogger.info("InteractionManager: Ignoring partial transcript received in state $_currentState");
           }
-        } else {
-           // Ignorer le résultat final si l'état actuel n'est pas 'listening'.
-           print("InteractionManager: Ignoring final transcript because current state is $_currentState (not listening).");
-           // S'assurer que la transcription partielle est effacée si on reçoit tardivement.
-           if (_partialTranscriptNotifier.value.isNotEmpty) {
-              _partialTranscriptNotifier.value = '';
-           }
-        }
-        break;
-      case AzureSpeechEventType.error:
-        _partialTranscriptNotifier.value = ''; // Effacer en cas d'erreur
-        // Gérer l'erreur quel que soit l'état actuel
-        print("InteractionManager: Handling Azure STT Error received in state $_currentState: ${event.errorCode} - ${event.errorMessage}");
-        handleError("Azure STT Error: ${event.errorCode} - ${event.errorMessage}");
-        _lastUserMetrics = null; // Réinitialiser les métriques
-        break;
-      case AzureSpeechEventType.status:
-        print("InteractionManager: Azure Status: ${event.statusMessage}");
-        // Gérer les changements d'état si nécessaire (ex: session stopped)
-        // Si la session s'arrête alors que l'état actuel est 'listening',
-        // cela signifie probablement qu'il n'y a pas eu de parole détectée avant un timeout.
-        // Revenir à l'état 'ready'.
-        if (event.statusMessage == "Recognition session stopped" && _currentState == InteractionState.listening) {
-           print("InteractionManager: Session stopped by Azure while listening, likely no speech detected or timeout. Setting state to ready.");
-           _partialTranscriptNotifier.value = ''; // Effacer la transcription partielle
-           setState(InteractionState.ready);
-           _lastUserMetrics = null; // Réinitialiser les métriques
-        }
-        break;
+          break;
+
+        case AzureSpeechEventType.finalResult:
+          // _partialTranscriptNotifier.value = ''; // Déjà géré par l'écoute du stream partiel
+          if (_currentState == InteractionState.listening) {
+            ConsoleLogger.info("InteractionManager: Processing final transcript received while listening.");
+            _processFinalTranscript(event); // Passer l'événement complet
+          } else if (_currentState == InteractionState.speaking) {
+            ConsoleLogger.info("InteractionManager: Final transcript received during speaking. Storing and stopping TTS.");
+            _pendingAzureFinalEvent = event;
+            _stopTtsForBargeIn();
+          } else {
+            ConsoleLogger.info("InteractionManager: Ignoring final transcript received in state $_currentState.");
+          }
+          break;
+
+        case AzureSpeechEventType.status:
+            ConsoleLogger.info("InteractionManager: Received status update: ${event.statusMessage}"); // Utiliser statusMessage
+            break;
+
+        case AzureSpeechEventType.error:
+             handleError("STT Error from Repo: ${event.errorCode} - ${event.errorMessage}");
+             break;
+
+        default:
+            ConsoleLogger.warning("InteractionManager: Unhandled Azure event type: ${event.type}");
+      }
+    } else {
+       // Gérer d'autres types d'événements si nécessaire (ex: Map simple du plugin local)
+       ConsoleLogger.warning("InteractionManager: Received non-AzureSpeechEvent type: ${event.runtimeType}");
+       // Essayer d'extraire un texte final si c'est une Map ?
+       if (event is Map && event.containsKey('text') && event['isPartial'] == false) {
+          final text = event['text'] as String?;
+          if (_currentState == InteractionState.listening) {
+             ConsoleLogger.info("InteractionManager: Processing final transcript from generic Map event.");
+             // Créer un AzureSpeechEvent factice pour _processFinalTranscript
+             // TODO: Adapter _processFinalTranscript pour gérer Map ou créer une classe commune
+             final fakeEvent = AzureSpeechEvent.finalResult(text ?? "", null, null);
+             _processFinalTranscript(fakeEvent);
+          } else {
+             ConsoleLogger.info("InteractionManager: Ignoring generic final transcript Map received in state $_currentState.");
+          }
+       }
     }
   }
 
-  /// Triggers the conversational agent to generate the next response, potentially with coaching.
-  Future<void> triggerAIResponse() async {
-    // Vérifier si disposé au début
+  /// Helper function to stop TTS safely during barge-in.
+  Future<void> _stopTtsForBargeIn() async {
+    if (_currentState == InteractionState.speaking && !_audioPipelineDisposed) {
+      try {
+        await _audioPipeline.stop();
+        ConsoleLogger.info("InteractionManager: TTS stop requested due to barge-in.");
+      } catch (e) {
+        ConsoleLogger.error("InteractionManager: Error stopping audio pipeline during barge-in: $e");
+      }
+    }
+  }
+
+  /// Processes a final transcript event received from Azure.
+  void _processFinalTranscript(AzureSpeechEvent event) {
     if (_audioPipelineDisposed) {
-      print("InteractionManager: triggerAIResponse called after dispose. Aborting.");
+       ConsoleLogger.info("InteractionManager: _processFinalTranscript called after dispose. Aborting.");
+       return;
+    }
+
+    final String? transcript = event.text;
+    final Map<String, dynamic>? pronResult = event.pronunciationResult;
+    ConsoleLogger.info("InteractionManager: Processing final transcript: '${transcript ?? ''}'");
+
+    _partialTranscriptNotifier.value = '';
+
+    if (transcript != null && transcript.isNotEmpty) {
+      double? accuracyScore;
+      double? fluencyScore;
+      double? prosodyScore;
+      double? durationInSeconds;
+
+      if (pronResult != null &&
+          pronResult['NBest'] is List &&
+          (pronResult['NBest'] as List).isNotEmpty &&
+          pronResult['NBest'][0] is Map &&
+          pronResult['NBest'][0]['PronunciationAssessment'] is Map) {
+        final assessment = pronResult['NBest'][0]['PronunciationAssessment'];
+        accuracyScore = (assessment['AccuracyScore'] as num?)?.toDouble();
+        fluencyScore = (assessment['FluencyScore'] as num?)?.toDouble();
+        prosodyScore = (assessment['ProsodyScore'] as num?)?.toDouble();
+        final durationTicks = assessment['Duration'];
+        if (durationTicks is num && durationTicks > 0) {
+          durationInSeconds = durationTicks / 10000000.0;
+          ConsoleLogger.info("InteractionManager: Extracted Duration: $durationInSeconds seconds");
+        } else {
+          ConsoleLogger.warning("InteractionManager: Warning: Duration not found or invalid in PronunciationAssessment.");
+        }
+        ConsoleLogger.info("InteractionManager: Extracted Scores: Accuracy=$accuracyScore, Fluency=$fluencyScore, Prosody=$prosodyScore");
+      } else {
+        ConsoleLogger.warning("InteractionManager: Warning: PronunciationAssessment data not found or invalid.");
+      }
+
+      double? pace;
+      if (durationInSeconds != null && durationInSeconds > 0 && transcript.isNotEmpty) {
+        final wordCount = transcript.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).length;
+        if (wordCount > 0) {
+          pace = (wordCount / durationInSeconds) * 60;
+          ConsoleLogger.info("InteractionManager: Calculated Pace: $pace WPM");
+        }
+      } else {
+        ConsoleLogger.warning("InteractionManager: Warning: Utterance duration not available, cannot calculate pace.");
+      }
+
+      final fillerWords = ['euh', 'hum', 'ben', 'alors', 'voilà', 'en fait', 'du coup'];
+      final words = transcript.toLowerCase().split(RegExp(r'\s+')).where((s) => s.isNotEmpty);
+      final fillerWordCount = words.where((word) => fillerWords.contains(word.replaceAll(RegExp(r'[^\w]'), ''))).length;
+      ConsoleLogger.info("InteractionManager: Calculated Fillers: $fillerWordCount");
+
+      _lastUserMetrics = UserVocalMetrics(
+        pace: pace,
+        fillerWordCount: fillerWordCount,
+        accuracyScore: accuracyScore,
+        fluencyScore: fluencyScore,
+        prosodyScore: prosodyScore,
+      );
+
+      addTurn(Speaker.user, transcript, audioDuration: durationInSeconds != null ? Duration(milliseconds: (durationInSeconds * 1000).round()) : null);
+
+      setState(InteractionState.thinking);
+      triggerAIResponse();
+    } else {
+      ConsoleLogger.info("InteractionManager: Empty final transcript received. Returning to ready state.");
+      setState(InteractionState.ready);
+      _lastUserMetrics = null;
+      _pendingAzureFinalEvent = null;
+      if (!_audioPipelineDisposed && _currentScenario != null) {
+        startListening(_currentScenario!.language);
+      }
+    }
+  }
+
+  /// Handles errors reported by the audio pipeline or Azure stream.
+  void _handlePipelineError(Object error) {
+    final String message = error.toString();
+    ConsoleLogger.error("Pipeline/Stream Error Received by Manager: $message");
+    handleError("Audio Pipeline/Stream Error: $message");
+    if (_currentState != InteractionState.finished && _currentState != InteractionState.analyzing) {
+      setState(InteractionState.error);
+    }
+    _lastUserMetrics = null;
+  }
+
+  /// Triggers the conversational agent to generate the next response, with retry logic for rate limits.
+  Future<void> triggerAIResponse() async {
+    if (_audioPipelineDisposed) {
+      ConsoleLogger.info("InteractionManager: triggerAIResponse called after dispose. Aborting.");
       return;
     }
     if (_currentScenario == null) {
-      handleError("Cannot trigger AI response without a scenario."); // handleError vérifie si disposé
+      handleError("Cannot trigger AI response without a scenario.");
       return;
     }
-    setState(InteractionState.thinking); // setState vérifie si disposé
+    if (_currentState != InteractionState.thinking) {
+       ConsoleLogger.warning("InteractionManager: triggerAIResponse called from unexpected state: $_currentState. Expected 'thinking'. Aborting.");
+       return;
+    }
 
-    // Récupérer les métriques de la dernière intervention utilisateur (et les réinitialiser)
     final UserVocalMetrics? metrics = _lastUserMetrics;
-    _lastUserMetrics = null; // Consommer les métriques
+    _lastUserMetrics = null;
 
-    print("Triggering AI response. Last user metrics: $metrics");
+    ConsoleLogger.info("InteractionManager: Triggering AI response. Last user metrics: $metrics");
+
+    int maxRetries = 2;
+    int currentTry = 0;
+    String? aiResponseText;
+
+    while (currentTry <= maxRetries && aiResponseText == null) {
+      currentTry++;
+      if (_audioPipelineDisposed) return;
+
+      try {
+        ConsoleLogger.info("InteractionManager: Calling OpenAI Service (Attempt $currentTry/$maxRetries)...");
+        String aiResponseJson = await _agentService.getNextResponse(
+          context: _currentScenario!,
+          history: _conversationHistory,
+          lastUserMetrics: metrics,
+        );
+
+        aiResponseText = _extractMessageContentFromJson(aiResponseJson);
+        ConsoleLogger.info("InteractionManager: OpenAI call successful.");
+
+      } catch (e) {
+        ConsoleLogger.error("InteractionManager: Error getting AI response (Attempt $currentTry): $e");
+        bool isRateLimitError = e.toString().contains('429');
+        if (isRateLimitError && currentTry < maxRetries) {
+          int delaySeconds = 5 + currentTry;
+          ConsoleLogger.warning("InteractionManager: Rate limit hit. Retrying in $delaySeconds seconds...");
+          await Future.delayed(Duration(seconds: delaySeconds));
+        } else {
+          handleError("Failed to get AI response after $currentTry attempts: $e");
+          return;
+        }
+      }
+    }
+
+    if (aiResponseText == null) {
+       handleError("Failed to get AI response after $maxRetries retries (unexpected state).");
+       return;
+    }
+
+    if (_currentState != InteractionState.thinking || _audioPipelineDisposed) {
+       ConsoleLogger.warning("InteractionManager: State changed or disposed during AI response fetch. Aborting TTS.");
+       return;
+    }
+
+    addTurn(Speaker.ai, aiResponseText);
+    setState(InteractionState.speaking);
+    ConsoleLogger.info("InteractionManager: AI generated response, starting TTS.");
 
     try {
-      // Passer les métriques au service de l'agent conversationnel
-      String aiResponseJson = await _agentService.getNextResponse(
-        context: _currentScenario!,
-        history: _conversationHistory,
-        // AJOUT: Passer les métriques pour le coaching
-        lastUserMetrics: metrics,
-      );
-
-      // Extraire le contenu du message de la réponse JSON
-      String aiResponseText = _extractMessageContentFromJson(aiResponseJson);
-
-      addTurn(Speaker.ai, aiResponseText);
-      setState(InteractionState.speaking);
-      // HapticFeedback.lightImpact(); // COMMENTÉ POUR TESTS UNITAIRES
-      print("InteractionManager: AI generated response, starting TTS.");
-       await _audioPipeline.speakText(aiResponseText);
-
-       // Speech finished, transition to ready IF NOT DISPOSED
-       if (_audioPipelineDisposed) return; // Vérification ajoutée
-       print("InteractionManager: AI speech finished.");
-       setState(InteractionState.ready); // setState vérifie si disposé
-
-       // Vérifier à nouveau avant le délai
-       if (_audioPipelineDisposed) return;
-       final language = _currentScenario!.language;
-       print("InteractionManager: Starting listening process immediately after AI response.");
-       // Démarrer l'écoute immédiatement après la fin de la parole de l'IA.
-       // SUPPRESSION du Future.delayed
-       if (!_audioPipelineDisposed && _currentState == InteractionState.ready) {
-          startListening(language);
-       } else if (!_audioPipelineDisposed) {
-          print("InteractionManager: State was not 'ready' ($_currentState) after AI response. Not starting listening.");
-       }
-
-     } catch (e) {
-       handleError("Failed to get AI response: $e");
-     }
+      await _audioPipeline.speakText(aiResponseText);
+      if (_audioPipelineDisposed) return;
+      ConsoleLogger.info("InteractionManager: AI speech finished.");
+    } catch (e) {
+       handleError("Failed to play AI response: $e");
+    }
   }
 
   /// Extracts the message content from the OpenAI API JSON response.
   String _extractMessageContentFromJson(String jsonResponse) {
     try {
-      // Parser le JSON
       final Map<String, dynamic> jsonMap = json.decode(jsonResponse);
       
-      // Extraire le contenu du message
       if (jsonMap.containsKey('choices') && 
           jsonMap['choices'] is List && 
           jsonMap['choices'].isNotEmpty &&
@@ -506,53 +587,31 @@ class InteractionManager extends ChangeNotifier {
           jsonMap['choices'][0]['message'] is Map &&
           jsonMap['choices'][0]['message'].containsKey('content')) {
         
-        // Simplement retourner le contenu extrait, en supposant que http.Response.body
-        // a déjà correctement décodé l'UTF-8.
-        // AJOUT: Supprimer le symbole copyright s'il apparaît.
         String content = jsonMap['choices'][0]['message']['content'];
-        return content.replaceAll('©', ''); // Supprime le symbole copyright
+        return content.replaceAll('©', '');
       }
       
-      // Si la structure JSON n'est pas celle attendue, retourner le JSON original
-      print("Warning: Could not extract message content from JSON response. Using original response.");
+      ConsoleLogger.warning("InteractionManager: Warning: Could not extract message content from JSON response. Using original response.");
       return jsonResponse;
     } catch (e) {
-      // En cas d'erreur, retourner le JSON original
-      print("Error extracting message content from JSON: $e. Using original response.");
+      ConsoleLogger.error("InteractionManager: Error extracting message content from JSON: $e. Using original response.");
       return jsonResponse;
     }
   }
 
-  // --- Méthodes de gestion d'état et d'erreurs ---
-
-   /// Handles errors: Sets the error message, stops the pipeline, sets error state, and notifies.
-   void handleError(String message) {
-     // Ne pas vérifier _audioPipelineDisposed ici, laisser les appels internes (setState/notifyListeners) gérer la vérification de dispose.
-     print("Handling error: $message");
-     _errorMessage = message;
-     _audioPipeline.stop(); // Stop the pipeline on error (stop a sa propre vérif interne)
-     // Set state to error IF NOT ALREADY FINISHED/ANALYZING
-     if (_currentState != InteractionState.finished && _currentState != InteractionState.analyzing) {
-        // setState internally checks if disposed before notifying
-        setState(InteractionState.error);
-     } else {
-       // If already finished/analyzing, just set the message and notify
-       notifyListeners(); // notifyListeners internally checks if disposed
-     }
-   }
-
-  /// Handles errors reported by the audio pipeline or Azure stream. (Private)
-  void _handlePipelineError(Object error) { // Accepte Object pour les erreurs de stream
-    final String message = error.toString();
-    print("Pipeline/Stream Error Received by Manager: $message");
-    // Call handleError which sets message, stops pipeline, and potentially sets error state
-    handleError("Audio Pipeline/Stream Error: $message");
-    // Ensure state becomes error if not already finished/analyzing
-    // (handleError le fait déjà, mais redondance ok)
-    if (_currentState != InteractionState.finished && _currentState != InteractionState.analyzing) {
-       setState(InteractionState.error);
+  /// Handles errors: Sets the error message, stops the pipeline, sets error state, and notifies.
+  void handleError(String message) {
+    ConsoleLogger.error("InteractionManager: Handling error: $message");
+    _errorMessage = message;
+    try {
+       _audioPipeline.stop();
+    } catch(e) {
+       ConsoleLogger.error("InteractionManager: Error stopping pipeline during error handling: $e");
     }
-     _lastUserMetrics = null; // Réinitialiser les métriques en cas d'erreur
+    if (_currentState != InteractionState.finished && _currentState != InteractionState.analyzing) {
+      setState(InteractionState.error);
+    }
+    notifyListeners();
   }
 
   /// Adds a turn to the conversation history and notifies listeners.
@@ -568,152 +627,130 @@ class InteractionManager extends ChangeNotifier {
 
   /// Updates the current state and notifies listeners.
   void setState(InteractionState newState) {
-    // Ne pas vérifier _audioPipelineDisposed ici, laisser notifyListeners le faire.
     if (_currentState != newState) {
-      print("InteractionManager State: $_currentState -> $newState");
+      ConsoleLogger.info("InteractionManager State: $_currentState -> $newState");
       _currentState = newState;
-       if (newState != InteractionState.error) {
-         _errorMessage = null; // Clear error message when moving to a non-error state
-       }
-      notifyListeners(); // notifyListeners internally checks if disposed
+      if (newState != InteractionState.error) {
+        _errorMessage = null;
+      }
+      notifyListeners();
     }
   }
 
   /// Resets the state for a new session.
-  void resetState() {
-    print("InteractionManager: Resetting state.");
+  Future<void> resetState() async {
+    ConsoleLogger.info("InteractionManager: Resetting state.");
     _currentState = InteractionState.idle;
     _currentScenario = null;
     _conversationHistory.clear();
     _errorMessage = null;
     _feedbackResult = null;
-    _lastUserMetrics = null; // Réinitialiser les métriques
-    _partialTranscriptNotifier.value = ''; // Effacer la transcription partielle
+    _lastUserMetrics = null;
+    _pendingAzureFinalEvent = null; // Correction: Utiliser _pendingAzureFinalEvent ici aussi lors du reset
+    _partialTranscriptNotifier.value = '';
 
-    // SUPPRESSION: Nettoyage des listeners n'est plus nécessaire
-
-    // Réinitialiser l'état du pipeline audio sans le disposer complètement
     if (!_audioPipelineDisposed) {
+      ConsoleLogger.info("InteractionManager: Stopping audio pipeline during reset...");
       try {
-        print("InteractionManager: Calling _audioPipeline.reset()");
-        // Appeler reset() manuellement au lieu d'utiliser la méthode
-        _audioPipeline.stop(); // Arrêter le pipeline
-        // Réinitialiser les valeurs des ValueNotifiers
+        await _audioPipeline.stop();
+        ConsoleLogger.info("InteractionManager: Audio pipeline stopped during reset.");
         try {
           if (_audioPipeline.isListening.value != false) {
             (_audioPipeline.isListening as ValueNotifier<bool>).value = false;
           }
-        } catch (e) {
-          print("Warning: Could not reset isListening value: $e");
-        }
+        } catch (e) { /* Ignore */ }
         try {
           if (_audioPipeline.isSpeaking.value != false) {
             (_audioPipeline.isSpeaking as ValueNotifier<bool>).value = false;
           }
-        } catch (e) {
-          print("Warning: Could not reset isSpeaking value: $e");
-        }
-        print("InteractionManager: Manual reset completed");
+        } catch (e) { /* Ignore */ }
       } catch (e) {
-        print("InteractionManager: Error during manual reset: $e");
+        ConsoleLogger.error("InteractionManager: Error stopping audio pipeline during reset: $e");
       }
     }
-
     notifyListeners();
   }
 
   // --- Méthodes utilitaires pour les tests ---
 
-  // SUPPRESSION: Méthode de test pour onAiResponseSpoken n'est plus nécessaire.
-  // @visibleForTesting
-  // void onAiResponseSpokenForTesting(String language) {
-  //   onAiResponseSpoken(language);
-  // }
-
-  // AJOUT: Méthode utilitaire pour ajouter un tour depuis les tests
-  @visibleForTesting
-  void addTurnForTesting(Speaker speaker, String text) {
-    addTurn(speaker, text);
-  }
-
-  // AJOUT: Setters utilitaires pour les tests
-  @visibleForTesting
-  set feedbackResultForTesting(Object? value) {
-    _feedbackResult = value;
-    notifyListeners(); // Notifier si l'UI de test écoute
-  }
-  @visibleForTesting
-  set errorMessageForTesting(String? value) {
-    _errorMessage = value;
-    notifyListeners(); // Notifier si l'UI de test écoute
-  }
-
-  // AJOUT: Méthode utilitaire pour les tests afin de forcer un état
   @visibleForTesting
   void setStateForTesting(InteractionState newState) {
     setState(newState);
   }
 
-  // AJOUT: Setter pour currentScenario pour les tests
+  @visibleForTesting
+  void addTurnForTesting(Speaker speaker, String text) {
+    addTurn(speaker, text);
+  }
+
+  @visibleForTesting
+  set feedbackResultForTesting(Object? value) {
+    _feedbackResult = value;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  set errorMessageForTesting(String? value) {
+    _errorMessage = value;
+    notifyListeners();
+  }
+
   @visibleForTesting
   set currentScenarioForTesting(ScenarioContext? scenario) {
     _currentScenario = scenario;
-     notifyListeners(); // Notifier si nécessaire pour les tests d'UI
+    notifyListeners();
   }
 
-  // AJOUT: Méthode pour vider l'historique pour les tests
   @visibleForTesting
   void clearHistoryForTesting() {
     _conversationHistory.clear();
     notifyListeners();
   }
 
-
   // --- Dispose ---
 
   @override
-  void dispose() {
-    print("Disposing InteractionManager...");
-    // Définir le flag de disposition IMMÉDIATEMENT
+  Future<void> dispose() async {
+    ConsoleLogger.info("Disposing InteractionManager...");
+    if (_audioPipelineDisposed) {
+      ConsoleLogger.info("InteractionManager already disposed.");
+      super.dispose();
+      return;
+    }
     _audioPipelineDisposed = true;
+    _currentState = InteractionState.idle;
 
-    // Annuler les abonnements
-    _azureEventSubscription?.cancel(); // Utiliser le bon nom
-    _pipelineErrorSubscription?.cancel(); // Utiliser le bon nom
-    _partialTranscriptNotifier.dispose(); // Disposer le nouveau notifier
+    // Annuler les abonnements en premier
+    _speechEventSubscription?.cancel(); // Renommé
+    _pipelineErrorSubscription?.cancel();
+    _ttsCompletionSubscription?.cancel();
+    ConsoleLogger.info("InteractionManager: Subscriptions cancelled.");
 
-    // SUPPRESSION: Nettoyage des listeners n'est plus nécessaire
-    // if (!_audioPipelineDisposed) {
-    //   try {
-    //     if (_initialPromptListenerCallback != null) {
-    //        _audioPipeline.isSpeaking.removeListener(_initialPromptListenerCallback!);
-    //        _initialPromptListenerCallback = null;
-    //     }
-    //   } catch (e) {
-    //     print("Error removing initial prompt listener during dispose: $e");
-    //   }
-      
-    //   try {
-    //     if (_aiResponseListenerCallback != null) {
-    //        _audioPipeline.isSpeaking.removeListener(_aiResponseListenerCallback!);
-    //        _aiResponseListenerCallback = null;
-    //     }
-    //   } catch (e) {
-    //     print("Error removing AI response listener during dispose: $e");
-    //   }
-      
-    // Disposer explicitement le pipeline audio lorsque l'InteractionManager est disposé.
-    // La vérification _audioPipelineDisposed n'est plus nécessaire ici car on l'a déjà mis à true
+    // Arrêter le pipeline et attendre (avec un timeout raisonnable)
+    ConsoleLogger.info("InteractionManager: Stopping pipeline before disposing...");
+    try {
+      await Future.wait([
+         _audioPipeline.stop(),
+      ]).timeout(const Duration(seconds: 2));
+      ConsoleLogger.info("InteractionManager: Pipeline stopped during dispose.");
+    } catch (e) {
+      ConsoleLogger.error("InteractionManager: Error or timeout stopping pipeline during dispose: $e");
+    }
+
+    // Disposer les notifiers
+    _partialTranscriptNotifier.dispose();
+
+    // Disposer le pipeline audio
     try {
       _audioPipeline.dispose();
-      print("Audio pipeline disposed successfully");
+      ConsoleLogger.info("InteractionManager: Audio pipeline dispose called.");
     } catch (e) {
-      print("Error disposing audio pipeline: $e");
+      ConsoleLogger.error("InteractionManager: Error calling audio pipeline dispose: $e");
     }
-      
-    // Le flag est déjà mis à true au début
-    // _audioPipelineDisposed = true; 
-    
-    super.dispose(); // Appelle les vérifications internes de ChangeNotifier
+
+    ConsoleLogger.info("InteractionManager disposed.");
+    super.dispose();
   }
 }
+
+

@@ -78,6 +78,12 @@
 @import url_launcher_ios;
 #endif
 
+#if __has_include(<whisper_stt_plugin/WhisperSttPlugin.h>)
+#import <whisper_stt_plugin/WhisperSttPlugin.h>
+#else
+@import whisper_stt_plugin;
+#endif
+
 @implementation GeneratedPluginRegistrant
 
 + (void)registerWithRegistry:(NSObject<FlutterPluginRegistry>*)registry {
@@ -93,6 +99,7 @@
   [SharedPreferencesPlugin registerWithRegistrar:[registry registrarForPlugin:@"SharedPreferencesPlugin"]];
   [SqflitePlugin registerWithRegistrar:[registry registrarForPlugin:@"SqflitePlugin"]];
   [URLLauncherPlugin registerWithRegistrar:[registry registrarForPlugin:@"URLLauncherPlugin"]];
+  [WhisperSttPlugin registerWithRegistrar:[registry registrarForPlugin:@"WhisperSttPlugin"]];
 }
 
 @end

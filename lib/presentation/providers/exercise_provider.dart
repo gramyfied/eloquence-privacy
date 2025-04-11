@@ -1,3 +1,4 @@
+import 'package:eloquence_flutter/core/utils/console_logger.dart'; // Ajout du logger
 import 'package:flutter_riverpod/flutter_riverpod.dart';
     import 'package:eloquence_flutter/domain/entities/pronunciation_result.dart';
     import 'package:eloquence_flutter/domain/usecases/initialize_azure_speech.dart';
@@ -20,7 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
       try {
         return serviceLocator<IAzureSpeechRepository>();
       } catch (e) {
-         print("ERREUR: IAzureSpeechRepository n'est pas enregistré dans le service locator. Assurez-vous que setupServiceLocator() est appelé et contient l'enregistrement.");
+         ConsoleLogger.error("ERREUR: IAzureSpeechRepository n'est pas enregistré dans le service locator. Assurez-vous que setupServiceLocator() est appelé et contient l'enregistrement."); // Suppression du paramètre 'error'
          rethrow; // Relancer pour indiquer une erreur de configuration critique
       }
     });
@@ -58,11 +59,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
       // final syncService = ref.read(syncServiceProvider);
       // final modalService = ref.read(modalServiceProvider);
 
+      // Correction des arguments passés au constructeur
       return ExerciseNotifier(
-        initializeUseCase,
-        startAssessmentUseCase,
-        stopRecognitionUseCase,
-        ref, // Passe ref pour lire d'autres providers si nécessaire
+        startAssessmentUseCase, // Correction: Passer le bon use case
+        stopRecognitionUseCase, // Correction: Passer le bon use case
+        ref,                  // Correction: Passer ref
+        // initializeUseCase, // initializeUseCase n'est pas utilisé dans le constructeur actuel
         // syncService,
         // modalService,
       );
@@ -70,7 +72,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
     /// Gère l'état et la logique d'un écran d'exercice utilisant Azure Speech.
     class ExerciseNotifier extends StateNotifier<ExerciseState> {
-      final InitializeAzureSpeechUseCase _initializeUseCase;
       final StartPronunciationAssessmentUseCase _startAssessmentUseCase;
       final StopRecognitionUseCase _stopRecognitionUseCase;
       final Ref _ref;
@@ -81,7 +82,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
       // bool _isInitialized = false;
 
       ExerciseNotifier(
-        this._initializeUseCase,
         this._startAssessmentUseCase,
         this._stopRecognitionUseCase,
         this._ref,
@@ -97,7 +97,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
         final bool isAzureReady = _ref.read(azureSpeechRepositoryProvider).isInitialized;
 
         if (!isAzureReady) {
-          print("ERREUR: Le service Azure Speech n'est pas initialisé. Vérifiez main.dart et les clés .env.");
+          ConsoleLogger.error("ERREUR: Le service Azure Speech n'est pas initialisé. Vérifiez main.dart et les clés .env.");
           state = state.copyWith(
             referenceText: text,
             language: lang,
@@ -122,14 +122,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
       Future<void> startRecording() async {
         // 1. Vérifier si l'état actuel permet de démarrer
         if (state.status != ExerciseStatus.ready || state.referenceText == null || state.language == null) {
-          print("Impossible de démarrer l'enregistrement : état incorrect ou données manquantes.");
+          ConsoleLogger.warning("Impossible de démarrer l'enregistrement : état incorrect (${state.status}) ou données manquantes.");
           return;
         }
 
         // 2. Vérifier si le service Azure est réellement initialisé (via le repository)
         final bool isAzureReady = _ref.read(azureSpeechRepositoryProvider).isInitialized;
         if (!isAzureReady) {
-           print("ERREUR: Tentative de démarrage de l'enregistrement mais le service Azure (repository) n'est pas initialisé.");
+           ConsoleLogger.error("ERREUR: Tentative de démarrage de l'enregistrement mais le service Azure (repository) n'est pas initialisé.");
            state = state.copyWith(status: ExerciseStatus.error, errorMessage: "Service Azure non prêt.");
            return;
         }
@@ -153,7 +153,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
             if (isCancellation) {
               // C'est une annulation manuelle ou une erreur liée à l'annulation.
               // Passer à l'état completed avec un résultat vide et SANS message d'erreur.
-              print("INFO: Enregistrement arrêté/annulé (géré dans failure block). Message: $failure");
+              ConsoleLogger.info("INFO: Enregistrement arrêté/annulé (géré dans failure block). Message: $failure");
               state = state.copyWith(
                 status: ExerciseStatus.completed, // Passer à completed
                 result: const PronunciationResult.empty(), // Utiliser un résultat vide
@@ -162,7 +162,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
               );
             } else {
               // C'est une autre erreur, l'afficher et mettre l'état en erreur
-              print("ERREUR: Évaluation échouée: $failure");
+              ConsoleLogger.error("ERREUR: Évaluation échouée: $failure");
               state = state.copyWith(
                 status: ExerciseStatus.error,
                 errorMessage: "Erreur d'évaluation: ${failure.toString()}",
@@ -173,7 +173,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
           (result) {
             // result sera PronunciationResult.empty() si NoMatch (géré par le repo)
             // result sera PronunciationResult.empty() si arrêt manuel ou NoMatch
-            print("Évaluation terminée. Résultat (peut être vide): ${result.accuracyScore}");
+            ConsoleLogger.info("Évaluation terminée. Résultat (peut être vide): ${result.accuracyScore}");
              // Même si result est PronunciationResult.empty(), on passe à completed
             state = state.copyWith(
               status: ExerciseStatus.completed,
@@ -182,7 +182,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
             // Déclencher la synchro et l'affichage de la modale
             // _syncService.syncResult(result); // Exemple
             // _modalService.showCompletionModal(result); // Exemple
-             print("Évaluation terminée. Score: ${result.accuracyScore}");
+             ConsoleLogger.info("Évaluation terminée. Score: ${result.accuracyScore}");
           },
         );
       }
@@ -202,14 +202,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
           (failure) {
             // Gérer l'erreur d'arrêt, mais l'état principal est probablement déjà géré
             // par les listeners natifs (qui devraient compléter le deferred avec une erreur)
-            print("Erreur lors de l'arrêt manuel: ${failure.toString()}");
+            ConsoleLogger.error("Erreur lors de l'arrêt manuel: ${failure.toString()}");
              // On pourrait forcer l'état d'erreur ici si nécessaire
              // state = state.copyWith(status: ExerciseStatus.error, errorMessage: failure.toString());
           },
           (_) {
             // L'arrêt a été demandé avec succès. L'état final (completed/error)
             // sera déterminé par le résultat de startPronunciationAssessment.
-            print("Demande d'arrêt envoyée.");
+            ConsoleLogger.info("Demande d'arrêt envoyée.");
           },
         );
       }

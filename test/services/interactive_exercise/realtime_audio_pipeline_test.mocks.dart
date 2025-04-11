@@ -9,6 +9,7 @@ import 'package:eloquence_flutter/services/audio/audio_service.dart' as _i2;
 import 'package:eloquence_flutter/services/azure/azure_speech_service.dart'
     as _i3;
 import 'package:eloquence_flutter/services/azure/azure_tts_service.dart' as _i5;
+import 'package:just_audio/just_audio.dart' as _i7;
 import 'package:mockito/mockito.dart' as _i1;
 import 'package:mockito/src/dummies.dart' as _i6;
 
@@ -133,6 +134,13 @@ class MockAzureTtsService extends _i1.Mock implements _i5.AzureTtsService {
         Invocation.getter(#isPlayingStream),
         returnValue: _i4.Stream<bool>.empty(),
       ) as _i4.Stream<bool>);
+
+  @override
+  _i4.Stream<_i7.ProcessingState> get processingStateStream =>
+      (super.noSuchMethod(
+        Invocation.getter(#processingStateStream),
+        returnValue: _i4.Stream<_i7.ProcessingState>.empty(),
+      ) as _i4.Stream<_i7.ProcessingState>);
 
   @override
   bool get isPlaying => (super.noSuchMethod(
