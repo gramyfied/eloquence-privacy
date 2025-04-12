@@ -158,6 +158,14 @@ void setupServiceLocator() {
     );
   }
 
+  // Enregistrer OpenAIFeedbackService pour les écrans d'exercice
+  serviceLocator.registerLazySingleton<OpenAIFeedbackService>(
+    () => OpenAIFeedbackService(
+      apiKey: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_KEY'] ?? '',
+      endpoint: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_ENDPOINT'] ?? '',
+      deploymentName: dotenv.env['EXPO_PUBLIC_AZURE_OPENAI_DEPLOYMENT_NAME'] ?? '',
+    )
+  );
 
   // Enregistrer AudioPlayer (commun aux deux modes)
   serviceLocator.registerLazySingleton<AudioPlayer>(() => AudioPlayer());

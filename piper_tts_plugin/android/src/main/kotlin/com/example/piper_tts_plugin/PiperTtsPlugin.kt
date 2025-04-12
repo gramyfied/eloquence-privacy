@@ -25,9 +25,12 @@ class PiperTtsPlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHand
     }
 
     // Déclaration des fonctions JNI
-    private external fun initializePiper(modelPath: String, configPath: String): Boolean
-    private external fun synthesizeText(text: String): ByteArray?
-    private external fun releasePiper()
+    private external fun initialize(): Boolean
+    private external fun loadModel(modelPath: String, espeakDataPath: String): Boolean
+    private external fun synthesize(text: String, lengthScale: Float, noiseScale: Float, noiseW: Float, speakerId: Int): ShortArray?
+    private external fun getSampleRate(): Int
+    private external fun isModelLoaded(): Boolean
+    private external fun cleanup()
 
     override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         methodChannel = MethodChannel(flutterPluginBinding.binaryMessenger, "piper_tts_plugin")
@@ -35,38 +38,66 @@ class PiperTtsPlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHand
 
         eventChannel = EventChannel(flutterPluginBinding.binaryMessenger, "piper_tts_plugin_events")
         eventChannel.setStreamHandler(this)
+        
+        // Initialiser Piper
+        initialize()
     }
 
     override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
         executor.shutdown()
+        cleanup()
     }
 
     override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
         executor.submit {
             when (call.method) {
-                "initialize" -> {
+                "loadModel" -> {
                     val modelPath = call.argument<String>("modelPath")
-                    val configPath = call.argument<String>("configPath")
-                    if (modelPath != null && configPath != null) {
-                        val success = initializePiper(modelPath, configPath)
+                    val espeakDataPath = call.argument<String>("espeakDataPath")
+                    if (modelPath != null && espeakDataPath != null) {
+                        val success = loadModel(modelPath, espeakDataPath)
                         Handler(Looper.getMainLooper()).post { result.success(success) }
                     } else {
-                        Handler(Looper.getMainLooper()).post { result.error("INVALID_ARG", "modelPath and configPath are required", null) }
+                        Handler(Looper.getMainLooper()).post { 
+                            result.error("INVALID_ARG", "modelPath and espeakDataPath are required", null) 
+                        }
                     }
                 }
                 "synthesize" -> {
-                    val text = call.argument<String>("text")
-                    if (text != null) {
-                        val audioData = synthesizeText(text)
-                        Handler(Looper.getMainLooper()).post { result.success(audioData) }
+                    val text = call.argument<String>("text") ?: ""
+                    val lengthScale = call.argument<Double>("lengthScale")?.toFloat() ?: 1.0f
+                    val noiseScale = call.argument<Double>("noiseScale")?.toFloat() ?: 0.667f
+                    val noiseW = call.argument<Double>("noiseW")?.toFloat() ?: 0.8f
+                    val speakerId = call.argument<Int>("speakerId") ?: 0
+                    
+                    val audioData = synthesize(text, lengthScale, noiseScale, noiseW, speakerId)
+                    if (audioData != null) {
+                        // Convertir ShortArray en ByteArray pour Flutter
+                        val byteArray = ByteArray(audioData.size * 2)
+                        for (i in audioData.indices) {
+                            val value = audioData[i].toInt()
+                            byteArray[i * 2] = (value and 0xFF).toByte()
+                            byteArray[i * 2 + 1] = (value shr 8).toByte()
+                        }
+                        Handler(Looper.getMainLooper()).post { result.success(byteArray) }
                     } else {
-                        Handler(Looper.getMainLooper()).post { result.error("INVALID_ARG", "text is required", null) }
+                        Handler(Looper.getMainLooper()).post { 
+                            result.error("SYNTHESIS_FAILED", "Failed to synthesize text", null) 
+                        }
                     }
                 }
-                "release" -> {
-                    releasePiper()
+                "getSampleRate" -> {
+                    val sampleRate = getSampleRate()
+                    Handler(Looper.getMainLooper()).post { result.success(sampleRate) }
+                }
+                "isModelLoaded" -> {
+                    val loaded = isModelLoaded()
+                    Handler(Looper.getMainLooper()).post { result.success(loaded) }
+                }
+                "cleanup" -> {
+                    cleanup()
                     Handler(Looper.getMainLooper()).post { result.success(null) }
                 }
                 else -> {
@@ -78,12 +109,10 @@ class PiperTtsPlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHand
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
         eventSink = events
-        // TODO: Informer le code natif/C++ de commencer à envoyer des événements si nécessaire
     }
 
     override fun onCancel(arguments: Any?) {
         eventSink = null
-        // TODO: Informer le code natif/C++ d'arrêter d'envoyer des événements si nécessaire
     }
 
     // Fonction pour envoyer des événements depuis le natif vers Flutter

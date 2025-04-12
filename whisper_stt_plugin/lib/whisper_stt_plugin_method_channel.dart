@@ -20,19 +20,19 @@ class MethodChannelWhisperSttPlugin extends WhisperSttPluginPlatform {
   StreamController<WhisperTranscriptionResult>? _eventStreamController;
   StreamSubscription? _eventSubscription;
 
-  @override
-  Future<bool> initialize({required String modelPath}) async {
-    try {
-      final result = await methodChannel.invokeMethod<bool>(
-        'initialize',
-        {'modelPath': modelPath},
-      );
-      return result ?? false;
-    } on PlatformException catch (e) {
-      print("Failed to initialize Whisper: '${e.message}'.");
-      return false;
-    }
-  }
+ @override
+ Future<bool> initialize({required String modelName}) async {
+ try {
+ final result = await methodChannel.invokeMethod<bool>(
+ 'initialize',
+ {'modelName': modelName},
+ );
+ return result ?? false;
+ } on PlatformException catch (e) {
+ print("Failed to initialize Whisper: '${e.message}'.");
+ return false;
+ }
+ }
 
   @override
   Future<WhisperTranscriptionResult> transcribeChunk({

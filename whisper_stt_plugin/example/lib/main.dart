@@ -32,7 +32,7 @@ class _MyAppState extends State<MyApp> {
     try {
       // Remplacer getPlatformVersion par initialize (exemple)
       // Note: Il faudrait un chemin de modèle valide ici pour un vrai test.
-      final success = await _whisperSttPlugin.initialize(modelPath: 'path/to/dummy/model.bin');
+      final success = await _whisperSttPlugin.initialize(modelName: 'tiny');
       initResult = success ? 'Whisper Initialized (mock)' : 'Whisper Failed to Initialize';
     } on PlatformException catch (e) {
       initResult = 'Failed to initialize: ${e.message}.';

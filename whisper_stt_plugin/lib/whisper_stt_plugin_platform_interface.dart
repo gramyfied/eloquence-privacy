@@ -29,7 +29,7 @@ abstract class WhisperSttPluginPlatform extends PlatformInterface {
   }
 
   /// Initialise le moteur Whisper avec le modèle spécifié.
-  Future<bool> initialize({required String modelPath}) {
+  Future<bool> initialize({required String modelName}) {
     throw UnimplementedError('initialize() has not been implemented.');
   }
 

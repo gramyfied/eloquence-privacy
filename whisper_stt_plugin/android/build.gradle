@@ -67,7 +67,7 @@ android {
     externalNativeBuild {
         cmake {
             path "CMakeLists.txt"
-            version "3.18.1" // Ou une version appropriée installée avec le SDK Android
+            version "3.22.1" // Mise à jour pour utiliser la version disponible
         }
     }
 }

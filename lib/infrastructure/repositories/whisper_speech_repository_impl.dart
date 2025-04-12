@@ -42,15 +42,14 @@ class WhisperSpeechRepositoryImpl implements IAzureSpeechRepository {
     return _recognitionStreamController!.stream;
   }
 
-  @override
-  Future<void> initialize(String subscriptionKey, String region) async {
-    // Whisper n'utilise pas de clé/région Azure, mais un fichier modèle
-    try {
-      final modelPath = await _getModelPath();
-      _recognitionStreamController?.add(AzureSpeechEvent.status("Initialisation de Whisper avec le modèle: $modelPath"));
+ @override
+ Future<void> initialize(String subscriptionKey, String region) async {
+ // Whisper n'utilise pas de clé/région Azure, mais un nom de modèle
+ try {
+ _recognitionStreamController?.add(AzureSpeechEvent.status("Initialisation de Whisper avec le modèle tiny"));
       
-      final success = await _whisperPlugin.initialize(modelPath: modelPath);
-      if (success) {
+ final success = await _whisperPlugin.initialize(modelName: 'tiny');
+ if (success) {
         _isInitialized = true;
         _recognitionStreamController?.add(AzureSpeechEvent.status("Whisper initialisé avec succès."));
       } else {
@@ -65,21 +64,6 @@ class WhisperSpeechRepositoryImpl implements IAzureSpeechRepository {
     }
   }
 
-  /// Obtient le chemin complet vers le fichier modèle Whisper.
-  /// Cette méthode pourrait être étendue pour gérer le téléchargement du modèle si nécessaire.
-  Future<String> _getModelPath() async {
-    // TODO: Implémenter la logique de téléchargement/vérification du modèle
-    // Pour l'instant, on suppose que le modèle est déjà dans le répertoire assets/models/whisper
-    final modelPath = '$_defaultWhisperModelDir/$_defaultWhisperModelName';
-    
-    // Vérifier si le fichier existe
-    final modelFile = File(modelPath);
-    if (!await modelFile.exists()) {
-      throw Exception("Le fichier modèle Whisper n'existe pas: $modelPath");
-    }
-    
-    return modelPath;
-  }
 
   @override
   Future<void> startContinuousRecognition(String language) async {

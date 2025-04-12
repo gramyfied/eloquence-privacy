@@ -20,7 +20,7 @@ void main() {
     // Note: Ce test échouera probablement car le chemin du modèle n'est pas valide
     // et le modèle n'est pas inclus dans les assets de test.
     // Il faudrait une configuration plus avancée pour les tests d'intégration réels.
-    final bool success = await plugin.initialize(modelPath: 'path/to/integration/test/model.bin');
+    final bool success = await plugin.initialize(modelName: 'tiny');
     // Pour l'instant, on vérifie juste que l'appel ne lève pas d'exception majeure
     // (il retournera false si le modèle n'est pas trouvé).
     expect(success, isA<bool>());

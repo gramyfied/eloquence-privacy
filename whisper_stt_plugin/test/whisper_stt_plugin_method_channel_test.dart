@@ -49,8 +49,8 @@ void main() {
   });
 
   // Remplacer le test getPlatformVersion par des tests pour les nouvelles méthodes
-  test('initialize', () async {
-    expect(await platform.initialize(modelPath: 'path/to/model.bin'), true);
+ test('initialize', () async {
+ expect(await platform.initialize(modelName: 'tiny'), true);
   });
 
   test('transcribeChunk', () async {

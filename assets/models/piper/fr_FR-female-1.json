@@ -1,0 +1,18 @@
+{
+  "model_type": "onnx",
+  "version": 1,
+  "speaker_id_map": {
+    "female-1": 0
+  },
+  "espeak": {
+    "voice": "fr"
+  },
+  "inference": {
+    "noise_scale": 0.667,
+    "length_scale": 1.0,
+    "noise_w": 0.8
+  },
+  "audio": {
+    "sample_rate": 22050
+  }
+}

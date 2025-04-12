@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data'; // Pour Uint8List
 import 'package:flutter/foundation.dart'; // Pour @required
+import 'package:model_manager/model_manager.dart';
 
 import 'whisper_stt_plugin_platform_interface.dart';
 
@@ -8,10 +9,12 @@ import 'whisper_stt_plugin_platform_interface.dart';
 class WhisperSttPlugin {
   /// Initialise le moteur Whisper avec le modèle spécifié.
   ///
-  /// [modelPath] : Chemin absolu vers le fichier modèle Whisper (.bin).
+  /// [modelName] : Nom du modèle Whisper à utiliser (par exemple "tiny" ou "base").
   /// Retourne `true` si l'initialisation réussit, `false` sinon.
-  Future<bool> initialize({required String modelPath}) {
-    return WhisperSttPluginPlatform.instance.initialize(modelPath: modelPath);
+  Future<bool> initialize({required String modelName}) async {
+    final modelManager = ModelManager();
+    final modelPath = await modelManager.getModelPath(modelName);
+    return WhisperSttPluginPlatform.instance.initialize(modelName: modelName);
   }
 
   /// Transcrit un chunk audio.

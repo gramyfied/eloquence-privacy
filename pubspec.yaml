@@ -44,6 +44,8 @@ dependencies:
   permission_handler_windows: "^0.2.1"
   path_provider: "^2.1.5"
   path: "1.9.1"
+  model_manager:
+    path: model_manager
   wav: ^1.0.0 # Gardé pour lire les fichiers WAV
 
   # Services en ligne
@@ -120,8 +122,7 @@ flutter:
     - assets/animations/
     - assets/icons/
     - assets/config/
-    - assets/lexique/ # Ajout du lexique syllabique
-    # - assets/models/ # Supprimé car Whisper FFI n'est plus utilisé
+    - assets/lexique/
     - .env
 
   # Fonts

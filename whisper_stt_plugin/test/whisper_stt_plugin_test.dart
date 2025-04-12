@@ -12,8 +12,8 @@ class MockWhisperSttPluginPlatform
     implements WhisperSttPluginPlatform {
 
   // Mock implementations for the new methods
-  @override
-  Future<bool> initialize({required String modelPath}) async => true; // Simule succès
+ @override
+ Future<bool> initialize({required String modelName}) async => true; // Simule succès
 
   @override
   Future<WhisperTranscriptionResult> transcribeChunk({
@@ -55,7 +55,7 @@ void main() {
     MockWhisperSttPluginPlatform fakePlatform = MockWhisperSttPluginPlatform();
     WhisperSttPluginPlatform.instance = fakePlatform;
 
-    expect(await whisperSttPlugin.initialize(modelPath: 'path/to/model.bin'), true);
+    expect(await whisperSttPlugin.initialize(modelName: 'tiny'), true);
   });
 
   test('transcribeChunk', () async {
