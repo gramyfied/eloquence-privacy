@@ -6,6 +6,7 @@ import 'package:eloquence_flutter/core/errors/exceptions.dart';
 import 'package:eloquence_flutter/domain/entities/pronunciation_result.dart';
 import 'package:eloquence_flutter/domain/repositories/audio_repository.dart';
 import 'package:eloquence_flutter/domain/repositories/azure_speech_repository.dart';
+import 'package:model_manager/model_manager.dart';
 import 'package:whisper_stt_plugin/whisper_stt_plugin.dart';
 
 /// Chemin vers les modèles Whisper (à configurer)
@@ -48,15 +49,17 @@ class WhisperSpeechRepositoryImpl implements IAzureSpeechRepository {
  try {
  _recognitionStreamController?.add(AzureSpeechEvent.status("Initialisation de Whisper avec le modèle tiny"));
       
+ // Initialiser le plugin Whisper
  final success = await _whisperPlugin.initialize(modelName: 'tiny');
- if (success) {
-        _isInitialized = true;
-        _recognitionStreamController?.add(AzureSpeechEvent.status("Whisper initialisé avec succès."));
-      } else {
+ if (!success) {
         _isInitialized = false;
         _recognitionStreamController?.add(AzureSpeechEvent.error("INIT_FAILED", "Échec de l'initialisation de Whisper."));
         throw NativePlatformException("Échec de l'initialisation de Whisper.");
       }
+      
+      // Le modèle est déjà chargé par la méthode initialize de WhisperSttPlugin
+      _isInitialized = true;
+      _recognitionStreamController?.add(AzureSpeechEvent.status("Whisper initialisé avec succès."));
     } catch (e) {
       _isInitialized = false;
       _recognitionStreamController?.add(AzureSpeechEvent.error("INIT_EXCEPTION", "Exception lors de l'initialisation de Whisper: $e"));

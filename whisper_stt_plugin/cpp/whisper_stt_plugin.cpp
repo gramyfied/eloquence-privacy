@@ -84,7 +84,7 @@ public:
             audio_float[i] = static_cast<float>(audio_data[i]) / 32768.0f;
         }
         
-        // Paramètres de Whisper
+        // Paramètres de Whisper optimisés pour la vitesse
         struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
         
         // Configurer la langue
@@ -101,6 +101,12 @@ public:
         params.no_context       = true;
         params.single_segment   = true;
         params.max_tokens       = 0;
+        
+        // Optimisations de performance
+        params.n_threads        = std::min(4, (int)std::thread::hardware_concurrency()); // Utiliser jusqu'à 4 threads
+        params.speed_up         = true;  // Activer l'accélération
+        params.audio_ctx        = 0;     // Réduire le contexte audio
+        params.beam_size        = 1;     // Utiliser beam search avec taille 1 (plus rapide)
         
         // Exécuter l'inférence
         if (whisper_full(ctx, params, audio_float.data(), audio_float.size()) != 0) {
