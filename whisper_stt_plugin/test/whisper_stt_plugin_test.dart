@@ -14,6 +14,9 @@ class MockWhisperSttPluginPlatform
   // Mock implementations for the new methods
  @override
  Future<bool> initialize({required String modelName}) async => true; // Simule succès
+ 
+ @override
+ Future<bool> loadModel({required String modelPath}) async => true; // Simule succès
 
   @override
   Future<WhisperTranscriptionResult> transcribeChunk({

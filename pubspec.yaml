@@ -123,6 +123,8 @@ flutter:
     - assets/icons/
     - assets/config/
     - assets/lexique/
+    - assets/models/whisper/
+    - assets/models/piper/
     - .env
 
   # Fonts

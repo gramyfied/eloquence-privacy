@@ -1,9 +1,14 @@
-import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 
 class ModelManager {
-  static const String _baseUrl = 'https://example-cdn.com/models/'; // URL du CDN où les modèles sont hébergés
+  // Mapping des noms de modèles vers les chemins d'assets
+  static const Map<String, String> _modelAssets = {
+    'tiny': 'assets/models/whisper/ggml-tiny-q5_1.bin',
+    'base': 'assets/models/whisper/ggml-base-q5_1.bin',
+    // Ajoutez d'autres modèles si nécessaire
+  };
 
   static final ModelManager _instance = ModelManager._();
   factory ModelManager() => _instance;
@@ -18,17 +23,26 @@ class ModelManager {
     return modelsDir.path;
   }
 
-  Future<void> downloadModel(String modelName) async {
-    final url = '$_baseUrl$modelName';
-    final response = await http.get(Uri.parse(url));
+  Future<void> copyModelFromAssets(String modelName) async {
+    final assetPath = _modelAssets[modelName];
+    if (assetPath == null) {
+      throw Exception('Modèle inconnu: $modelName');
+    }
 
-    if (response.statusCode == 200) {
+    try {
+      // Lire le fichier depuis les assets
+      final byteData = await rootBundle.load(assetPath);
+      
+      // Écrire dans le répertoire des modèles
       final modelsDir = await _getModelsDirectory();
       final filePath = '$modelsDir/$modelName';
       final file = File(filePath);
-      await file.writeAsBytes(response.bodyBytes);
-    } else {
-      throw Exception('Échec du téléchargement du modèle $modelName');
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+      
+      print('Modèle $modelName copié depuis les assets vers $filePath');
+    } catch (e) {
+      print('Erreur lors de la copie du modèle depuis les assets: $e');
+      throw Exception('Échec de la copie du modèle $modelName: $e');
     }
   }
 
@@ -44,7 +58,8 @@ class ModelManager {
     if (await isModelDownloaded(modelName)) {
       return filePath;
     } else {
-      await downloadModel(modelName);
+      // Au lieu de télécharger, copier depuis les assets
+      await copyModelFromAssets(modelName);
       return filePath;
     }
   }

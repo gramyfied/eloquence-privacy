@@ -12,6 +12,7 @@ import 'services/service_locator.dart'; // Contient setupServiceLocator et servi
 import 'services/lexique/syllabification_service.dart'; // Importer le service
 // Importer AzureSpeechService
 import 'services/azure/azure_tts_service.dart'; // Importer AzureTtsService
+import 'services/tts/tts_service_interface.dart'; // Importer l'interface ITtsService
 import 'domain/repositories/auth_repository.dart';
 import 'domain/repositories/azure_speech_repository.dart'; // AJOUT: Import manquant
 // Correction des imports pour les repositories Supabase
@@ -112,26 +113,51 @@ void main() async {
   // --- Fin de la suppression ---
 
 
-  // Initialiser Azure TTS Service au démarrage (Garder si utilisé pour ExampleAudioProvider)
-  try {
-    final azureTtsService = serviceLocator<AzureTtsService>();
-    final azureKey = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'];
-    final azureRegion = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'];
-    if (azureKey != null && azureRegion != null) {
-      bool initialized = await azureTtsService.initialize(
-        subscriptionKey: azureKey,
-        region: azureRegion,
+  // Initialiser le service TTS approprié selon le mode
+  if (appMode == 'local') {
+    // Initialiser Piper TTS Service en mode local
+    try {
+      final ttsService = serviceLocator<ITtsService>();
+      // Chemins des modèles Piper (à partir des assets)
+      final modelPath = 'assets/models/piper/fr_FR-mls-medium.onnx';
+      final configPath = 'assets/models/piper/fr_FR-mls-medium.onnx.json';
+      
+      bool initialized = await ttsService.initialize(
+        modelPath: modelPath,
+        configPath: configPath,
+        defaultVoice: 'fr_FR-mls-medium',
       );
+      
       if (initialized) {
-        print('🟢 [MAIN] AzureTtsService initialisé avec succès.');
+        print('🟢 [MAIN] PiperTtsService initialisé avec succès.');
       } else {
-        print('🔴 [MAIN] Échec de l\'initialisation d\'AzureTtsService.');
+        print('🔴 [MAIN] Échec de l\'initialisation de PiperTtsService.');
       }
-    } else {
-      print('🔴 [MAIN] Clés Azure manquantes dans .env pour AzureTtsService.');
+    } catch (e) {
+      print('🔴 [MAIN] Erreur critique lors de l\'initialisation de PiperTtsService: $e');
     }
-  } catch (e) {
-    print('🔴 [MAIN] Erreur critique lors de l\'initialisation d\'AzureTtsService: $e');
+  } else {
+    // Initialiser Azure TTS Service en mode cloud
+    try {
+      final azureTtsService = serviceLocator<AzureTtsService>();
+      final azureKey = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'];
+      final azureRegion = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'];
+      if (azureKey != null && azureRegion != null) {
+        bool initialized = await azureTtsService.initialize(
+          subscriptionKey: azureKey,
+          region: azureRegion,
+        );
+        if (initialized) {
+          print('🟢 [MAIN] AzureTtsService initialisé avec succès.');
+        } else {
+          print('🔴 [MAIN] Échec de l\'initialisation d\'AzureTtsService.');
+        }
+      } else {
+        print('🔴 [MAIN] Clés Azure manquantes dans .env pour AzureTtsService.');
+      }
+    } catch (e) {
+      print('🔴 [MAIN] Erreur critique lors de l\'initialisation d\'AzureTtsService: $e');
+    }
   }
 
   // Supprimer le bloc d'initialisation de WhisperService FFI

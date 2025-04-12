@@ -19,6 +19,11 @@ void main() {
         // final args = methodCall.arguments as Map?;
         // expect(args?['modelPath'], 'path/to/model.bin');
         return true; // Simuler succès
+      case 'loadModel':
+        // Vérifier les arguments si nécessaire
+        final args = methodCall.arguments as Map?;
+        expect(args?['modelPath'], isNotNull);
+        return true; // Simuler succès
       case 'transcribeChunk':
         // Vérifier les arguments si nécessaire
         // final args = methodCall.arguments as Map?;
@@ -51,6 +56,10 @@ void main() {
   // Remplacer le test getPlatformVersion par des tests pour les nouvelles méthodes
  test('initialize', () async {
  expect(await platform.initialize(modelName: 'tiny'), true);
+  });
+  
+  test('loadModel', () async {
+    expect(await platform.loadModel(modelPath: '/path/to/model.bin'), true);
   });
 
   test('transcribeChunk', () async {

@@ -76,61 +76,23 @@ class WhisperSttPlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHa
                 result.success(success)
             }
             "loadModel" -> {
-                val modelName = call.argument<String>("modelName")
-                if (modelName == null) {
-                    result.error("INVALID_ARGUMENT", "modelName is required", null)
+                val modelPath = call.argument<String>("modelPath")
+                if (modelPath == null) {
+                    result.error("INVALID_ARGUMENT", "modelPath is required", null)
                     return
                 }
                 
                 executor.submit {
                     try {
-                        // Vérifier si le modèle est téléchargé
-                        if (!modelManager.isModelDownloaded(modelName)) {
-                            // Informer Flutter que le téléchargement va commencer
-                            scope.launch(Dispatchers.Main) {
-                                eventSink?.success(mapOf(
-                                    "event" to "download_start",
-                                    "modelName" to modelName,
-                                    "modelSize" to modelManager.getModelSize(modelName)
-                                ))
-                            }
-                            
-                            // Télécharger le modèle
-                            var downloadSuccess = false
-                            scope.launch(Dispatchers.IO) {
-                                downloadSuccess = modelManager.downloadModel(modelName)
-                            }.invokeOnCompletion {
-                                // Une fois le téléchargement terminé
-                                if (!downloadSuccess) {
-                                    scope.launch(Dispatchers.Main) {
-                                        result.error("DOWNLOAD_FAILED", "Failed to download model", null)
-                                    }
-                                    return@invokeOnCompletion
-                                }
-                                
-                                // Charger le modèle
-                                val modelPath = modelManager.getModelPath(modelName)
-                                val loadSuccess = loadModel(modelPath)
-                                
-                                scope.launch(Dispatchers.Main) {
-                                    if (loadSuccess) {
-                                        result.success(true)
-                                    } else {
-                                        result.error("LOAD_FAILED", "Failed to load model", null)
-                                    }
-                                }
-                            }
-                        } else {
-                            // Le modèle est déjà téléchargé, le charger directement
-                            val modelPath = modelManager.getModelPath(modelName)
-                            val loadSuccess = loadModel(modelPath)
-                            
-                            scope.launch(Dispatchers.Main) {
-                                if (loadSuccess) {
-                                    result.success(true)
-                                } else {
-                                    result.error("LOAD_FAILED", "Failed to load model", null)
-                                }
+                        // Charger directement le modèle à partir du chemin fourni
+                        Log.i(TAG, "Loading model from path: $modelPath")
+                        val loadSuccess = loadModel(modelPath)
+                        
+                        scope.launch(Dispatchers.Main) {
+                            if (loadSuccess) {
+                                result.success(true)
+                            } else {
+                                result.error("LOAD_FAILED", "Failed to load model", null)
                             }
                         }
                     } catch (e: Exception) {
