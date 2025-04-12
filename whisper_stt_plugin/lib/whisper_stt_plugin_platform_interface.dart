@@ -32,6 +32,11 @@ abstract class WhisperSttPluginPlatform extends PlatformInterface {
   Future<bool> initialize({required String modelName}) {
     throw UnimplementedError('initialize() has not been implemented.');
   }
+  
+  /// Charge un modèle Whisper à partir d'un chemin de fichier.
+  Future<bool> loadModel({required String modelPath}) {
+    throw UnimplementedError('loadModel() has not been implemented.');
+  }
 
   /// Transcrit un chunk audio.
   Future<WhisperTranscriptionResult> transcribeChunk({

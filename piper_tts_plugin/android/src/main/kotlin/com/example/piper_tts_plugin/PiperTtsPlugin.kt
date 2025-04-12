@@ -53,15 +53,17 @@ class PiperTtsPlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHand
     override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
         executor.submit {
             when (call.method) {
-                "loadModel" -> {
+                "initializePiper" -> {
                     val modelPath = call.argument<String>("modelPath")
-                    val espeakDataPath = call.argument<String>("espeakDataPath")
-                    if (modelPath != null && espeakDataPath != null) {
+                    val configPath = call.argument<String>("configPath")
+                    if (modelPath != null && configPath != null) {
+                        // Utiliser le chemin du dossier espeak-ng-data par défaut
+                        val espeakDataPath = "/data/user/0/com.example.eloquence_flutter/app_flutter/assets/espeak-ng-data"
                         val success = loadModel(modelPath, espeakDataPath)
                         Handler(Looper.getMainLooper()).post { result.success(success) }
                     } else {
                         Handler(Looper.getMainLooper()).post { 
-                            result.error("INVALID_ARG", "modelPath and espeakDataPath are required", null) 
+                            result.error("INVALID_ARG", "modelPath and configPath are required", null) 
                         }
                     }
                 }
@@ -96,7 +98,7 @@ class PiperTtsPlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHand
                     val loaded = isModelLoaded()
                     Handler(Looper.getMainLooper()).post { result.success(loaded) }
                 }
-                "cleanup" -> {
+                "releasePiper" -> {
                     cleanup()
                     Handler(Looper.getMainLooper()).post { result.success(null) }
                 }

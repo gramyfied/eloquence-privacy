@@ -103,8 +103,8 @@ class WhisperSttPlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHa
                     }
                 }
             }
-            "transcribe" -> {
-                val audioBytes = call.argument<ByteArray>("audioData")
+            "transcribeChunk" -> {
+                val audioBytes = call.argument<ByteArray>("audioChunk")
                 val sampleRate = call.argument<Int>("sampleRate") ?: 16000
                 val language = call.argument<String>("language") ?: "fr"
                 
@@ -127,7 +127,13 @@ class WhisperSttPlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHa
                         val text = transcribe(shortArray, sampleRate, language)
                         
                         scope.launch(Dispatchers.Main) {
-                            result.success(text)
+                            // Retourner une Map avec les champs attendus par le code Dart
+                            val resultMap = mapOf(
+                                "text" to text,
+                                "isPartial" to false,
+                                "confidence" to 1.0
+                            )
+                            result.success(resultMap)
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error transcribing audio", e)

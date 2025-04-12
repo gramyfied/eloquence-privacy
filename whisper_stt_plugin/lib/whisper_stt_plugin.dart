@@ -12,9 +12,17 @@ class WhisperSttPlugin {
   /// [modelName] : Nom du modèle Whisper à utiliser (par exemple "tiny" ou "base").
   /// Retourne `true` si l'initialisation réussit, `false` sinon.
   Future<bool> initialize({required String modelName}) async {
-    final modelManager = ModelManager();
-    final modelPath = await modelManager.getModelPath(modelName);
-    return WhisperSttPluginPlatform.instance.initialize(modelName: modelName);
+    try {
+      final modelManager = ModelManager();
+      final modelPath = await modelManager.getModelPath(modelName);
+      print("Initialisation de Whisper avec le modèle: $modelName, chemin: $modelPath");
+      
+      // Appeler la méthode loadModel de la plateforme
+      return WhisperSttPluginPlatform.instance.loadModel(modelPath: modelPath);
+    } catch (e) {
+      print("Erreur lors de l'initialisation de Whisper: $e");
+      return false;
+    }
   }
 
   /// Transcrit un chunk audio.

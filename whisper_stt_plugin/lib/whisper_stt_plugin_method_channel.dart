@@ -33,6 +33,20 @@ class MethodChannelWhisperSttPlugin extends WhisperSttPluginPlatform {
  return false;
  }
  }
+ 
+ @override
+ Future<bool> loadModel({required String modelPath}) async {
+   try {
+     final result = await methodChannel.invokeMethod<bool>(
+       'loadModel',
+       {'modelPath': modelPath},
+     );
+     return result ?? false;
+   } on PlatformException catch (e) {
+     print("Failed to load Whisper model: '${e.message}'.");
+     return false;
+   }
+ }
 
   @override
   Future<WhisperTranscriptionResult> transcribeChunk({
@@ -70,7 +84,7 @@ class MethodChannelWhisperSttPlugin extends WhisperSttPluginPlatform {
   @override
   Future<void> release() async {
     try {
-      await methodChannel.invokeMethod('release');
+      await methodChannel.invokeMethod('cleanup');
       _eventSubscription?.cancel();
       _eventStreamController?.close();
       _eventStreamController = null;

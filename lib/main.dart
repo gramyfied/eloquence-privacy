@@ -19,6 +19,10 @@ import 'domain/repositories/azure_speech_repository.dart'; // AJOUT: Import manq
 import 'infrastructure/repositories/supabase_profile_repository.dart';
 import 'infrastructure/repositories/supabase_session_repository.dart';
 import 'infrastructure/repositories/supabase_statistics_repository.dart';
+
+// Récupérer le mode d'application depuis les arguments de ligne de commande
+// Utilisation: flutter run --dart-define=APP_MODE=local
+const String appMode = String.fromEnvironment('APP_MODE', defaultValue: 'cloud');
 // Les imports des Blocs sont retirés car flutter_bloc n'est plus utilisé ici
 // import 'application/services/auth_service.dart'; // Garder si utilisé ailleurs
 // import 'application/services/exercise_service.dart'; // Garder si utilisé ailleurs
