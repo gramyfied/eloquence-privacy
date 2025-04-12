@@ -104,9 +104,8 @@ public:
         
         // Optimisations de performance
         params.n_threads        = std::min(4, (int)std::thread::hardware_concurrency()); // Utiliser jusqu'à 4 threads
-        params.speed_up         = true;  // Activer l'accélération
         params.audio_ctx        = 0;     // Réduire le contexte audio
-        params.beam_size        = 1;     // Utiliser beam search avec taille 1 (plus rapide)
+        // Note: Certains paramètres comme speed_up et beam_size ne sont pas disponibles dans cette version de Whisper
         
         // Exécuter l'inférence
         if (whisper_full(ctx, params, audio_float.data(), audio_float.size()) != 0) {
