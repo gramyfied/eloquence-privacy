@@ -59,7 +59,10 @@ RUN git clone https://github.com/rhasspy/piper.git /tmp/piper \
 # Installer Kaldi GOP
 RUN git clone https://github.com/kaldi-asr/kaldi.git /tmp/kaldi \
     && cd /tmp/kaldi/tools \
+    && mkdir -p python \
+    && touch python/.use_default_python \
     && extras/install_openblas.sh \
+    && extras/check_dependencies.sh \
     && make -j$(nproc) \
     && cd /tmp/kaldi/src \
     && ./configure --shared --use-cuda=no \
