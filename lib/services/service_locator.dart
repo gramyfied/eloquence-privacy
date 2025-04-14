@@ -17,7 +17,7 @@ import '../infrastructure/repositories/supabase_exercise_repository.dart';
 import '../domain/repositories/azure_speech_repository.dart';
 import '../infrastructure/repositories/azure_speech_repository_impl.dart';
 import '../infrastructure/repositories/whisper_speech_repository_impl.dart'; // Ajouté pour le mode local
-import '../infrastructure/repositories/kaldi_gop_repository_impl.dart'; // Ajouté pour le mode local
+// Ajouté pour le mode local
 import '../infrastructure/native/azure_speech_api.g.dart'; // API Pigeon générée
 // import 'package:flutter_tts/flutter_tts.dart'; // Retiré
 

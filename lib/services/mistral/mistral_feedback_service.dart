@@ -484,7 +484,7 @@ Ne fournis que la phrase générée, sans aucune introduction, explication ou gu
   }) async {
     ConsoleLogger.info('🤖 [MISTRAL Feedback] Génération de feedback pour l\'intonation...');
     ConsoleLogger.info('🤖 [MISTRAL Feedback] - Émotion cible: $targetEmotion');
-    ConsoleLogger.info('🤖 [MISTRAL Feedback] - Phrase référence: "${referenceSentence}"');
+    ConsoleLogger.info('🤖 [MISTRAL Feedback] - Phrase référence: "$referenceSentence"');
     if (audioMetrics != null && audioMetrics.isNotEmpty) {
       ConsoleLogger.info('🤖 [MISTRAL Feedback] - Métriques audio fournies: ${audioMetrics.entries.map((e) => '${e.key}: ${e.value.toStringAsFixed(2)}').join(', ')}');
     } else {

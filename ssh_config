@@ -1,0 +1,5 @@
+Host elastic-metal
+  HostName 51.159.110.4
+  User ubuntu
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes

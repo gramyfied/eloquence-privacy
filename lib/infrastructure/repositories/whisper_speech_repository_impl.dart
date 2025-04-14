@@ -6,7 +6,6 @@ import 'package:eloquence_flutter/core/errors/exceptions.dart';
 import 'package:eloquence_flutter/domain/entities/pronunciation_result.dart';
 import 'package:eloquence_flutter/domain/repositories/audio_repository.dart';
 import 'package:eloquence_flutter/domain/repositories/azure_speech_repository.dart';
-import 'package:model_manager/model_manager.dart';
 import 'package:whisper_stt_plugin/whisper_stt_plugin.dart';
 
 /// Chemin vers les modèles Whisper (à configurer)

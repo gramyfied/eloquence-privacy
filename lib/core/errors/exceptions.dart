@@ -24,6 +24,11 @@ class NetworkException extends AppException {
   const NetworkException(super.message, [super.stackTrace]);
 }
 
+/// Exception levée lors d'une erreur de serveur.
+class ServerException extends AppException {
+  const ServerException(super.message, [super.stackTrace]);
+}
+
 /// Exception levée lors d'une erreur spécifique à l'API Supabase.
 class SupabaseException extends AppException {
   const SupabaseException(super.message, [super.stackTrace]);

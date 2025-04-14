@@ -23,7 +23,6 @@ RUN apt-get update && apt-get install -y \
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get update \
     && apt-get install -y nodejs \
-    && npm install -g npm@latest \
     && rm -rf /var/lib/apt/lists/*
 
 # Créer un utilisateur non-root
@@ -41,14 +40,14 @@ RUN mkdir -p /app/models/whisper \
 RUN git clone https://github.com/ggerganov/whisper.cpp.git /tmp/whisper.cpp \
     && cd /tmp/whisper.cpp \
     && make \
-    && cp main /usr/local/bin/whisper \
+    && cp build/bin/whisper-cli /usr/local/bin/whisper \
     && rm -rf /tmp/whisper.cpp
 
 # Installer Piper
 RUN git clone https://github.com/rhasspy/piper.git /tmp/piper \
     && cd /tmp/piper \
     && make \
-    && cp piper /usr/local/bin/ \
+    && cp /tmp/piper/install/piper /usr/local/bin/ \
     && rm -rf /tmp/piper
 
 # Installer Kaldi GOP
@@ -68,7 +67,7 @@ RUN git clone https://github.com/kaldi-asr/kaldi.git /tmp/kaldi \
 RUN git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp \
     && cd /tmp/llama.cpp \
     && make \
-    && cp main /usr/local/bin/llama-chat \
+    && cp /tmp/llama.cpp/main /usr/local/bin/llama-chat \
     && rm -rf /tmp/llama.cpp
 
 # Copier les fichiers du projet

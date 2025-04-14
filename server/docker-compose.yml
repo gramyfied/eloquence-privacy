@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  eloquence-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: eloquence-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - WHISPER_MODEL_DIR=/app/models/whisper
+      - PIPER_MODEL_DIR=/app/models/piper
+      - KALDI_MODEL_DIR=/app/models/kaldi
+      - LLM_MODEL_DIR=/app/models/llm
+      - API_KEY=${API_KEY}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
