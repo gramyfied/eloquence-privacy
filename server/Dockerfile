@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     sox \
     libtool \
+    python-is-python3 \
     # nodejs et npm seront installés via NodeSource
     && rm -rf /var/lib/apt/lists/*
 
@@ -59,10 +60,13 @@ RUN git clone https://github.com/rhasspy/piper.git /tmp/piper \
 # Installer Kaldi GOP
 RUN git clone https://github.com/kaldi-asr/kaldi.git /tmp/kaldi \
     && cd /tmp/kaldi/tools \
-    && mkdir -p python \
-    && touch python/.use_default_python \
+    # Installer OpenFST d'abord
+    && ./install_openfst.sh \
+    # Installer OpenBLAS
     && extras/install_openblas.sh \
+    # Vérifier les dépendances (maintenant que OpenFST et python-is-python3 sont là)
     && extras/check_dependencies.sh \
+    # Construire le reste des outils
     && make -j$(nproc) \
     && cd /tmp/kaldi/src \
     && ./configure --shared --use-cuda=no \
