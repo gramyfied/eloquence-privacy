@@ -17,6 +17,11 @@ RUN apt-get update && apt-get install -y \
     libopenblas-dev \
     pkg-config \
     gfortran \
+    automake \
+    autoconf \
+    unzip \
+    sox \
+    libtool \
     # nodejs et npm seront installés via NodeSource
     && rm -rf /var/lib/apt/lists/*
 
