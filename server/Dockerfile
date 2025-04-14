@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     libsndfile1 \
     libopenblas-dev \
     pkg-config \
+    gfortran \
     # nodejs et npm seront installés via NodeSource
     && rm -rf /var/lib/apt/lists/*
 
