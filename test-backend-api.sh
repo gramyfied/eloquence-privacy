@@ -7,14 +7,9 @@ set -e
 # Informations du serveur
 SERVER_URL="http://51.159.110.4:3000"
 
-# Récupérer la clé API
+# Utiliser la clé API connue
 echo "Récupération de la clé API..."
-API_KEY=$(ssh ubuntu@51.159.110.4 "grep API_KEY eloquence-server/.env | cut -d'=' -f2")
-
-if [ -z "$API_KEY" ]; then
-  echo "Erreur: Impossible de récupérer la clé API."
-  exit 1
-fi
+API_KEY="2a0a606dd7133f983b9b700f975c6e7f2931c17c41f2b6294ea70111afdee566"
 
 echo "Clé API récupérée: $API_KEY"
 
@@ -34,8 +29,8 @@ test_api() {
         --output "$output_file"
       echo "Résultat enregistré dans $output_file"
     else
-      curl -s -X GET "$SERVER_URL$endpoint" \
-        -H "Authorization: Bearer $API_KEY" | jq .
+      curl -v -X GET "$SERVER_URL$endpoint" \
+        -H "Authorization: Bearer $API_KEY"
     fi
   elif [ "$method" = "POST" ]; then
     if [ -n "$output_file" ]; then
