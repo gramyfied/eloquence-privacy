@@ -32,20 +32,21 @@ RUN cd /opt/kaldi-src/tools \
 RUN cd /opt/kaldi-src/tools \
     && ./extras/install_openblas.sh
 
-RUN cd /opt/kaldi-src/tools \
-    && wget -O openfst-1.8.4.tar.gz https://www.openfst.org/twiki/pub/FST/FstDownload/openfst-1.8.4.tar.gz \
-    && tar -xzf openfst-1.8.4.tar.gz \
-    && cd openfst-1.8.4 \
-    && ./configure --enable-shared --enable-far --enable-ngram-fsts --enable-lookahead-fsts --enable-const-fsts --enable-pdt --enable-linear-fsts --prefix=/usr/local \
-    && make -j$(nproc) \
-    && make install \
-    && ldconfig
+# Correction automatique : installation OpenFST via le script officiel Kaldi
+RUN cd /opt/kaldi-src/tools && \
+    extras/install_openfst.sh --fst_version=1.8.4 -j $(nproc) && \
+    ln -sf /opt/kaldi-src/tools/openfst-1.8.4 /opt/kaldi-src/tools/openfst && \
+    cp -r /opt/kaldi-src/tools/openfst-1.8.4/include/fst /usr/local/include/ && \
+    cp /opt/kaldi-src/tools/openfst-1.8.4/lib/*.so* /usr/local/lib/ && \
+    mkdir -p /usr/include && ln -sf /usr/local/include/fst /usr/include/fst && \
+    mkdir -p /include && cp -r /usr/local/include/fst /include/
 
-RUN cd /opt/kaldi-src/src \
-    && ./configure --shared --use-cuda=no \
-    && make -j$(nproc) depend \
-    && cd bin \
-    && make -j$(nproc) compute-gop text-to-phonemes
+RUN export CPLUS_INCLUDE_PATH=/usr/local/include && \
+    cd /opt/kaldi-src/src && \
+    ./configure --shared --use-cuda=no --fst-root=/opt/kaldi-src/tools/openfst-1.8.4 --fst-version=1.8.4 CXXFLAGS="-I/opt/kaldi-src/tools/openfst-1.8.4/include" && \
+    make -j$(nproc) depend && \
+    cd bin && \
+    make -j$(nproc) compute-gop text-to-phonemes
 
 # Étape 2 : Image finale Node.js
 FROM node:18
