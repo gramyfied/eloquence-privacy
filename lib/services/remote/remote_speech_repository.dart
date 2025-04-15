@@ -17,6 +17,10 @@ import '../../domain/repositories/azure_speech_repository.dart';
 /// Cette classe implémente l'interface IAzureSpeechRepository pour s'intégrer
 /// facilement dans l'architecture existante, mais utilise un serveur distant en interne.
 class RemoteSpeechRepository implements IAzureSpeechRepository {
+  // Configuration Eloquence backend
+  static const String eloquenceApiUrl = 'http://51.159.110.4:3000';
+  static const String eloquenceApiKey = '2a0a606dd7133f983b9b700f975c6e7f2931c17c41f2b6294ea70111afdee566';
+
   final String apiUrl;
   final String apiKey;
   final AudioRepository _audioRepository;

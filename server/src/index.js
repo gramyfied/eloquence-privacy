@@ -77,6 +77,11 @@ app.get('/', (req, res) => {
   });
 });
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // API routes with authentication
 app.use('/api/speech', apiKeyAuth, speechRoutes);
 app.use('/api/tts', apiKeyAuth, ttsRoutes);

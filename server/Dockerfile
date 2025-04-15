@@ -23,7 +23,13 @@ RUN apt-get update && apt-get install -y \
     sox \
     libtool \
     python-is-python3 \
-    # nodejs et npm seront installés via NodeSource
+    zlib1g-dev \
+    subversion \
+    libfst-dev \
+    libfst-tools \
+    libatlas-base-dev \
+    liblapack-dev \
+    liblapacke-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Installer Node.js 18.x et npm
@@ -57,21 +63,52 @@ RUN git clone https://github.com/rhasspy/piper.git /tmp/piper \
     && cp /tmp/piper/install/piper /usr/local/bin/ \
     && rm -rf /tmp/piper
 
-# Installer Kaldi GOP
-RUN git clone https://github.com/kaldi-asr/kaldi.git /tmp/kaldi \
+# Installation de Kaldi avec GOP
+RUN apt-get update && apt-get install -y \
+    zlib1g-dev \
+    automake \
+    autoconf \
+    libtool \
+    subversion \
+    wget \
+    python3-dev \
+    python3-pip \
+    g++ \
+    make \
+    && rm -rf /var/lib/apt/lists/* \
+    && git clone --depth 1 https://github.com/kaldi-asr/kaldi.git /tmp/kaldi \
     && cd /tmp/kaldi/tools \
-    # Vérifier les dépendances d'abord
-    && extras/check_dependencies.sh \
-    # Installer OpenBLAS
+    && mkdir -p python \
+    && ln -sf $(which python3) python/python3 \
+    && ln -sf $(which python3) python/python \
     && extras/install_openblas.sh \
-    # Installer les outils (inclut OpenFST)
+    && wget -O openfst-1.8.4.tar.gz https://www.openfst.org/twiki/pub/FST/FstDownload/openfst-1.8.4.tar.gz \
+    && tar -xzf openfst-1.8.4.tar.gz \
+    && cd openfst-1.8.4 \
+    && ./configure --enable-shared --enable-far --enable-ngram-fsts --enable-lookahead-fsts --enable-const-fsts --enable-pdt --enable-linear-fsts --prefix=/usr/local \
     && make -j$(nproc) \
+    && make install \
+    && ldconfig \
     && cd /tmp/kaldi/src \
-    && ./configure --shared --use-cuda=no \
+    && ./configure --shared --use-cuda=no --fst-root=/usr/local \
     && make -j$(nproc) depend \
+    && make -j$(nproc) online2 lm rnnlm \
+    && cd /tmp/kaldi/src/gop \
     && make -j$(nproc) \
-    && cp /tmp/kaldi/src/bin/compute-gop /usr/local/bin/ \
-    && cp /tmp/kaldi/src/bin/text-to-phonemes /usr/local/bin/ \
+    && cd /tmp/kaldi/src/bin \
+    && make -j$(nproc) compute-gop \
+    && cd /tmp/kaldi/src/featbin \
+    && make -j$(nproc) \
+    && cd /tmp/kaldi/src/gmmbin \
+    && make -j$(nproc) \
+    && cd /tmp/kaldi/src/latbin \
+    && make -j$(nproc) \
+    && mkdir -p /opt/kaldi/bin \
+    && cp /tmp/kaldi/src/bin/compute-gop /opt/kaldi/bin/ \
+    && cp /tmp/kaldi/src/featbin/compute-mfcc-feats /opt/kaldi/bin/ \
+    && cp /tmp/kaldi/src/gmmbin/gmm-* /opt/kaldi/bin/ \
+    && cp /tmp/kaldi/src/latbin/lattice-* /opt/kaldi/bin/ \
+    && ln -sf /opt/kaldi/bin/compute-gop /usr/local/bin/compute-gop \
     && rm -rf /tmp/kaldi
 
 # Installer llama.cpp
@@ -99,3 +136,7 @@ EXPOSE 3000
 
 # Commande de démarrage
 CMD ["npm", "start"]
+
+# Ajouter un healthcheck pour vérifier que le serveur est en cours d'exécution
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1

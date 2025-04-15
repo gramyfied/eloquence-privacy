@@ -1,75 +1,111 @@
 #!/bin/bash
 
-# Script pour pousser uniquement le dossier server vers le dépôt eloquence-privacy-backend
-# Version corrigée pour éviter les conflits avec le dépôt Git existant
+# Script pour déployer le serveur Eloquence sur un VPS Scaleway
+# Ce script utilise SSH pour transférer les fichiers et configurer le serveur
 
 set -e
 
-# Vérifier si git est installé
-if ! command -v git &> /dev/null; then
-    echo "Git n'est pas installé. Veuillez l'installer et réessayer."
-    exit 1
+# Configuration
+SERVER_IP="51.159.110.4"
+SERVER_USER="ubuntu"
+REMOTE_DIR="eloquence-server"
+SSH_KEY="$HOME/.ssh/id_ed25519"
+
+# Vérifier que la clé SSH existe
+if [ ! -f "$SSH_KEY" ]; then
+  echo "Erreur: Clé SSH non trouvée à $SSH_KEY"
+  echo "Veuillez générer une clé SSH avec: ssh-keygen -t ed25519"
+  exit 1
 fi
 
-# URL du dépôt spécifique
-repo_url="https://github.com/gramyfied/eloquence-privacy-backend.git"
-echo "Dépôt cible: $repo_url"
-
-# Vérifier si le dossier server existe
+# Vérifier que le répertoire server existe
 if [ ! -d "server" ]; then
-    echo "Le dossier 'server' n'existe pas dans le répertoire courant."
-    exit 1
+  echo "Erreur: Répertoire 'server' non trouvé"
+  echo "Veuillez exécuter ce script depuis la racine du projet"
+  exit 1
 fi
 
-# Créer un répertoire temporaire complètement séparé
-temp_dir=$(mktemp -d)
-echo "Création d'un répertoire temporaire: $temp_dir"
+echo "=== Déploiement du serveur Eloquence sur $SERVER_IP ==="
 
-# Copier le contenu du dossier server dans le répertoire temporaire
-echo "Copie du contenu du dossier server..."
-cp -r server/* "$temp_dir"
-cp -r server/.* "$temp_dir" 2>/dev/null || true  # Copier les fichiers cachés s'il y en a
+# Créer un répertoire temporaire pour les fichiers à transférer
+echo "Préparation des fichiers..."
+TMP_DIR=$(mktemp -d)
+cp -r server/* "$TMP_DIR"
 
-# Se déplacer dans le répertoire temporaire
-cd "$temp_dir"
-
-# Créer un README.md s'il n'existe pas
-if [ ! -f "README.md" ]; then
-    echo "# eloquence-privacy-backend" > README.md
-    echo "" >> README.md
-    echo "Backend pour l'application Eloquence avec services de reconnaissance vocale, synthèse vocale, évaluation de prononciation et IA." >> README.md
+# Créer un fichier .env par défaut s'il n'existe pas
+if [ ! -f "$TMP_DIR/.env" ]; then
+  echo "Création d'un fichier .env par défaut..."
+  cat > "$TMP_DIR/.env" << EOF
+PORT=3000
+NODE_ENV=production
+API_KEY=$(openssl rand -hex 32)
+LOG_LEVEL=info
+CORS_ORIGIN=*
+EOF
 fi
 
-# Initialiser un nouveau dépôt Git (complètement séparé du dépôt principal)
-echo "Initialisation d'un nouveau dépôt Git..."
-git init
+# Se connecter au serveur et créer le répertoire distant si nécessaire
+echo "Connexion au serveur et préparation du répertoire distant..."
+ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" "mkdir -p $REMOTE_DIR"
 
-# Configurer la branche principale comme 'main'
-git branch -M main
-
-# Ajouter tous les fichiers
-echo "Ajout des fichiers..."
-git add .
-
-# Créer un commit initial
-echo "Création du commit initial..."
-git commit -m "Initial commit - Backend Eloquence"
-
-# Ajouter le remote (en utilisant un nom différent pour éviter les conflits)
-echo "Ajout du remote backend..."
-git remote add backend "$repo_url"
-
-# Pousser vers le dépôt distant
-echo "Poussée des modifications vers le dépôt distant..."
-git push -u backend main --force
-
-echo "Le dossier 'server' a été poussé avec succès vers $repo_url"
-echo "Vous pouvez maintenant cloner ce dépôt séparément pour travailler uniquement sur le backend:"
-echo "git clone $repo_url"
+# Transférer les fichiers
+echo "Transfert des fichiers vers le serveur..."
+rsync -avz --progress -e "ssh -i $SSH_KEY" "$TMP_DIR/" "$SERVER_USER@$SERVER_IP:$REMOTE_DIR/"
 
 # Nettoyer le répertoire temporaire
-echo "Nettoyage du répertoire temporaire..."
-cd - > /dev/null
-rm -rf "$temp_dir"
+rm -rf "$TMP_DIR"
 
-echo "Terminé!"
+# Installer Docker et Docker Compose sur le serveur si nécessaire
+echo "Vérification de l'installation de Docker..."
+ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" "
+  if ! command -v docker &> /dev/null; then
+    echo 'Installation de Docker...'
+    sudo apt-get update
+    sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+    sudo add-apt-repository 'deb [arch=amd64] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable'
+    sudo apt-get update
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+    sudo usermod -aG docker \$USER
+    echo 'Docker installé avec succès'
+  else
+    echo 'Docker est déjà installé'
+  fi
+
+  if ! command -v docker-compose &> /dev/null; then
+    echo 'Installation de Docker Compose...'
+    sudo curl -L \"https://github.com/docker/compose/releases/download/v2.18.1/docker-compose-\$(uname -s)-\$(uname -m)\" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+    echo 'Docker Compose installé avec succès'
+  else
+    echo 'Docker Compose est déjà installé'
+  fi
+"
+
+# Télécharger les modèles nécessaires
+echo "Téléchargement des modèles..."
+ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" "cd $REMOTE_DIR && bash scripts/download-models.sh"
+
+# Arrêter les conteneurs existants
+echo "Arrêt des conteneurs existants..."
+ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" "cd $REMOTE_DIR && docker-compose down"
+
+# Supprimer les images Docker existantes
+echo "Suppression des images Docker existantes..."
+ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" "docker images | grep eloquence-server | awk '{print \$3}' | xargs -r docker rmi -f"
+
+# Construire et démarrer les conteneurs Docker
+echo "Construction et démarrage des conteneurs Docker..."
+ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" "cd $REMOTE_DIR && docker-compose build --no-cache && docker-compose up -d"
+
+# Vérifier que le serveur est en cours d'exécution
+echo "Vérification que le serveur est en cours d'exécution..."
+sleep 10
+ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" "docker ps | grep eloquence-server"
+
+echo "=== Déploiement terminé avec succès ==="
+echo "Le serveur est accessible à l'adresse: http://$SERVER_IP:3000"
+echo "Clé API: $(ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_IP" "grep API_KEY $REMOTE_DIR/.env | cut -d'=' -f2")"
+echo ""
+echo "Pour tester le serveur, exécutez:"
+echo "./test-backend-api.sh"

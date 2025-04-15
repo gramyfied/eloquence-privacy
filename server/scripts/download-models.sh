@@ -45,6 +45,9 @@ download_file "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR
 download_file "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US-libritts-high/en_US-libritts-high.onnx" "$MODELS_DIR/piper/en_US-libritts-high.onnx"
 download_file "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US-libritts-high/en_US-libritts-high.onnx.json" "$MODELS_DIR/piper/en_US-libritts-high.onnx.json"
 download_file "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US-libritts-high/en_US-libritts-high.json" "$MODELS_DIR/piper/en_US-libritts-high.json"
+download_file "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US-male-medium/en_US-male-medium.onnx" "$MODELS_DIR/piper/en_US-male-medium.onnx"
+download_file "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US-male-medium/en_US-male-medium.onnx.json" "$MODELS_DIR/piper/en_US-male-medium.onnx.json"
+download_file "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US-male-medium/en_US-male-medium.json" "$MODELS_DIR/piper/en_US-male-medium.json"
 
 # Espagnol
 download_file "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES-mls-medium/es_ES-mls-medium.onnx" "$MODELS_DIR/piper/es_ES-mls-medium.onnx"
