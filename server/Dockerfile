@@ -1,52 +1,5 @@
-# Étape 1 : Compilation Kaldi sur Ubuntu
-FROM ubuntu:22.04 AS kaldi-base
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    git \
-    wget \
-    automake \
-    autoconf \
-    libtool \
-    subversion \
-    python3 \
-    python3-pip \
-    python-is-python3 \
-    zlib1g-dev \
-    libatlas-base-dev \
-    liblapack-dev \
-    liblapacke-dev \
-    gfortran \
-    && rm -rf /var/lib/apt/lists/*
-
-FROM kaldi-base AS kaldi-builder
-
-RUN git clone --depth 1 https://github.com/kaldi-asr/kaldi.git /opt/kaldi-src
-
-RUN cd /opt/kaldi-src/tools \
-    && mkdir -p python \
-    && ln -sf $(which python3) python/python3 \
-    && ln -sf $(which python3) python/python
-
-RUN cd /opt/kaldi-src/tools \
-    && ./extras/install_openblas.sh
-
-# Correction automatique : installation OpenFST via le script officiel Kaldi
-RUN cd /opt/kaldi-src/tools && \
-    extras/install_openfst.sh --fst_version=1.8.4 -j $(nproc) && \
-    ln -sf /opt/kaldi-src/tools/openfst-1.8.4 /opt/kaldi-src/tools/openfst && \
-    cp -r /opt/kaldi-src/tools/openfst-1.8.4/include/fst /usr/local/include/ && \
-    cp /opt/kaldi-src/tools/openfst-1.8.4/lib/*.so* /usr/local/lib/ && \
-    mkdir -p /usr/include && ln -sf /usr/local/include/fst /usr/include/fst && \
-    mkdir -p /include && cp -r /usr/local/include/fst /include/
-
-RUN export CPLUS_INCLUDE_PATH=/usr/local/include && \
-    cd /opt/kaldi-src/src && \
-    ./configure --shared --use-cuda=no --fst-root=/opt/kaldi-src/tools/openfst-1.8.4 --fst-version=1.8.4 CXXFLAGS="-I/opt/kaldi-src/tools/openfst-1.8.4/include" && \
-    make -j$(nproc) depend && \
-    cd bin && \
-    make -j$(nproc) compute-gop text-to-phonemes
+# Étape 1 : Image Kaldi officielle (pré-compilée)
+FROM kaldiasr/kaldi:latest as kaldi-builder
 
 # Étape 2 : Image finale Node.js
 FROM node:18
@@ -69,16 +22,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatlas-base-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copier les bibliothèques OpenFST depuis l'étape de construction
+# Copier les binaires et bibliothèques Kaldi/OpenFST depuis l'image officielle
+COPY --from=kaldi-builder /opt/kaldi /opt/kaldi
 COPY --from=kaldi-builder /usr/local/lib/libfst* /usr/local/lib/
 COPY --from=kaldi-builder /usr/local/lib/fst /usr/local/lib/fst
 COPY --from=kaldi-builder /usr/local/include/fst /usr/local/include/fst
 
 RUN ldconfig
 
-# Copier les binaires Kaldi compilés depuis l'étape précédente
-COPY --from=kaldi-builder /opt/kaldi-src/src/bin/compute-gop /usr/local/bin/
-COPY --from=kaldi-builder /opt/kaldi-src/src/bin/text-to-phonemes /usr/local/bin/
+# Copier les binaires Kaldi utiles (exemple : compute-gop, text-to-phonemes)
+COPY --from=kaldi-builder /opt/kaldi/src/bin/compute-gop /usr/local/bin/
+COPY --from=kaldi-builder /opt/kaldi/src/bin/text-to-phonemes /usr/local/bin/
 
 # Installer Whisper.cpp (avec --depth 1 pour accélérer)
 RUN git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git /tmp/whisper.cpp \
