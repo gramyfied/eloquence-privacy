@@ -34,6 +34,8 @@ RUN ldconfig
 COPY --from=kaldi-builder /opt/kaldi/src/bin/compute-gop /usr/local/bin/
 COPY --from=kaldi-builder /opt/kaldi/src/bin/text-to-phonemes /usr/local/bin/
 
+# (Suppression de toute recompilation ou configuration Kaldi : l'image officielle suffit)
+
 # Installer Whisper.cpp (avec --depth 1 pour accélérer)
 RUN git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git /tmp/whisper.cpp \
     && cd /tmp/whisper.cpp \
