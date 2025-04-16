@@ -54,8 +54,8 @@ RUN mkdir -p /app/models/whisper \
     /app/models/llm
 
 # Copier les fichiers du projet
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json ./
+RUN npm install
 
 COPY . .
 
