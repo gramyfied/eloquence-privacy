@@ -25,14 +25,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copier les binaires et bibliothèques Kaldi/OpenFST depuis l'image officielle
 COPY --from=kaldi-builder /opt/kaldi /opt/kaldi
 COPY --from=kaldi-builder /usr/local/lib/libfst* /usr/local/lib/
-COPY --from=kaldi-builder /usr/local/lib/fst /usr/local/lib/fst
-COPY --from=kaldi-builder /usr/local/include/fst /usr/local/include/fst
 
 RUN ldconfig
 
 # Copier les binaires Kaldi utiles (exemple : compute-gop, text-to-phonemes)
 COPY --from=kaldi-builder /opt/kaldi/src/bin/compute-gop /usr/local/bin/
-COPY --from=kaldi-builder /opt/kaldi/src/bin/text-to-phonemes /usr/local/bin/
 
 # (Suppression de toute recompilation ou configuration Kaldi : l'image officielle suffit)
 
