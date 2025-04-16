@@ -10,6 +10,7 @@ import speechRoutes from './api/speech.js';
 import ttsRoutes from './api/tts.js';
 import pronunciationRoutes from './api/pronunciation.js';
 import aiRoutes from './api/ai.js';
+import testRoutes from './api/test.js';
 
 // Middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -87,6 +88,9 @@ app.use('/api/speech', apiKeyAuth, speechRoutes);
 app.use('/api/tts', apiKeyAuth, ttsRoutes);
 app.use('/api/pronunciation', apiKeyAuth, pronunciationRoutes);
 app.use('/api/ai', apiKeyAuth, aiRoutes);
+
+// Test route (pas d'auth pour faciliter les tests)
+app.use('/api/test', testRoutes);
 
 // Error handler
 app.use(errorHandler);
