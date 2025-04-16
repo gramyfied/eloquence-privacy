@@ -3,8 +3,8 @@ version: '3.8'
 services:
   eloquence-server:
     build:
-      context: .
-      dockerfile: server/Dockerfile
+      context: ./server
+      dockerfile: Dockerfile
     container_name: eloquence-server
     restart: unless-stopped
     ports:
