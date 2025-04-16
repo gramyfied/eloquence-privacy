@@ -20,6 +20,9 @@ import '../infrastructure/repositories/whisper_speech_repository_impl.dart'; // 
 // Ajouté pour le mode local
 import '../infrastructure/native/azure_speech_api.g.dart'; // API Pigeon générée
 // import 'package:flutter_tts/flutter_tts.dart'; // Retiré
+import 'remote/remote_speech_repository.dart'; // Ajouté pour le mode distant
+import 'remote/remote_tts_service.dart'; // Ajouté pour le mode distant
+import 'remote/remote_feedback_service.dart'; // Ajouté pour le mode distant
 
 // Services
 import 'azure/azure_tts_service.dart'; // Ajouté
@@ -55,7 +58,11 @@ import 'mistral/mistral_feedback_service.dart';
 final serviceLocator = GetIt.instance;
 
 // Lire la variable d'environnement pour déterminer le mode
-const String appMode = String.fromEnvironment('APP_MODE', defaultValue: 'cloud'); // 'cloud' ou 'local'
+const String appMode = String.fromEnvironment('APP_MODE', defaultValue: 'remote'); // 'cloud', 'local' ou 'remote'
+
+// Configuration du serveur distant
+const String apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://51.159.110.4:3000');
+const String apiKey = String.fromEnvironment('API_KEY', defaultValue: '2a0a606dd7133f983b9b700f975c6e7f2931c17c41f2b6294ea70111afdee566');
 
 void setupServiceLocator() {
   print("--- Setting up Service Locator in mode: $appMode ---");
@@ -113,6 +120,17 @@ void setupServiceLocator() {
     );
     
     print("INFO: Enregistrement de WhisperSpeechRepositoryImpl pour le mode local.");
+  } else if (appMode == 'remote') {
+    // Mode Remote: Enregistrer l'implémentation distante
+    serviceLocator.registerLazySingleton<IAzureSpeechRepository>(
+      () => RemoteSpeechRepository(
+        apiUrl: apiUrl,
+        apiKey: apiKey,
+        audioRepository: serviceLocator<AudioRepository>(),
+      )
+    );
+    
+    print("INFO: Enregistrement de RemoteSpeechRepository pour le mode distant.");
   } else {
     // Mode Cloud: Enregistrer l'implémentation Azure
     serviceLocator.registerLazySingleton<IAzureSpeechRepository>(
@@ -147,6 +165,15 @@ void setupServiceLocator() {
         modelName: dotenv.env['MISTRAL_MODEL_NAME'] ?? 'mistral-large-latest',
       )
     );
+  } else if (appMode == 'remote') {
+    // Mode Remote: Enregistrer RemoteFeedbackService
+    serviceLocator.registerLazySingleton<IFeedbackService>(
+      () => RemoteFeedbackService(
+        apiUrl: apiUrl,
+        apiKey: apiKey,
+      )
+    );
+    print("INFO: Enregistrement de RemoteFeedbackService pour le mode distant.");
   } else {
     // Mode Cloud: Enregistrer OpenAI (via Azure OpenAI)
     serviceLocator.registerLazySingleton<IFeedbackService>(
@@ -180,6 +207,16 @@ void setupServiceLocator() {
         )
       );
       print("INFO: Enregistrement de PiperTtsService pour le mode local.");
+  } else if (appMode == 'remote') {
+      // Mode Remote: Enregistrer RemoteTtsService
+      serviceLocator.registerLazySingleton<ITtsService>(
+        () => RemoteTtsService(
+          apiUrl: apiUrl,
+          apiKey: apiKey,
+          audioPlayer: serviceLocator<AudioPlayer>(),
+        )
+      );
+      print("INFO: Enregistrement de RemoteTtsService pour le mode distant.");
   } else {
       // Mode Cloud: Enregistrer AzureTtsService
       serviceLocator.registerLazySingleton<ITtsService>(

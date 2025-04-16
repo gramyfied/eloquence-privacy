@@ -7,7 +7,7 @@ import '../../../domain/repositories/audio_repository.dart';
 import '../../../domain/repositories/azure_speech_repository.dart'; // Ajout de l'import
 import '../../../services/service_locator.dart';
 import '../../../services/azure/azure_speech_service.dart';
-import '../../../services/openai/openai_feedback_service.dart'; // AJOUT: Importer OpenAI Service
+import '../../../services/feedback/feedback_service_interface.dart'; // Utiliser l'interface au lieu du service spécifique
 import '../../widgets/microphone_button.dart';
 import '../../widgets/visual_effects/info_modal.dart';
 import '../../widgets/visual_effects/celebration_effect.dart';
@@ -38,7 +38,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   bool _isRecording = false;
   AudioRepository? _audioRepository;
   AzureSpeechService? _azureSpeechService;
-  OpenAIFeedbackService? _openAIService; // AJOUT: Service OpenAI
+  IFeedbackService? _feedbackService; // Utiliser l'interface au lieu du service spécifique
   Stream<double>? _audioLevelStream;
   bool _isLoadingText = true; // AJOUT: État de chargement du texte
   String? _loadingError; // AJOUT: Erreur de chargement
@@ -69,7 +69,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     print('[ExerciseScreen initState] START - Widget HashCode: ${widget.hashCode}');
     _audioRepository = serviceLocator<AudioRepository>();
     _azureSpeechService = serviceLocator<AzureSpeechService>();
-    _openAIService = serviceLocator<OpenAIFeedbackService>(); // Obtenir le service OpenAI
+    _feedbackService = serviceLocator<IFeedbackService>(); // Obtenir le service de feedback via l'interface
     _exampleAudioProvider = serviceLocator<ExampleAudioProvider>();
     print('[ExerciseScreen initState] Retrieved _azureSpeechService instance with HashCode: ${_azureSpeechService.hashCode}');
 
@@ -91,8 +91,8 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
         throw Exception('Azure Speech Service non initialisé.');
       }
 
-      // Générer la phrase via OpenAI
-      _generatedTextToRead = await _openAIService!.generateArticulationSentence(
+      // Générer la phrase via le service de feedback
+      _generatedTextToRead = await _feedbackService!.generateArticulationSentence(
         // Adapter les paramètres si nécessaire pour la stabilité vocale
         minWords: 10,
         maxWords: 18,

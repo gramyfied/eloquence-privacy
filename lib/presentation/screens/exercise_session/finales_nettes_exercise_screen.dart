@@ -11,7 +11,7 @@ import '../../../domain/repositories/azure_speech_repository.dart'; // Ajout de 
 // import '../../../domain/repositories/audio_repository.dart'; // This line is commented out in the actual file content!
 import '../../../infrastructure/repositories/record_audio_repository.dart'; // Chemin corrigé
 import '../../../services/azure/azure_speech_service.dart';
-import '../../../services/openai/openai_feedback_service.dart'; // Importer le service OpenAI
+import '../../../services/feedback/feedback_service_interface.dart'; // Utiliser l'interface au lieu du service spécifique
 import '../../../services/service_locator.dart';
 import '../../../domain/entities/azure_pronunciation_assessment.dart'; // Importer l'entité d'évaluation
 // Imports des widgets communs supprimés car ils n'existent pas ou sont remplacés
@@ -39,7 +39,7 @@ class _FinalesNettesExerciseScreenState extends State<FinalesNettesExerciseScree
   // Services
   late final RecordAudioRepository _audioRecorderService; // Classe corrigée
   late final AzureSpeechService _azureSpeechService;
-  late final OpenAIFeedbackService _openAIService; // Ajouter le service OpenAI
+  late final IFeedbackService _feedbackService; // Utiliser l'interface au lieu du service spécifique
   StreamSubscription? _recognitionSubscription;
   StreamSubscription<Uint8List>? _audioChunkSubscription; // Spécifier le type Uint8List
   // Timer? _sendBufferTimer; // Retiré
@@ -66,7 +66,7 @@ class _FinalesNettesExerciseScreenState extends State<FinalesNettesExerciseScree
     // Utiliser le type correct pour serviceLocator
     _audioRecorderService = serviceLocator<RecordAudioRepository>();
     _azureSpeechService = serviceLocator<AzureSpeechService>();
-    _openAIService = serviceLocator<OpenAIFeedbackService>();
+    _feedbackService = serviceLocator<IFeedbackService>(); // Obtenir le service via l'interface
 
     // Appeler l'initialisation asynchrone
     _initializeExercise();
@@ -85,7 +85,7 @@ class _FinalesNettesExerciseScreenState extends State<FinalesNettesExerciseScree
       }
 
       // Générer les mots via OpenAI
-      final generatedWordsData = await _openAIService.generateFinalesNettesWords(
+      final generatedWordsData = await _feedbackService.generateFinalesNettesWords(
         exerciseLevel: _difficultyToString(widget.exercise.difficulty),
         // wordCount: 6, // Utiliser la valeur par défaut ou ajuster
       );
@@ -526,7 +526,7 @@ class _FinalesNettesExerciseScreenState extends State<FinalesNettesExerciseScree
 
             // 6. Appeler OpenAI pour le feedback
             try {
-              generatedFeedback = await _openAIService.generateFeedback(
+              generatedFeedback = await _feedbackService.generateFeedback(
                 exerciseType: "Finales Nettes", // Type spécifique
                 exerciseLevel: widget.exercise.difficulty.name, // Utiliser la propriété .name de l'enum
                 spokenText: bestHypothesis.display ?? rawResult['text'] ?? '', // Texte reconnu

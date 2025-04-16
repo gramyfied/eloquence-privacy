@@ -44,4 +44,9 @@ class InvalidInputException extends AppException {
   const InvalidInputException(super.message, [super.stackTrace]);
 }
 
+/// Exception levée lors d'une erreur d'authentification ou d'autorisation.
+class UnauthorizedException extends AppException {
+  const UnauthorizedException(super.message, [super.stackTrace]);
+}
+
 // Ajoutez d'autres types d'exceptions spécifiques si nécessaire.

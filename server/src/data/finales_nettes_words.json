@@ -1,0 +1,674 @@
+{
+  "fr": {
+    "facile": {
+      "tion": [
+        "action",
+        "attention",
+        "solution",
+        "nation",
+        "éducation",
+        "position",
+        "condition",
+        "situation",
+        "direction",
+        "relation"
+      ],
+      "ment": [
+        "simplement",
+        "moment",
+        "rapidement",
+        "changement",
+        "mouvement",
+        "sentiment",
+        "élément",
+        "complètement",
+        "exactement",
+        "vraiment"
+      ],
+      "ble": [
+        "table",
+        "possible",
+        "ensemble",
+        "capable",
+        "agréable",
+        "terrible",
+        "sensible",
+        "faible",
+        "double",
+        "meuble"
+      ],
+      "que": [
+        "politique",
+        "musique",
+        "pratique",
+        "physique",
+        "technique",
+        "logique",
+        "publique",
+        "unique",
+        "classique",
+        "magique"
+      ],
+      "eur": [
+        "bonheur",
+        "couleur",
+        "fleur",
+        "chaleur",
+        "douceur",
+        "hauteur",
+        "valeur",
+        "erreur",
+        "moteur",
+        "joueur"
+      ],
+      "age": [
+        "voyage",
+        "message",
+        "visage",
+        "courage",
+        "village",
+        "image",
+        "langage",
+        "plage",
+        "nuage",
+        "fromage"
+      ]
+    },
+    "moyen": {
+      "tion": [
+        "révolution",
+        "constitution",
+        "proposition",
+        "application",
+        "organisation",
+        "définition",
+        "opération",
+        "conversation",
+        "réduction",
+        "évaluation"
+      ],
+      "ment": [
+        "développement",
+        "environnement",
+        "gouvernement",
+        "établissement",
+        "fonctionnement",
+        "raisonnement",
+        "comportement",
+        "entraînement",
+        "rassemblement",
+        "déplacement"
+      ],
+      "ble": [
+        "responsable",
+        "formidable",
+        "véritable",
+        "disponible",
+        "incroyable",
+        "préférable",
+        "semblable",
+        "favorable",
+        "rentable",
+        "considérable"
+      ],
+      "que": [
+        "scientifique",
+        "électronique",
+        "économique",
+        "dynamique",
+        "historique",
+        "statistique",
+        "authentique",
+        "dramatique",
+        "symbolique",
+        "spécifique"
+      ],
+      "eur": [
+        "professeur",
+        "directeur",
+        "ampleur",
+        "fraîcheur",
+        "grandeur",
+        "fournisseur",
+        "visiteur",
+        "chercheur",
+        "profondeur",
+        "conducteur"
+      ],
+      "age": [
+        "personnage",
+        "avantage",
+        "héritage",
+        "témoignage",
+        "apprentissage",
+        "paysage",
+        "entourage",
+        "éclairage",
+        "reportage",
+        "assemblage"
+      ]
+    },
+    "difficile": {
+      "tion": [
+        "conceptualisation",
+        "internationalisation",
+        "démocratisation",
+        "industrialisation",
+        "commercialisation",
+        "décentralisation",
+        "personnification",
+        "réglementation",
+        "expérimentation",
+        "institutionnalisation"
+      ],
+      "ment": [
+        "perfectionnement",
+        "approfondissement",
+        "accomplissement",
+        "épanouissement",
+        "divertissement",
+        "enrichissement",
+        "bouleversement",
+        "anéantissement",
+        "éclaircissement",
+        "assujettissement"
+      ],
+      "ble": [
+        "indispensable",
+        "imperceptible",
+        "irremplaçable",
+        "incontournable",
+        "imprévisible",
+        "inépuisable",
+        "infranchissable",
+        "inimaginable",
+        "incomparable",
+        "indomptable"
+      ],
+      "que": [
+        "philosophique",
+        "méthodologique",
+        "technologique",
+        "psychologique",
+        "sociologique",
+        "diplomatique",
+        "académique",
+        "énigmatique",
+        "caractéristique",
+        "problématique"
+      ],
+      "eur": [
+        "investigateur",
+        "coordinateur",
+        "administrateur",
+        "conservateur",
+        "innovateur",
+        "provocateur",
+        "explorateur",
+        "consommateur",
+        "observateur",
+        "manipulateur"
+      ],
+      "age": [
+        "camouflage",
+        "sabotage",
+        "tatouage",
+        "engrenage",
+        "décalage",
+        "recyclage",
+        "calibrage",
+        "dérapage",
+        "verrouillage",
+        "atterrissage"
+      ]
+    }
+  },
+  "en": {
+    "facile": {
+      "tion": [
+        "action",
+        "attention",
+        "solution",
+        "nation",
+        "education",
+        "position",
+        "condition",
+        "situation",
+        "direction",
+        "relation"
+      ],
+      "ment": [
+        "moment",
+        "movement",
+        "statement",
+        "development",
+        "government",
+        "argument",
+        "treatment",
+        "element",
+        "payment",
+        "agreement"
+      ],
+      "ble": [
+        "table",
+        "possible",
+        "responsible",
+        "available",
+        "terrible",
+        "comfortable",
+        "double",
+        "capable",
+        "visible",
+        "flexible"
+      ],
+      "que": [
+        "technique",
+        "unique",
+        "antique",
+        "critique",
+        "physique",
+        "mystique",
+        "oblique",
+        "baroque",
+        "picturesque",
+        "opaque"
+      ],
+      "er": [
+        "teacher",
+        "player",
+        "water",
+        "paper",
+        "number",
+        "summer",
+        "winter",
+        "dinner",
+        "letter",
+        "sister"
+      ],
+      "age": [
+        "message",
+        "language",
+        "image",
+        "village",
+        "courage",
+        "voyage",
+        "package",
+        "damage",
+        "storage",
+        "marriage"
+      ]
+    },
+    "moyen": {
+      "tion": [
+        "revolution",
+        "constitution",
+        "proposition",
+        "application",
+        "organization",
+        "definition",
+        "operation",
+        "conversation",
+        "reduction",
+        "evaluation"
+      ],
+      "ment": [
+        "development",
+        "environment",
+        "government",
+        "establishment",
+        "management",
+        "requirement",
+        "commitment",
+        "investment",
+        "assessment",
+        "improvement"
+      ],
+      "ble": [
+        "responsible",
+        "comfortable",
+        "incredible",
+        "available",
+        "valuable",
+        "suitable",
+        "acceptable",
+        "remarkable",
+        "favorable",
+        "considerable"
+      ],
+      "que": [
+        "technique",
+        "unique",
+        "critique",
+        "physique",
+        "mystique",
+        "baroque",
+        "picturesque",
+        "opaque",
+        "antique",
+        "oblique"
+      ],
+      "er": [
+        "teacher",
+        "player",
+        "manager",
+        "officer",
+        "customer",
+        "designer",
+        "reporter",
+        "consumer",
+        "developer",
+        "researcher"
+      ],
+      "age": [
+        "message",
+        "language",
+        "image",
+        "village",
+        "courage",
+        "voyage",
+        "package",
+        "damage",
+        "storage",
+        "marriage"
+      ]
+    },
+    "difficile": {
+      "tion": [
+        "conceptualization",
+        "internationalization",
+        "democratization",
+        "industrialization",
+        "commercialization",
+        "decentralization",
+        "personification",
+        "experimentation",
+        "institutionalization",
+        "standardization"
+      ],
+      "ment": [
+        "accomplishment",
+        "disappointment",
+        "entertainment",
+        "enlightenment",
+        "reinforcement",
+        "encouragement",
+        "acknowledgment",
+        "advancement",
+        "empowerment",
+        "disillusionment"
+      ],
+      "ble": [
+        "indispensable",
+        "imperceptible",
+        "irreplaceable",
+        "unpredictable",
+        "inexhaustible",
+        "insurmountable",
+        "unimaginable",
+        "incomparable",
+        "indomitable",
+        "unbelievable"
+      ],
+      "que": [
+        "philosophique",
+        "methodologique",
+        "technologique",
+        "psychologique",
+        "sociologique",
+        "diplomatique",
+        "academique",
+        "enigmatique",
+        "caracteristique",
+        "problematique"
+      ],
+      "er": [
+        "investigator",
+        "coordinator",
+        "administrator",
+        "conservator",
+        "innovator",
+        "provocator",
+        "explorer",
+        "consumer",
+        "observer",
+        "manipulator"
+      ],
+      "age": [
+        "camouflage",
+        "sabotage",
+        "tattooage",
+        "leverage",
+        "shortage",
+        "recycling",
+        "calibration",
+        "skidding",
+        "locking",
+        "landing"
+      ]
+    }
+  },
+  "es": {
+    "facile": {
+      "ción": [
+        "acción",
+        "atención",
+        "solución",
+        "nación",
+        "educación",
+        "posición",
+        "condición",
+        "situación",
+        "dirección",
+        "relación"
+      ],
+      "mento": [
+        "momento",
+        "movimiento",
+        "sentimiento",
+        "elemento",
+        "pensamiento",
+        "departamento",
+        "tratamiento",
+        "conocimiento",
+        "documento",
+        "alimento"
+      ],
+      "ble": [
+        "posible",
+        "amable",
+        "notable",
+        "agradable",
+        "terrible",
+        "sensible",
+        "doble",
+        "responsable",
+        "visible",
+        "flexible"
+      ],
+      "dad": [
+        "ciudad",
+        "verdad",
+        "realidad",
+        "calidad",
+        "cantidad",
+        "sociedad",
+        "unidad",
+        "actividad",
+        "necesidad",
+        "felicidad"
+      ],
+      "dor": [
+        "jugador",
+        "trabajador",
+        "profesor",
+        "director",
+        "contador",
+        "vendedor",
+        "comprador",
+        "ganador",
+        "conductor",
+        "investigador"
+      ],
+      "aje": [
+        "viaje",
+        "mensaje",
+        "lenguaje",
+        "paisaje",
+        "personaje",
+        "equipaje",
+        "aprendizaje",
+        "garaje",
+        "tatuaje",
+        "maquillaje"
+      ]
+    },
+    "moyen": {
+      "ción": [
+        "revolución",
+        "constitución",
+        "proposición",
+        "aplicación",
+        "organización",
+        "definición",
+        "operación",
+        "conversación",
+        "reducción",
+        "evaluación"
+      ],
+      "mento": [
+        "departamento",
+        "pensamiento",
+        "conocimiento",
+        "tratamiento",
+        "funcionamiento",
+        "razonamiento",
+        "comportamiento",
+        "entrenamiento",
+        "desplazamiento",
+        "establecimiento"
+      ],
+      "ble": [
+        "responsable",
+        "formidable",
+        "disponible",
+        "increíble",
+        "preferible",
+        "semejante",
+        "favorable",
+        "rentable",
+        "considerable",
+        "indispensable"
+      ],
+      "dad": [
+        "realidad",
+        "sociedad",
+        "actividad",
+        "necesidad",
+        "felicidad",
+        "capacidad",
+        "posibilidad",
+        "oportunidad",
+        "personalidad",
+        "responsabilidad"
+      ],
+      "dor": [
+        "trabajador",
+        "profesor",
+        "director",
+        "contador",
+        "vendedor",
+        "comprador",
+        "ganador",
+        "conductor",
+        "investigador",
+        "administrador"
+      ],
+      "aje": [
+        "viaje",
+        "mensaje",
+        "lenguaje",
+        "paisaje",
+        "personaje",
+        "equipaje",
+        "aprendizaje",
+        "garaje",
+        "tatuaje",
+        "maquillaje"
+      ]
+    },
+    "difficile": {
+      "ción": [
+        "conceptualización",
+        "internacionalización",
+        "democratización",
+        "industrialización",
+        "comercialización",
+        "descentralización",
+        "personificación",
+        "experimentación",
+        "institucionalización",
+        "estandarización"
+      ],
+      "mento": [
+        "perfeccionamiento",
+        "profundización",
+        "cumplimiento",
+        "florecimiento",
+        "entretenimiento",
+        "enriquecimiento",
+        "trastorno",
+        "aniquilamiento",
+        "esclarecimiento",
+        "sometimiento"
+      ],
+      "ble": [
+        "indispensable",
+        "imperceptible",
+        "irremplazable",
+        "impredecible",
+        "inagotable",
+        "insuperable",
+        "inimaginable",
+        "incomparable",
+        "indomable",
+        "increíble"
+      ],
+      "dad": [
+        "responsabilidad",
+        "personalidad",
+        "oportunidad",
+        "posibilidad",
+        "capacidad",
+        "felicidad",
+        "necesidad",
+        "actividad",
+        "sociedad",
+        "realidad"
+      ],
+      "dor": [
+        "investigador",
+        "coordinador",
+        "administrador",
+        "conservador",
+        "innovador",
+        "provocador",
+        "explorador",
+        "consumidor",
+        "observador",
+        "manipulador"
+      ],
+      "aje": [
+        "camuflaje",
+        "sabotaje",
+        "tatuaje",
+        "engranaje",
+        "desfase",
+        "reciclaje",
+        "calibración",
+        "derrapaje",
+        "bloqueo",
+        "aterrizaje"
+      ]
+    }
+  }
+}
