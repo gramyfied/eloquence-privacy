@@ -6,7 +6,7 @@
 set -e
 
 # URL du dépôt GitHub
-REPO_URL="https://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@github.com/gramyfied/eloquence-privacy-backend.git"
+REPO_URL="https://github.com/gramyfied/eloquence-privacy-backend.git"
 echo "Dépôt cible: $REPO_URL"
 
 # Créer le répertoire du projet s'il n'existe pas

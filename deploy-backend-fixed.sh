@@ -40,7 +40,7 @@ rm -rf ~/eloquence-server
 
 # Étape 2: Cloner le dépôt avec la branche corrigée
 echo -e "${GREEN}Étape 2: Clonage du dépôt (branche dockerfile-clean-node18)${NC}"
-git clone -b dockerfile-clean-node18 https://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@github.com/gramyfied/eloquence-privacy-backend.git ~/eloquence-server
+git clone -b dockerfile-clean-node18 https://github.com/gramyfied/eloquence-privacy-backend.git ~/eloquence-server
 
 if [ $? -ne 0 ]; then
   echo -e "${RED}Erreur lors du clonage du dépôt. Vérifiez le token et l'URL.${NC}"
