@@ -17,7 +17,7 @@ import 'interaction_manager.dart';
 /// et réduit les problèmes de coupure de parole.
 class EnhancedInteractionManager extends InteractionManager {
   // Délais configurables pour les transitions d'état
-  final int delayAfterSpeakingMs = 1000;  // Délai après que l'IA a fini de parler (augmenté)
+  final int delayAfterSpeakingMs = 1500;  // Délai après que l'IA a fini de parler (augmenté davantage)
   final int minUtteranceDurationMs = 2000;  // Durée minimale d'un énoncé utilisateur (augmentée)
   final int maxSilenceDurationMs = 1800;  // Silence max avant de considérer fin de phrase (augmenté)
   
