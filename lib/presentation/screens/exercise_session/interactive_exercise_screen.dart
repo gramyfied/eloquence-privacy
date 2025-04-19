@@ -556,62 +556,45 @@ class _InteractiveExerciseScreenState extends State<InteractiveExerciseScreen> {
   }
   */
 
-  // Widget pour le bouton microphone flottant
+  // Widget pour le bouton flottant (démarrer ou arrêter)
   Widget _buildMicButton(BuildContext context, InteractionManager manager) {
     // Utiliser les ValueListenable pour réagir aux changements du pipeline
     bool isListening = manager.isListening.value;
     bool isSpeaking = manager.isSpeaking.value;
     InteractionState currentState = manager.currentState;
 
-    // Logique simplifiée : on peut écouter si l'état général est 'ready' ET que l'IA ne parle pas.
-    // Ou si l'état est 'speaking' mais que l'IA a *juste* fini (isSpeaking.value est false).
-    // La logique exacte peut dépendre de la vitesse de mise à jour des états vs ValueListenable.
-    // On se base principalement sur isListening pour le bouton stop.
-    // On se base sur !isListening ET !isSpeaking ET state == ready pour le bouton start.
-
-    bool canListen = !isListening && !isSpeaking && (currentState == InteractionState.ready || currentState == InteractionState.speaking); // Ajustement: on peut vouloir écouter dès que l'IA se tait
-
-    // Déterminer l'icône et l'action en fonction de l'état
-    IconData micIcon;
-    Color micColor;
-    VoidCallback? onPressed;
-    Widget? fabChild;
-
-    if (isListening) {
-      micIcon = Icons.stop;
-      micColor = Colors.redAccent;
-      onPressed = () { // AJOUT: Haptic feedback
-        HapticFeedback.lightImpact();
-        _interactionManager?.stopListening(); // Utiliser la référence locale
-      };
-      // Animation de pulsation pendant l'écoute
-      fabChild = PulsatingWidget(
-         child: Icon(micIcon, color: Colors.white, size: 30),
+    // Si nous sommes en mode briefing, afficher un bouton de démarrage
+    if (currentState == InteractionState.briefing) {
+      return FloatingActionButton.extended(
+        onPressed: () {
+          HapticFeedback.lightImpact();
+          print("Briefing terminé, appel de startInteraction...");
+          _interactionManager?.startInteraction();
+        },
+        backgroundColor: AppTheme.primaryColor,
+        icon: Icon(Icons.play_arrow, color: Colors.white),
+        label: Text("Démarrer", style: TextStyle(color: Colors.white)),
+        tooltip: 'Démarrer la conversation',
       );
-    } else if (canListen && currentState != InteractionState.thinking && currentState != InteractionState.analyzing) {
-       micIcon = Icons.mic;
-       micColor = AppTheme.primaryColor;
-       final language = manager.currentScenario?.language ?? 'fr-FR';
-       onPressed = () { // AJOUT: Haptic feedback
-         HapticFeedback.lightImpact();
-         _interactionManager?.startListening(language); // Utiliser la référence locale
-       };
-       fabChild = Icon(micIcon, color: Colors.white, size: 30);
-    } else {
-       // État désactivé (IA parle, réfléchit, analyse, erreur, etc.)
-       micIcon = Icons.mic_off;
-       micColor = Colors.grey.shade700;
-       onPressed = null; // Désactivé
-       fabChild = Icon(micIcon, color: Colors.grey.shade400, size: 30);
     }
-
-
-    return FloatingActionButton(
-      onPressed: onPressed,
-      backgroundColor: micColor, // Utiliser le widget enfant (avec ou sans animation)
-      tooltip: isListening ? 'Arrêter l\'enregistrement' : (canListen ? 'Appuyer pour parler' : 'Attendez...'),
-      child: fabChild,
-    );
+    
+    // Si nous sommes en train d'écouter, afficher un bouton d'arrêt
+    if (isListening) {
+      return FloatingActionButton(
+        onPressed: () {
+          HapticFeedback.lightImpact();
+          _interactionManager?.stopListening();
+        },
+        backgroundColor: Colors.redAccent,
+        tooltip: 'Arrêter l\'enregistrement',
+        child: PulsatingWidget(
+          child: Icon(Icons.stop, color: Colors.white, size: 30),
+        ),
+      );
+    }
+    
+    // Dans les autres états, ne pas afficher de bouton
+    return const SizedBox.shrink();
   }
 }
 
