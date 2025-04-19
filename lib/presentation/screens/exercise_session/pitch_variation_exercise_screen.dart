@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math; // Needed for analysis placeholders
-// Needed for audio chunks
+import 'dart:typed_data'; // Needed for audio chunks
 import 'dart:ui' show lerpDouble; // Import lerpDouble
 
 import 'package:flutter/material.dart';
@@ -641,7 +641,11 @@ class PitchVariationExerciseScreen extends StatelessWidget {
          openaiService: serviceLocator<OpenAIFeedbackService>(),
          exercise: exercise,
        ),
-      child: PitchVariationView(exercise: exercise),
+      child: PitchVariationView(
+        exercise: exercise,
+        onExerciseCompleted: onExerciseCompleted,
+        onExitPressed: onExitPressed,
+      ),
     );
   }
 }
@@ -649,8 +653,15 @@ class PitchVariationExerciseScreen extends StatelessWidget {
 // Separate widget for the view, listening to Bloc state
 class PitchVariationView extends StatelessWidget {
    final Exercise exercise;
+   final Function(Map<String, dynamic> results)? onExerciseCompleted;
+   final VoidCallback? onExitPressed;
 
-  const PitchVariationView({super.key, required this.exercise});
+  const PitchVariationView({
+    super.key, 
+    required this.exercise,
+    this.onExerciseCompleted,
+    this.onExitPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
