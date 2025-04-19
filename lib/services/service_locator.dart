@@ -51,6 +51,11 @@ import 'interactive_exercise/feedback_analysis_service.dart';
 import 'interactive_exercise/realtime_audio_pipeline.dart';
 import 'interactive_exercise/enhanced_realtime_audio_pipeline.dart';
 import 'evaluation/evaluation_validator_service.dart'; // Service de validation des évaluations
+import '../services/audio/prosody_endpoint_detector.dart'; // Détecteur de prosodie
+import '../services/audio/dynamic_silence_detector.dart'; // Détecteur de silence dynamique
+import '../core/utils/state_transition.dart'; // Gestionnaire de transitions d'état
+import '../core/utils/enhanced_error_handler.dart'; // Gestionnaire d'erreurs amélioré
+import '../core/utils/console_logger.dart'; // Logger console
 import '../presentation/providers/interaction_manager.dart'; // Assurez-vous que le chemin est correct
 import '../presentation/providers/i_interaction_manager.dart'; // Interface pour InteractionManager
 import '../presentation/providers/enhanced_interaction_manager.dart'; // Décorateur pour InteractionManager
@@ -332,6 +337,36 @@ void setupServiceLocator() {
   // Enregistrer le service de validation des évaluations
   serviceLocator.registerLazySingleton<EvaluationValidatorService>(
     () => EvaluationValidatorService()
+  );
+  
+  // Enregistrer le détecteur de prosodie
+  serviceLocator.registerLazySingleton<ProsodyEndpointDetector>(
+    () => ProsodyEndpointDetector()
+  );
+  
+  // Enregistrer le détecteur de silence dynamique
+  serviceLocator.registerLazySingleton<DynamicSilenceDetector>(
+    () => DynamicSilenceDetector(
+      baseSilenceDurationMs: 1800,
+      minSilenceDurationMs: 1200,
+      maxSilenceDurationMs: 2500,
+    )
+  );
+  
+  // Enregistrer le gestionnaire de transitions d'état
+  serviceLocator.registerLazySingleton<StateTransitionManager>(
+    () => StateTransitionManager()
+  );
+  
+  // Enregistrer le gestionnaire d'erreurs amélioré
+  serviceLocator.registerLazySingleton<EnhancedErrorHandler>(
+    () => EnhancedErrorHandler(
+      errorDisplayer: (message) {
+        // Afficher le message d'erreur à l'utilisateur
+        // (à implémenter selon les besoins de l'application)
+        ConsoleLogger.error("UI Error: $message");
+      }
+    )
   );
 
   // Enregistrer InteractionManager (commun)
