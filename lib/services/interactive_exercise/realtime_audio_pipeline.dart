@@ -136,16 +136,30 @@ class RealTimeAudioPipeline {
   void _ensureControllersInitialized() {
     if (_controllersDisposed) {
       print("RealTimeAudioPipeline: Recreating disposed controllers");
-      _isListeningController = ValueNotifier<bool>(false);
-      _isSpeakingController = ValueNotifier<bool>(false);
-      _errorController = StreamController<String>.broadcast();
-      _userFinalTranscriptController = StreamController<String>.broadcast();
-      _userPartialTranscriptController = StreamController<String>.broadcast();
-      _ttsCompletionController = StreamController<bool>.broadcast();
+      
+      // Vérifier si les controllers sont déjà initialisés avant de les recréer
+      try {
+        // Tester si les controllers sont déjà initialisés
+        _isListeningController.value;
+        _isSpeakingController.value;
+        
+        // Si on arrive ici, c'est que les controllers existent déjà
+        print("RealTimeAudioPipeline: Controllers already exist, skipping recreation");
+      } catch (e) {
+        // Si une exception est levée, c'est que les controllers n'existent pas ou sont disposés
+        // Dans ce cas, on les recrée
+        _isListeningController = ValueNotifier<bool>(false);
+        _isSpeakingController = ValueNotifier<bool>(false);
+        _errorController = StreamController<String>.broadcast();
+        _userFinalTranscriptController = StreamController<String>.broadcast();
+        _userPartialTranscriptController = StreamController<String>.broadcast();
+        _ttsCompletionController = StreamController<bool>.broadcast();
+        
+        // Réabonner à l'état TTS
+        _subscribeToTtsState();
+      }
+      
       _controllersDisposed = false;
-
-      // Réabonner à l'état TTS
-      _subscribeToTtsState();
     }
   }
 

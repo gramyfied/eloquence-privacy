@@ -128,6 +128,32 @@ class ScenarioGeneratorService {
           startingPrompt: "Bonjour, je suis prêt à écouter votre présentation sur ce nouveau projet.",
           language: "fr-FR",
         );
+      // Ajout du cas pour l'ID "conversation-convaincante"
+      case "conversation-convaincante":
+        return ScenarioContext(
+          exerciseId: exerciseId,
+          exerciseTitle: "Conversation Convaincante",
+          scenarioDescription: "Vous souhaitez négocier une augmentation de salaire avec votre manager.",
+          userRole: "Employé(e)",
+          aiRole: "Manager RH",
+          aiObjective: "Évaluer la demande et rester dans les limites budgétaires (max 5%).",
+          aiConstraints: ["Mentionner la politique salariale.", "Considérer la performance récente."],
+          startingPrompt: "Bonjour. Vous vouliez discuter de votre rémunération. Qu'avez-vous en tête ?",
+          language: "fr-FR",
+        );
+      // Ajout du cas pour l'ID "discours-improvise"
+      case "discours-improvise":
+        return ScenarioContext(
+          exerciseId: exerciseId,
+          exerciseTitle: "Discours Improvisé",
+          scenarioDescription: "Réagissez à l'affirmation suivante et défendez votre point de vue.",
+          userRole: "Orateur/trice",
+          aiRole: "Modérateur/Contradicteur",
+          aiObjective: "Débattre brièvement sur le sujet 'Le télétravail total est l'avenir'.",
+          aiConstraints: ["Prendre la position opposée à celle de l'utilisateur.", "Limiter le débat à 2-3 échanges."],
+          startingPrompt: "Affirmation : 'Le télétravail total est la meilleure solution pour toutes les entreprises.' Qu'en pensez-vous ?",
+          language: "fr-FR",
+        );
       default:
         // Default or error case for unknown exercises in this category
         throw UnimplementedError("Scenario generation not implemented for exercise ID: $exerciseId");
