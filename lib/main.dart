@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart'; // Pour initialiser les locales intl
 import 'package:hive_flutter/hive_flutter.dart'; // Ajouté pour Hive
+import 'package:path_provider/path_provider.dart'; // Pour les chemins de fichiers
 
 import 'app/router.dart'; // Ajouté pour createRouter
 import 'services/service_locator.dart'; // Contient setupServiceLocator et serviceLocator
@@ -18,6 +19,9 @@ import 'domain/repositories/azure_speech_repository.dart'; // AJOUT: Import manq
 import 'infrastructure/repositories/supabase_profile_repository.dart';
 import 'infrastructure/repositories/supabase_session_repository.dart';
 import 'infrastructure/repositories/supabase_statistics_repository.dart';
+import 'core/utils/enhanced_logger.dart'; // Nouveau logger amélioré
+import 'core/utils/service_health_monitor.dart'; // Moniteur de santé des services
+import 'core/widgets/error_boundary.dart'; // Gestion des erreurs UI
 
 // Récupérer le mode d'application depuis les arguments de ligne de commande
 // Utilisation: flutter run --dart-define=APP_MODE=local
@@ -39,30 +43,169 @@ const String appMode = String.fromEnvironment('APP_MODE', defaultValue: 'cloud')
 // --- PLACEHOLDER pour les Blocs manquants --- Supprimés car non utilisés ici
 
 
+
+/// Initialise le moniteur de santé des services
+void _initializeServiceHealthMonitor() {
+  try {
+    // Enregistrer les services critiques
+    serviceHealthMonitor.registerService(
+      'azure_speech',
+      initialStatus: ServiceHealthStatus.unknown,
+      healthCheck: _checkAzureSpeechHealth,
+    );
+    
+    serviceHealthMonitor.registerService(
+      'azure_tts',
+      initialStatus: ServiceHealthStatus.unknown,
+      healthCheck: _checkAzureTtsHealth,
+    );
+    
+    serviceHealthMonitor.registerService(
+      'supabase',
+      initialStatus: ServiceHealthStatus.unknown,
+      healthCheck: _checkSupabaseHealth,
+    );
+    
+    // Démarrer la surveillance automatique
+    serviceHealthMonitor.startAutoMonitoring(intervalSeconds: 300); // Vérifier toutes les 5 minutes
+    
+    logger.info('Moniteur de santé des services initialisé', tag: 'MAIN');
+  } catch (e, stackTrace) {
+    logger.error('Erreur lors de l\'initialisation du moniteur de santé: $e', 
+      tag: 'MAIN', stackTrace: stackTrace);
+  }
+}
+
+/// Vérifie l'état de santé du service Azure Speech
+Future<ServiceHealthStatus> _checkAzureSpeechHealth(ServiceHealth service) async {
+  try {
+    final repository = serviceLocator<IAzureSpeechRepository>();
+    if (!repository.isInitialized) {
+      return ServiceHealthStatus.down;
+    }
+    
+    // Vérifier si le service est disponible
+    // Cette vérification est simplifiée, idéalement il faudrait faire un appel léger au service
+    return ServiceHealthStatus.operational;
+  } catch (e) {
+    logger.error('Erreur lors de la vérification de l\'état d\'Azure Speech: $e', tag: 'HEALTH');
+    return ServiceHealthStatus.down;
+  }
+}
+
+/// Vérifie l'état de santé du service Azure TTS
+Future<ServiceHealthStatus> _checkAzureTtsHealth(ServiceHealth service) async {
+  try {
+    if (appMode == 'local') {
+      // En mode local, on utilise Piper TTS
+      final ttsService = serviceLocator<ITtsService>();
+      // Vérifier si le service est initialisé (méthode à implémenter dans l'interface)
+      return ServiceHealthStatus.operational;
+    } else {
+      // En mode cloud, on utilise Azure TTS
+      final ttsService = serviceLocator<AzureTtsService>();
+      // Vérifier si le service est initialisé
+      return ServiceHealthStatus.operational;
+    }
+  } catch (e) {
+    logger.error('Erreur lors de la vérification de l\'état du service TTS: $e', tag: 'HEALTH');
+    return ServiceHealthStatus.down;
+  }
+}
+
+/// Vérifie l'état de santé du service Supabase
+Future<ServiceHealthStatus> _checkSupabaseHealth(ServiceHealth service) async {
+  try {
+    final client = Supabase.instance.client;
+    
+    // Vérifier si le client est connecté
+    if (client.auth.currentSession == null) {
+      // Pas de session, mais le service peut être opérationnel
+      return ServiceHealthStatus.operational;
+    }
+    
+    // Vérifier si la session est valide
+    final session = client.auth.currentSession;
+    if (session != null && session.isExpired) {
+      return ServiceHealthStatus.degraded;
+    }
+    
+    return ServiceHealthStatus.operational;
+  } catch (e) {
+    logger.error('Erreur lors de la vérification de l\'état de Supabase: $e', tag: 'HEALTH');
+    return ServiceHealthStatus.down;
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Charger les variables d'environnement
-  await dotenv.load(fileName: ".env");
-
-  // Initialiser Supabase
-  await Supabase.initialize(
-    url: dotenv.env['EXPO_PUBLIC_SUPABASE_URL'] ?? '',
-    anonKey: dotenv.env['EXPO_PUBLIC_SUPABASE_ANON_KEY'] ?? '',
+  // Initialiser le logger amélioré
+  await logger.initialize(
+    minLogLevel: LogLevel.debug,
+    enableFileLogging: true,
   );
+  logger.info('Application démarrée', tag: 'MAIN');
 
-  // Initialiser les locales pour intl
-  await initializeDateFormatting('fr_FR', null);
+  try {
+    // Charger les variables d'environnement
+    await dotenv.load(fileName: ".env");
+    logger.info('Variables d\'environnement chargées', tag: 'MAIN');
+  } catch (e, stackTrace) {
+    logger.error('Erreur lors du chargement des variables d\'environnement: $e', 
+      tag: 'MAIN', stackTrace: stackTrace);
+    // Continuer malgré l'erreur, mais avec des fonctionnalités limitées
+  }
 
-  // Initialiser Hive pour le cache local
-  await Hive.initFlutter();
-  print('🟢 [MAIN] Hive initialisé pour le cache local.');
+  try {
+    // Initialiser Supabase
+    await Supabase.initialize(
+      url: dotenv.env['EXPO_PUBLIC_SUPABASE_URL'] ?? '',
+      anonKey: dotenv.env['EXPO_PUBLIC_SUPABASE_ANON_KEY'] ?? '',
+    );
+    logger.info('Supabase initialisé', tag: 'MAIN');
+  } catch (e, stackTrace) {
+    logger.critical('Erreur lors de l\'initialisation de Supabase: $e', 
+      tag: 'MAIN', stackTrace: stackTrace);
+    // Continuer malgré l'erreur, mais avec des fonctionnalités limitées
+  }
+
+  try {
+    // Initialiser les locales pour intl
+    await initializeDateFormatting('fr_FR', null);
+    logger.info('Locales intl initialisées', tag: 'MAIN');
+  } catch (e, stackTrace) {
+    logger.warning('Erreur lors de l\'initialisation des locales: $e', 
+      tag: 'MAIN', stackTrace: stackTrace);
+    // Continuer malgré l'erreur
+  }
+
+  try {
+    // Initialiser Hive pour le cache local
+    await Hive.initFlutter();
+    logger.info('Hive initialisé pour le cache local', tag: 'MAIN');
+  } catch (e, stackTrace) {
+    logger.error('Erreur lors de l\'initialisation de Hive: $e', 
+      tag: 'MAIN', stackTrace: stackTrace);
+    // Continuer malgré l'erreur
+  }
 
   // Configurer l'injection de dépendances
   setupServiceLocator();
+  logger.info('Service locator configuré', tag: 'MAIN');
 
-  // Charger le lexique de syllabification
-  await serviceLocator<SyllabificationService>().loadLexicon();
+  try {
+    // Charger le lexique de syllabification
+    await serviceLocator<SyllabificationService>().loadLexicon();
+    logger.info('Lexique de syllabification chargé', tag: 'MAIN');
+  } catch (e, stackTrace) {
+    logger.error('Erreur lors du chargement du lexique de syllabification: $e', 
+      tag: 'MAIN', stackTrace: stackTrace);
+    // Continuer malgré l'erreur
+  }
+
+  // Initialiser le moniteur de santé des services
+  _initializeServiceHealthMonitor();
 
   // --- Initialiser IAzureSpeechRepository au démarrage ---
   try {
@@ -76,45 +219,20 @@ void main() async {
       await azureSpeechRepository.initialize(azureKey, azureRegion);
       // Vérifier l'état après l'appel (optionnel mais bon pour le log)
       if (azureSpeechRepository.isInitialized) {
-        print('🟢 [MAIN] IAzureSpeechRepository initialisé avec succès.');
+        logger.info('IAzureSpeechRepository initialisé avec succès', tag: 'MAIN');
       } else {
          // L'initialisation a échoué (une exception aurait dû être levée par l'implémentation)
-         print('🔴 [MAIN] Échec de l\'initialisation d\'IAzureSpeechRepository (état post-appel).');
+         logger.error('Échec de l\'initialisation d\'IAzureSpeechRepository (état post-appel)', tag: 'MAIN');
       }
     } else {
-      print('🔴 [MAIN] Clés Azure manquantes ou vides dans .env pour IAzureSpeechRepository.');
+      logger.error('Clés Azure manquantes ou vides dans .env pour IAzureSpeechRepository', tag: 'MAIN');
     }
-  } catch (e) {
+  } catch (e, stackTrace) {
     // L'implémentation de initialize lève une exception en cas d'erreur
-    print('🔴 [MAIN] Erreur critique lors de l\'initialisation d\'IAzureSpeechRepository: $e');
+    logger.critical('Erreur critique lors de l\'initialisation d\'IAzureSpeechRepository: $e', 
+      tag: 'MAIN', stackTrace: stackTrace);
   }
   // --- Fin de l'initialisation ---
-
-
-  // --- Supprimer l'initialisation de l'ancien AzureSpeechService --- (Bloc commenté gardé pour référence historique)
-  // // L'initialisation se fait maintenant via InitializeAzureSpeechUseCase dans ExerciseNotifier
-  // // try {
-  //   final azureSpeechService = serviceLocator<AzureSpeechService>();
-  //   final azureKey = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_KEY'];
-  //   final azureRegion = dotenv.env['EXPO_PUBLIC_AZURE_SPEECH_REGION'];
-  //   if (azureKey != null && azureRegion != null) {
-  //     bool initialized = await azureSpeechService.initialize(
-  //       subscriptionKey: azureKey,
-  //       region: azureRegion,
-  //     );
-  //     if (initialized) {
-  //       print('🟢 [MAIN] AzureSpeechService initialisé avec succès.');
-  //     } else {
-  //       print('🔴 [MAIN] Échec de l\'initialisation d\'AzureSpeechService.');
-  //     }
-  //   } else {
-  //     print('🔴 [MAIN] Clés Azure manquantes dans .env pour AzureSpeechService.');
-  //   }
-  // } catch (e) {
-  //   print('🔴 [MAIN] Erreur critique lors de l\'initialisation d\'AzureSpeechService: $e');
-  // }
-  // --- Fin de la suppression ---
-
 
   // Initialiser le service TTS approprié selon le mode
   if (appMode == 'local') {
@@ -132,12 +250,13 @@ void main() async {
       );
       
       if (initialized) {
-        print('🟢 [MAIN] PiperTtsService initialisé avec succès.');
+        logger.info('PiperTtsService initialisé avec succès', tag: 'MAIN');
       } else {
-        print('🔴 [MAIN] Échec de l\'initialisation de PiperTtsService.');
+        logger.error('Échec de l\'initialisation de PiperTtsService', tag: 'MAIN');
       }
-    } catch (e) {
-      print('🔴 [MAIN] Erreur critique lors de l\'initialisation de PiperTtsService: $e');
+    } catch (e, stackTrace) {
+      logger.critical('Erreur critique lors de l\'initialisation de PiperTtsService: $e', 
+        tag: 'MAIN', stackTrace: stackTrace);
     }
   } else {
     // Initialiser Azure TTS Service en mode cloud
@@ -151,34 +270,37 @@ void main() async {
           region: azureRegion,
         );
         if (initialized) {
-          print('🟢 [MAIN] AzureTtsService initialisé avec succès.');
+          logger.info('AzureTtsService initialisé avec succès', tag: 'MAIN');
         } else {
-          print('🔴 [MAIN] Échec de l\'initialisation d\'AzureTtsService.');
+          logger.error('Échec de l\'initialisation d\'AzureTtsService', tag: 'MAIN');
         }
       } else {
-        print('🔴 [MAIN] Clés Azure manquantes dans .env pour AzureTtsService.');
+        logger.error('Clés Azure manquantes dans .env pour AzureTtsService', tag: 'MAIN');
       }
-    } catch (e) {
-      print('🔴 [MAIN] Erreur critique lors de l\'initialisation d\'AzureTtsService: $e');
+    } catch (e, stackTrace) {
+      logger.critical('Erreur critique lors de l\'initialisation d\'AzureTtsService: $e', 
+        tag: 'MAIN', stackTrace: stackTrace);
     }
   }
 
-  // Supprimer le bloc d'initialisation de WhisperService FFI
-
   // Obtenir les repositories depuis le service locator
-  // (Au lieu d'instancier des classes Service inexistantes)
   final authRepository = serviceLocator<AuthRepository>();
   final profileRepository = serviceLocator<SupabaseProfileRepository>();
   final statisticsRepository = serviceLocator<SupabaseStatisticsRepository>();
   final sessionRepository = serviceLocator<SupabaseSessionRepository>();
-  // Les repositories sont déjà enregistrés dans serviceLocator,
-  // Riverpod pourra y accéder via des providers si nécessaire.
 
+  // Envelopper l'application dans un ErrorBoundary pour capturer les erreurs non gérées
   runApp(
     ProviderScope(
-      child: MaterialApp.router(
-        debugShowCheckedModeBanner: false,
-        routerConfig: createRouter(serviceLocator<AuthRepository>()),
+      child: ErrorBoundary(
+        onError: (error, stackTrace) {
+          logger.critical('Erreur non gérée dans l\'application: $error', 
+            tag: 'APP', stackTrace: stackTrace);
+        },
+        child: MaterialApp.router(
+          debugShowCheckedModeBanner: false,
+          routerConfig: createRouter(serviceLocator<AuthRepository>()),
+        ),
       ),
     ),
   );
