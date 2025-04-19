@@ -55,6 +55,8 @@ import '../presentation/providers/interaction_manager.dart'; // Assurez-vous que
 import '../presentation/providers/i_interaction_manager.dart'; // Interface pour InteractionManager
 import '../presentation/providers/enhanced_interaction_manager.dart'; // Décorateur pour InteractionManager
 import '../presentation/providers/enhanced_interaction_manager_v2.dart'; // Version améliorée de InteractionManager
+import '../presentation/providers/echo_cancellation_interaction_manager.dart'; // Version avec suppression d'écho
+import '../presentation/providers/echo_cancellation_interaction_manager_decorator.dart'; // Décorateur pour la suppression d'écho
 // Importer les interfaces et implémentations des nouveaux plugins
 import 'package:whisper_stt_plugin/whisper_stt_plugin.dart';
 import 'package:piper_tts_plugin/piper_tts_plugin.dart';
@@ -352,6 +354,24 @@ void setupServiceLocator() {
       serviceLocator<RealTimeAudioPipeline>(),
       serviceLocator<FeedbackAnalysisService>(),
       serviceLocator<GPTConversationalAgentService>(),
+    )
+  );
+  
+  // Enregistrer EchoCancellationInteractionManager pour la suppression d'écho
+  serviceLocator.registerFactory<EchoCancellationInteractionManager>(
+    () => EchoCancellationInteractionManager(
+      serviceLocator<ScenarioGeneratorService>(),
+      serviceLocator<ConversationalAgentService>(),
+      serviceLocator<RealTimeAudioPipeline>(),
+      serviceLocator<FeedbackAnalysisService>(),
+      serviceLocator<GPTConversationalAgentService>(),
+    )
+  );
+  
+  // Enregistrer le décorateur EchoCancellationInteractionManagerDecorator
+  serviceLocator.registerFactory<EchoCancellationInteractionManagerDecorator>(
+    () => EchoCancellationInteractionManagerDecorator(
+      serviceLocator<InteractionManager>()
     )
   );
   
