@@ -1,8 +1,14 @@
 /**
  * Middleware d'authentification par clé API
  * Vérifie que la requête contient une clé API valide dans l'en-tête Authorization
+ * En mode développement (NODE_ENV=development), la vérification est désactivée
  */
 export const apiKeyAuth = (req, res, next) => {
+  // En mode développement, désactiver la vérification de la clé API
+  if (process.env.NODE_ENV === 'development') {
+    return next();
+  }
+  
   // Récupérer la clé API depuis l'en-tête Authorization
   const authHeader = req.headers.authorization;
   

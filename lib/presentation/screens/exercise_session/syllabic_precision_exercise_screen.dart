@@ -31,10 +31,14 @@ import '../../../core/utils/console_logger.dart'; // Pour les logs
 
 class SyllabicPrecisionExerciseScreen extends StatefulWidget {
   final Exercise exercise;
+  final Function(Map<String, dynamic> results) onExerciseCompleted;
+  final VoidCallback onExitPressed;
 
   const SyllabicPrecisionExerciseScreen({
     super.key,
     required this.exercise,
+    required this.onExerciseCompleted,
+    required this.onExitPressed,
   });
 
   static const String routeName = '/exercise/syllabic_precision'; // Chaîne constante originale

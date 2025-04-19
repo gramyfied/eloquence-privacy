@@ -7,7 +7,6 @@ import '../services/service_locator.dart';
 import '../presentation/screens/auth/auth_screen.dart';
 import '../presentation/screens/home/home_screen.dart';
 import '../presentation/screens/exercises/exercise_categories_screen.dart';
-import '../presentation/screens/exercise_session/exercise_screen.dart';
 import '../presentation/screens/exercise_session/exercise_result_screen.dart';
 import '../presentation/screens/statistics/statistics_screen.dart';
 import '../presentation/screens/profile/profile_screen.dart';
@@ -17,9 +16,8 @@ import '../presentation/widgets/exercise_selection_modal.dart';
 import '../domain/entities/user.dart' as domain_user; // Ajouter un préfixe
 import '../domain/entities/exercise.dart';
 import '../domain/entities/exercise_category.dart';
-import '../domain/entities/interactive_exercise/scenario_context.dart'; // AJOUT: Import pour ScenarioContext
+// AJOUT: Import pour ScenarioContext
 import 'auth_notifier.dart'; 
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart'; // AJOUT: Import pour Provider
 // Importer les écrans d'exercices spécifiques
 import '../presentation/screens/exercise_session/rhythm_and_pauses_exercise_screen.dart';
@@ -34,6 +32,7 @@ import '../presentation/screens/exercise_session/consonant_contrast_exercise_scr
 import '../presentation/screens/exercise_session/finales_nettes_exercise_screen.dart'; // AJOUT: Import pour Finales Nettes
 import '../presentation/screens/exercise_session/expressive_intonation_exercise_screen.dart'; // AJOUT: Import pour Intonation Expressive
 import '../presentation/screens/exercise_session/pitch_variation_exercise_screen.dart'; // AJOUT: Import pour Variation de Hauteur
+import '../presentation/screens/exercise_session/impact_professionnel_exercise_screen.dart'; // AJOUT: Import pour Impact Professionnel
 // AJOUT: Imports pour l'écran interactif et son manager/services
 import '../presentation/screens/exercise_session/interactive_exercise_screen.dart';
 import '../presentation/providers/interaction_manager.dart';
@@ -41,6 +40,7 @@ import '../services/interactive_exercise/scenario_generator_service.dart';
 import '../services/interactive_exercise/conversational_agent_service.dart';
 import '../services/interactive_exercise/realtime_audio_pipeline.dart';
 import '../services/interactive_exercise/feedback_analysis_service.dart';
+import '../services/openai/gpt_conversational_agent_service.dart'; // AJOUT: Import pour le service GPT
 
 
 // Helper function to get the route path based on exercise ID
@@ -58,6 +58,7 @@ String _getExerciseRoutePath(String exerciseId) {
     case 'finales-nettes-01': return AppRoutes.exerciseFinalesNettes.replaceFirst(':exerciseId', exerciseId);
     case 'intonation-expressive': return AppRoutes.exerciseExpressiveIntonation.replaceFirst(':exerciseId', exerciseId);
     case 'variation-hauteur': return AppRoutes.exercisePitchVariation.replaceFirst(':exerciseId', exerciseId);
+    case 'impact-professionnel': return AppRoutes.exerciseImpactProfessionnel.replaceFirst(':exerciseId', exerciseId);
     default:
       // Fallback to generic exercise screen or handle error
       print("Warning: Unknown exercise ID '$exerciseId' for retry navigation. Falling back to categories.");
@@ -258,325 +259,6 @@ GoRouter createRouter(AuthRepository authRepository) {
         },
       ),
 
-      // Exercise Screen (Generic Fallback)
-      GoRoute(
-        path: AppRoutes.exercise,
-        builder: (context, state) {
-          // CORRECTION: Gérer le cas où extra n'est pas un Exercise
-          if (state.extra is! Exercise) {
-            // print("ERREUR: Données invalides passées à la route générique /exercise.");
-            return Scaffold(body: Center(child: Text("Erreur: Données d'exercice invalides.")));
-          }
-          final exercise = state.extra as Exercise;
-          // print("ATTENTION: Navigation vers l'écran générique pour ${exercise.id}. Vérifier la logique de routage.");
-          return ExerciseScreen(
-            exercise: exercise,
-            onBackPressed: () => context.pop(),
-            onExerciseCompleted: () {
-              // print("ERREUR: onExerciseCompleted de la route générique /exercise a été appelé !");
-              context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': {}});
-            },
-          );
-        },
-      ),
-
-      // Exercise Result Screen
-      GoRoute(
-        path: AppRoutes.exerciseResult,
-        builder: (context, state) {
-          final data = state.extra as Map<String, dynamic>?;
-          if (data == null) {
-             return Scaffold(body: Center(child: Text("Erreur: Données de résultat manquantes.")));
-          }
-          
-          // Accepter soit Exercise soit ScenarioContext
-          final exercise = data['exercise'];
-          final results = data['results'] as Map<String, dynamic>?;
-          
-          if (exercise == null || results == null) {
-             return Scaffold(body: Center(child: Text("Erreur: Données d'exercice ou de résultat invalides.")));
-          }
-          
-          return ExerciseResultScreen(
-            exercise: exercise, // Passer l'objet tel quel (Exercise ou ScenarioContext)
-            results: results,
-            onHomePressed: () => context.go(AppRoutes.home),
-            onTryAgainPressed: () {
-              // Déterminer l'ID et la route en fonction du type d'exercice
-              String exerciseId;
-              if (exercise is Exercise) {
-                exerciseId = exercise.id;
-                final exerciseRoute = _getExerciseRoutePath(exerciseId);
-                // CORRECTION: Utiliser pushReplacement ou go pour éviter d'empiler les écrans de résultat
-                context.go(exerciseRoute, extra: exercise);
-              } else if (exercise is ScenarioContext) {
-                exerciseId = exercise.exerciseId;
-                // Pour les exercices interactifs, utiliser la route interactive
-                final interactiveRoute = AppRoutes.interactiveExercise.replaceFirst(':exerciseId', exerciseId);
-                 // CORRECTION: Utiliser pushReplacement ou go
-                context.go(interactiveRoute);
-              } else {
-                // Fallback si le type n'est ni Exercise ni ScenarioContext
-                context.go(AppRoutes.exerciseCategories);
-              }
-            },
-          );
-        },
-      ),
-
-      // Statistics Screen
-      GoRoute(
-        path: AppRoutes.statistics,
-        builder: (context, state) {
-          // StatisticsScreen doit récupérer l'ID utilisateur actuel.
-          final userId = Supabase.instance.client.auth.currentUser?.id;
-          if (userId == null) {
-             // print("ERREUR: Arrivé sur StatisticsScreen sans ID utilisateur valide !");
-             return const Scaffold(body: Center(child: Text("Erreur: Utilisateur non connecté.")));
-          }
-          // Créer un User placeholder juste avec l'ID.
-          final userPlaceholder = domain_user.User(id: userId, name: '', email: '');
-          return StatisticsScreen(
-            user: userPlaceholder, 
-            onBackPressed: () => context.pop(),
-          );
-        },
-      ),
-
-      // Profile Screen
-      GoRoute(
-        path: AppRoutes.profile,
-        builder: (context, state) {
-           // ProfileScreen doit récupérer l'utilisateur actuel.
-           final currentUser = Supabase.instance.client.auth.currentUser;
-           if (currentUser == null) {
-              // print("ERREUR: Arrivé sur ProfileScreen sans utilisateur connecté !");
-              return const Scaffold(body: Center(child: Text("Erreur: Utilisateur non connecté.")));
-           }
-           // Créer l'objet User à partir des données Supabase
-           final appUser = domain_user.User(
-             id: currentUser.id,
-             email: currentUser.email ?? 'N/A',
-             name: currentUser.userMetadata?['full_name'] ?? currentUser.userMetadata?['name'] ?? 'Utilisateur',
-             avatarUrl: currentUser.userMetadata?['avatar_url']
-           );
-          return ProfileScreen(
-            user: appUser, 
-            onBackPressed: () => context.pop(),
-            onSignOut: () => context.go(AppRoutes.auth),
-            onProfileUpdate: (name, avatarUrl) {
-              // Créer un nouvel utilisateur avec les informations mises à jour
-              // final updatedUser = domain_user.User( // Variable inutilisée
-              //   id: appUser.id, // Utiliser l'ID de l'utilisateur actuel
-              //   email: appUser.email, // Utiliser l'email actuel
-              //   name: name,
-              //   avatarUrl: avatarUrl ?? appUser.avatarUrl,
-              // );
-              if (!context.mounted) return; // Check context after async gap (bien que pas d'await ici, bonne pratique)
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Profil mis à jour avec succès'), backgroundColor: Colors.green),
-              );
-              // Naviguer vers la page d'accueil avec l'utilisateur mis à jour (si nécessaire)
-              // context.go(AppRoutes.home, extra: updatedUser); // Optionnel, dépend du flux souhaité
-            },
-          );
-        },
-      ),
-
-      // History Screen
-      GoRoute(
-        path: AppRoutes.history,
-        builder: (context, state) {
-           // HistoryScreen doit récupérer l'ID utilisateur actuel.
-           final userId = Supabase.instance.client.auth.currentUser?.id;
-           if (userId == null) {
-              // print("ERREUR: Arrivé sur HistoryScreen sans ID utilisateur valide !");
-              return const Scaffold(body: Center(child: Text("Erreur: Utilisateur non connecté.")));
-           }
-           final userPlaceholder = domain_user.User(id: userId, name: '', email: '');
-          return SessionHistoryScreen(
-            user: userPlaceholder, 
-            onBackPressed: () => context.pop(),
-          );
-        },
-      ),
-
-      // Debug Screen
-      GoRoute(
-        path: AppRoutes.debug,
-        builder: (context, state) => const DebugScreen(),
-      ),
-
-      // --- Routes spécifiques aux exercices ---
-      // (Les builders des exercices spécifiques restent inchangés pour l'instant)
-      // Capacité Pulmonaire
-      GoRoute(
-        path: AppRoutes.exerciseLungCapacity,
-        builder: (context, state) {
-          final exerciseId = state.pathParameters['exerciseId'];
-          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Capacité Pulmonaire', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
-          return LungCapacityExerciseScreen(
-            exercise: exercise,
-            onExerciseCompleted: (results) {
-              // print("Résultats Capacité Pulmonaire: $results");
-              context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
-            },
-            onExitPressed: () => context.pop(),
-          );
-        },
-      ),
-      // Articulation
-      GoRoute(
-        path: AppRoutes.exerciseArticulation,
-        builder: (context, state) {
-          final exerciseId = state.pathParameters['exerciseId'];
-          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Articulation', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
-          return ArticulationExerciseScreen(
-            exercise: exercise,
-            onExitPressed: () => context.pop(),
-          );
-        },
-      ),
-      // Respiration
-      GoRoute(
-        path: AppRoutes.exerciseBreathing,
-        builder: (context, state) {
-          final exerciseId = state.pathParameters['exerciseId'];
-          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Respiration', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
-          return BreathingExerciseScreen(
-            exercise: exercise,
-            onExerciseCompleted: (results) {
-              // print("Résultats Respiration Diaphragmatique: $results");
-               context.pop(); 
-            },
-            onExitPressed: () => context.pop(),
-          );
-        },
-      ),
-      // Contrôle du Volume
-      GoRoute(
-        path: AppRoutes.exerciseVolumeControl,
-        builder: (context, state) {
-          final exerciseId = state.pathParameters['exerciseId'];
-          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Contrôle Volume', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
-          return VolumeControlExerciseScreen(
-            exercise: exercise,
-            onExerciseCompleted: (results) {
-              // print("Résultats Contrôle Volume: $results");
-              context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
-            },
-            onExitPressed: () => context.pop(),
-          );
-        },
-      ),
-      // Résonance
-      GoRoute(
-        path: AppRoutes.exerciseResonance,
-        builder: (context, state) {
-          final exerciseId = state.pathParameters['exerciseId'];
-          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Résonance', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
-          return ResonancePlacementExerciseScreen(
-            exercise: exercise,
-            onExerciseCompleted: (results) {
-              // print("Résultats Résonance & Placement: $results");
-              context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
-            },
-            onExitPressed: () => context.pop(),
-          );
-        },
-      ),
-      // Projection
-      GoRoute(
-        path: AppRoutes.exerciseProjection,
-        builder: (context, state) {
-          final exerciseId = state.pathParameters['exerciseId'];
-          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Projection', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.facile, category: ExerciseCategory(id: 'unknown', name: '', description: '', type: ExerciseCategoryType.fondamentaux, iconPath: ''), evaluationParameters: {});
-          return EffortlessProjectionExerciseScreen(
-            exercise: exercise,
-            onExerciseCompleted: (results) {
-              // print("Résultats Projection Sans Forçage: $results");
-              context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
-            },
-            onExitPressed: () => context.pop(),
-          );
-        },
-      ),
-      // Rythme et Pauses
-      GoRoute(
-        path: AppRoutes.exerciseRhythmPauses,
-         builder: (context, state) {
-           final exercise = state.extra as Exercise? ?? Exercise(id: 'rythme-pauses', title: 'Rythme et Pauses', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'impact-presence', name: 'Impact et Présence', description: '', type: ExerciseCategoryType.impactPresence, iconPath: ''), evaluationParameters: {});
-           return RhythmAndPausesExerciseScreen(
-             exercise: exercise,
-             onExerciseCompleted: (results) {
-               // print("[Router] Résultats Rythme/Pauses reçus: $results");
-               context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
-             },
-            onExitPressed: () => context.pop(),
-          );
-        },
-      ),
-      // Précision Syllabique
-      GoRoute(
-        path: AppRoutes.exerciseSyllabicPrecision,
-        builder: (context, state) {
-          final exerciseId = state.pathParameters['exerciseId'];
-          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Précision Syllabique', objective: '', instructions: '', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'clarity-expressivity', name: 'Clarté et Expressivité', description: '', type: ExerciseCategoryType.clarteExpressivite, iconPath: ''), evaluationParameters: {});
-          return SyllabicPrecisionExerciseScreen(exercise: exercise);
-        },
-      ),
-      // Contraste Consonantique
-      GoRoute(
-        path: AppRoutes.exerciseConsonantContrast,
-        builder: (context, state) {
-          final exerciseId = state.pathParameters['exerciseId'];
-          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Contraste Consonantique', objective: 'Apprendre à distinguer et produire clairement des paires de consonnes proches (ex: P/B, T/D).', instructions: 'Écoutez attentivement la paire de mots, puis répétez-la en vous concentrant sur la différence entre les sons mis en évidence.', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'clarity-expressivity', name: 'Clarté et Expressivité', description: '', type: ExerciseCategoryType.clarteExpressivite, iconPath: ''), evaluationParameters: {});
-          return ConsonantContrastExerciseScreen(exercise: exercise);
-       },
-       ),
-      // Finales Nettes
-      GoRoute(
-        path: AppRoutes.exerciseFinalesNettes,
-        builder: (context, state) {
-          final exerciseId = state.pathParameters['exerciseId'];
-          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'unknown', title: 'Finales Nettes', objective: 'Améliorer l\'intelligibilité en prononçant distinctement les sons et syllabes finales des mots.', instructions: 'Prononcez le mot affiché en articulant clairement la fin.', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'clarity-expressivity', name: 'Clarté et Expressivité', description: '', type: ExerciseCategoryType.clarteExpressivite, iconPath: ''), evaluationParameters: {});
-          return FinalesNettesExerciseScreen(exercise: exercise);
-        },
-      ),
-      // Intonation Expressive
-      GoRoute(
-        path: AppRoutes.exerciseExpressiveIntonation, 
-        builder: (context, state) {
-          final exerciseId = state.pathParameters['exerciseId'];
-          final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'intonation-expressive', title: 'Intonation Expressive', objective: 'Utilisez les variations mélodiques pour un discours engageant', instructions: 'Écoutez le modèle, puis répétez la phrase en essayant de reproduire la mélodie vocale indiquée.', textToRead: '', difficulty: ExerciseDifficulty.moyen, category: ExerciseCategory(id: 'clarity-expressivity', name: 'Clarté et Expressivité', description: '', type: ExerciseCategoryType.clarteExpressivite, iconPath: ''), evaluationParameters: {});
-          return ExpressiveIntonationExerciseScreen(
-             exercise: exercise,
-             onBackPressed: () => context.pop(),
-             onExerciseCompleted: (results) {
-                // print("[Router] ExpressiveIntonationExerciseScreen completed. Navigating to results with data: $results");
-                context.pushReplacement(AppRoutes.exerciseResult, extra: {'exercise': exercise, 'results': results});
-             },
-          );
-        },
-      ),
-      // Variation de Hauteur
-      GoRoute(
-        path: AppRoutes.exercisePitchVariation, 
-        builder: (context, state) {
-          final exerciseId = state.pathParameters['exerciseId'];
-          final exercise = state.extra as Exercise? ?? Exercise(
-            id: exerciseId ?? 'pitch-variation', 
-            title: 'Variation de Hauteur', 
-            objective: 'Contrôlez le pitch vocal pour une expression dynamique', 
-            instructions: 'Suivez les cibles de hauteur affichées.',
-            category: ExerciseCategory(id: 'clarity-expressivity', name: 'Clarté et Expressivité', description: '', type: ExerciseCategoryType.clarteExpressivite, iconPath: ''), // Ajout de la catégorie manquante
-            difficulty: ExerciseDifficulty.moyen, // Ajout de la difficulté
-            evaluationParameters: {}, // Ajout des paramètres d'évaluation
-            textToRead: '', // Ajout du texte à lire
-          );
-          return PitchVariationExerciseScreen(exercise: exercise);
-        },
-      ),
       // AJOUT: Route pour les exercices interactifs
       GoRoute(
         path: AppRoutes.interactiveExercise, // Utilise la nouvelle constante
@@ -596,18 +278,562 @@ GoRouter createRouter(AuthRepository authRepository) {
               serviceLocator<ConversationalAgentService>(),
               serviceLocator<RealTimeAudioPipeline>(),
               serviceLocator<FeedbackAnalysisService>(),
-              // AzureSpeechService n'est plus injecté directement
+              serviceLocator<GPTConversationalAgentService>(), // AJOUT: Injecter le service GPT
             ),
             // Le child est l'écran lui-même, qui peut maintenant accéder au Manager
-            child: InteractiveExerciseScreen(exerciseId: exerciseId),
+            child: InteractiveExerciseScreen(
+              exerciseId: exerciseId,
+              onBackPressed: () => context.pop(),
+            ),
           );
         },
       ),
-     ], // Fermeture de la liste des routes
-     errorBuilder: (context, state) => Scaffold(
-      body: Center(
-        child: Text('Page non trouvée: ${state.uri.path}', style: Theme.of(context).textTheme.titleLarge),
+      
+      // Route pour l'exercice d'impact professionnel
+      GoRoute(
+        path: AppRoutes.exerciseImpactProfessionnel,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          if (exerciseId == null) {
+            // Gérer l'erreur si l'ID est manquant
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("ID d'exercice d'impact professionnel manquant.")),
+            );
+          }
+          
+          return ImpactProfessionnelExerciseScreen(
+            exerciseId: exerciseId,
+            onBackPressed: () => context.pop(),
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': exerciseId,
+                  'result': results,
+                  'exercise': null, // Pas d'objet Exercise disponible ici
+                },
+              );
+            },
+          );
+        },
       ),
-    ),
-  ); // Fermeture du constructeur GoRouter
-} // Fermeture de la fonction createRouter
+
+      // Routes pour les exercices spécifiques
+      GoRoute(
+        path: AppRoutes.exerciseLungCapacity,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise?;
+          
+          if (exercise == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données d'exercice manquantes.")),
+            );
+          }
+          
+          return LungCapacityExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': exerciseId,
+                  'result': results,
+                  'exercise': exercise,
+                },
+              );
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+      
+      GoRoute(
+        path: AppRoutes.exerciseArticulation,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise?;
+          
+          if (exercise == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données d'exercice manquantes.")),
+            );
+          }
+          
+          return ArticulationExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': exerciseId,
+                  'result': results,
+                  'exercise': exercise,
+                },
+              );
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+      
+      GoRoute(
+        path: AppRoutes.exerciseBreathing,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise?;
+          
+          if (exercise == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données d'exercice manquantes.")),
+            );
+          }
+          
+          return BreathingExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': exerciseId,
+                  'result': results,
+                  'exercise': exercise,
+                },
+              );
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+      
+      GoRoute(
+        path: AppRoutes.exerciseVolumeControl,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise?;
+          
+          if (exercise == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données d'exercice manquantes.")),
+            );
+          }
+          
+          return VolumeControlExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': exerciseId,
+                  'result': results,
+                  'exercise': exercise,
+                },
+              );
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+      
+      GoRoute(
+        path: AppRoutes.exerciseResonance,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise?;
+          
+          if (exercise == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données d'exercice manquantes.")),
+            );
+          }
+          
+          return ResonancePlacementExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': exerciseId,
+                  'result': results,
+                  'exercise': exercise,
+                },
+              );
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+      
+      GoRoute(
+        path: AppRoutes.exerciseProjection,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise?;
+          
+          if (exercise == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données d'exercice manquantes.")),
+            );
+          }
+          
+          return EffortlessProjectionExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': exerciseId,
+                  'result': results,
+                  'exercise': exercise,
+                },
+              );
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+      
+      GoRoute(
+        path: AppRoutes.exerciseRhythmPauses,
+        builder: (context, state) {
+          final exercise = state.extra as Exercise?;
+          
+          if (exercise == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données d'exercice manquantes.")),
+            );
+          }
+          
+          return RhythmAndPausesExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': 'rythme-pauses', // ID fixe pour cet exercice
+                  'result': results,
+                  'exercise': exercise,
+                },
+              );
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+      
+      GoRoute(
+        path: AppRoutes.exerciseSyllabicPrecision,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise?;
+          
+          if (exercise == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données d'exercice manquantes.")),
+            );
+          }
+          
+          return SyllabicPrecisionExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': exerciseId,
+                  'result': results,
+                  'exercise': exercise,
+                },
+              );
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+      
+      GoRoute(
+        path: AppRoutes.exerciseConsonantContrast,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise?;
+          
+          if (exercise == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données d'exercice manquantes.")),
+            );
+          }
+          
+          return ConsonantContrastExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': exerciseId,
+                  'result': results,
+                  'exercise': exercise,
+                },
+              );
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+      
+      GoRoute(
+        path: AppRoutes.exerciseFinalesNettes,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise?;
+          
+          if (exercise == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données d'exercice manquantes.")),
+            );
+          }
+          
+          return FinalesNettesExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': exerciseId,
+                  'result': results,
+                  'exercise': exercise,
+                },
+              );
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+      
+      GoRoute(
+        path: AppRoutes.exerciseExpressiveIntonation,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise?;
+          
+          if (exercise == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données d'exercice manquantes.")),
+            );
+          }
+          
+          return ExpressiveIntonationExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': exerciseId,
+                  'result': results,
+                  'exercise': exercise,
+                },
+              );
+            },
+            onBackPressed: () => context.pop(),
+          );
+        },
+      ),
+      
+      GoRoute(
+        path: AppRoutes.exercisePitchVariation,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          final exercise = state.extra as Exercise?;
+          
+          if (exercise == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données d'exercice manquantes.")),
+            );
+          }
+          
+          return PitchVariationExerciseScreen(
+            exercise: exercise,
+            onExerciseCompleted: (results) {
+              // Naviguer vers l'écran de résultats
+              context.push(
+                AppRoutes.exerciseResult,
+                extra: {
+                  'exerciseId': exerciseId,
+                  'result': results,
+                  'exercise': exercise,
+                },
+              );
+            },
+            onExitPressed: () => context.pop(),
+          );
+        },
+      ),
+      
+      // Route pour les résultats d'exercice
+      GoRoute(
+        path: AppRoutes.exerciseResult,
+        builder: (context, state) {
+          final Map<String, dynamic>? params = state.extra as Map<String, dynamic>?;
+          
+          if (params == null) {
+            return Scaffold(
+              appBar: AppBar(title: const Text("Erreur")),
+              body: const Center(child: Text("Données de résultat manquantes.")),
+            );
+          }
+          
+          return ExerciseResultScreen(
+            results: params['result'],
+            exercise: params['exercise'],
+            onHomePressed: () => context.go(AppRoutes.home),
+            onTryAgainPressed: () {
+              final exercise = params['exercise'] as Exercise?;
+              final exerciseId = params['exerciseId'] as String?;
+              
+              if (exercise != null && exerciseId != null) {
+                final targetRoute = _getExerciseRoutePath(exerciseId);
+                context.push(targetRoute, extra: exercise);
+              } else {
+                context.go(AppRoutes.exerciseCategories);
+              }
+            },
+          );
+        },
+      ),
+      
+      // Route pour les statistiques
+      GoRoute(
+        path: AppRoutes.statistics,
+        builder: (context, state) {
+          // Récupérer l'utilisateur actuel
+          final authRepository = serviceLocator<AuthRepository>();
+          return FutureBuilder<domain_user.User?>(
+            future: authRepository.getCurrentUser(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
+              
+              final user = snapshot.data;
+              if (user == null) {
+                return Scaffold(
+                  appBar: AppBar(title: const Text("Erreur")),
+                  body: const Center(child: Text("Utilisateur non connecté")),
+                );
+              }
+              
+              return StatisticsScreen(
+                user: user,
+                onBackPressed: () => context.pop(),
+              );
+            },
+          );
+        },
+      ),
+      
+      // Route pour le profil
+      GoRoute(
+        path: AppRoutes.profile,
+        builder: (context, state) {
+          // Récupérer l'utilisateur actuel
+          final authRepository = serviceLocator<AuthRepository>();
+          return FutureBuilder<domain_user.User?>(
+            future: authRepository.getCurrentUser(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
+              
+              final user = snapshot.data;
+              if (user == null) {
+                return Scaffold(
+                  appBar: AppBar(title: const Text("Erreur")),
+                  body: const Center(child: Text("Utilisateur non connecté")),
+                );
+              }
+              
+              return ProfileScreen(
+                user: user,
+                onBackPressed: () => context.pop(),
+                onSignOut: () {
+                  authRepository.signOut();
+                  context.go(AppRoutes.auth);
+                },
+                onProfileUpdate: (name, avatarUrl) {
+                  // Gérer la mise à jour du profil
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Profil mis à jour avec succès")),
+                  );
+                  context.pop();
+                },
+              );
+            },
+          );
+        },
+      ),
+      
+      // Route pour l'historique des sessions
+      GoRoute(
+        path: AppRoutes.history,
+        builder: (context, state) {
+          // Récupérer l'utilisateur actuel
+          final authRepository = serviceLocator<AuthRepository>();
+          return FutureBuilder<domain_user.User?>(
+            future: authRepository.getCurrentUser(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
+              
+              final user = snapshot.data;
+              if (user == null) {
+                return Scaffold(
+                  appBar: AppBar(title: const Text("Erreur")),
+                  body: const Center(child: Text("Utilisateur non connecté")),
+                );
+              }
+              
+              return SessionHistoryScreen(
+                user: user,
+                onBackPressed: () => context.pop(),
+              );
+            },
+          );
+        },
+      ),
+      
+      // Route pour le débogage
+      GoRoute(
+        path: AppRoutes.debug,
+        builder: (context, state) {
+          return DebugScreen(
+            onBackPressed: () => context.pop(),
+          );
+        },
+      ),
+    ],
+  );
+}

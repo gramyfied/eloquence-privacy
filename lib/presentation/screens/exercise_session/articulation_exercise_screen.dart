@@ -20,11 +20,13 @@ import '../../../services/service_locator.dart'; // Importer serviceLocator
 class ArticulationExerciseScreen extends ConsumerStatefulWidget {
   final Exercise exercise;
   final VoidCallback onExitPressed;
+  final Function(Map<String, dynamic> results) onExerciseCompleted;
 
   const ArticulationExerciseScreen({
     super.key,
     required this.exercise,
     required this.onExitPressed,
+    required this.onExerciseCompleted,
   });
 
   @override
@@ -156,10 +158,22 @@ class _ArticulationExerciseScreenState extends ConsumerState<ArticulationExercis
                      ConsoleLogger.info('[ArticulationScreen] Celebration animation completed.');
                      if (mounted) {
                        Navigator.of(context).pop(); // Fermer la modale
-                       // Après la célébration, quitter l'écran d'exercice
+                       // Après la célébration, appeler onExerciseCompleted et quitter l'écran
                        Future.delayed(const Duration(milliseconds: 100), () {
                          if (mounted) {
-                           widget.onExitPressed();
+                           // Créer un Map avec les résultats
+                           final results = {
+                             'score': result.accuracyScore,
+                             'pronunciation_score': result.pronunciationScore,
+                             'fluency_score': result.fluencyScore,
+                             'completeness_score': result.completenessScore,
+                             'recognized_text': recognizedText,
+                             'reference_text': ref.read(exerciseStateProvider).referenceText,
+                             'error_details': result.errorDetails,
+                           };
+                           
+                           // Appeler onExerciseCompleted avec les résultats
+                           widget.onExerciseCompleted(results);
                          }
                        });
                      }

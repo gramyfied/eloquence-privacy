@@ -621,8 +621,15 @@ class PitchVariationCubit extends Cubit<PitchVariationExerciseState> {
 
 class PitchVariationExerciseScreen extends StatelessWidget {
   final Exercise exercise;
+  final Function(Map<String, dynamic> results) onExerciseCompleted;
+  final VoidCallback onExitPressed;
 
-  const PitchVariationExerciseScreen({super.key, required this.exercise});
+  const PitchVariationExerciseScreen({
+    super.key, 
+    required this.exercise,
+    required this.onExerciseCompleted,
+    required this.onExitPressed,
+  });
 
   @override
   Widget build(BuildContext context) {

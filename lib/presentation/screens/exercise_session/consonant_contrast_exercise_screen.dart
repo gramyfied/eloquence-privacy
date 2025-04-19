@@ -23,10 +23,14 @@ import '../../../services/azure/azure_speech_service.dart'; // <<< AJOUTÉ
 
 class ConsonantContrastExerciseScreen extends StatefulWidget {
   final Exercise exercise;
+  final Function(Map<String, dynamic> results) onExerciseCompleted;
+  final VoidCallback onExitPressed;
 
   const ConsonantContrastExerciseScreen({
     super.key,
     required this.exercise,
+    required this.onExerciseCompleted,
+    required this.onExitPressed,
   });
 
   @override

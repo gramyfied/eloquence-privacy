@@ -10,6 +10,7 @@ import '../../services/interactive_exercise/conversational_agent_service.dart';
 import '../../services/interactive_exercise/feedback_analysis_service.dart';
 import '../../services/interactive_exercise/realtime_audio_pipeline.dart';
 import '../../services/interactive_exercise/scenario_generator_service.dart';
+import '../../services/openai/gpt_conversational_agent_service.dart'; // Ajout du service GPT
 import '../../domain/repositories/azure_speech_repository.dart'; // Importer AzureSpeechEvent
 // Importer depuis le repository où les événements sont maintenant définis
 // Importer l'implémentation Whisper
@@ -41,8 +42,27 @@ class UserVocalMetrics {
 class InteractionManager extends ChangeNotifier {
   final ScenarioGeneratorService _scenarioService;
   final ConversationalAgentService _agentService;
+  final GPTConversationalAgentService _gptAgentService; // Nouveau service
   final RealTimeAudioPipeline _audioPipeline;
   final FeedbackAnalysisService _feedbackService;
+  
+  // Liste des IDs d'exercices professionnels
+  final List<String> _businessExerciseIds = [
+    "04bf2c38-7cb6-4138-b11d-7849a41a4507", // Présentation Impactante
+    "49659f7d-8491-4f4b-a4a5-d3579f6a3e78", // Conversation Convaincante
+    "0e15a4c4-b2eb-4112-915f-9e2707ff057d", // Narration Professionnelle
+    "1768422b-e841-45f0-b539-2caac1ecab67", // Discours Improvisé
+    "3f3d5a3a-541b-4086-b9f6-6f548ab8dfac", // Excellence en Appels & Réunions
+    "impact-professionnel-01",
+    "impact-professionnel-02",
+    "presentation-impactante"
+  ];
+
+  // Méthode pour déterminer si l'exercice est professionnel
+  bool _isBusinessExercise(String? exerciseId) {
+    if (exerciseId == null) return false;
+    return _businessExerciseIds.contains(exerciseId);
+  }
 
   // State Variables
   InteractionState _currentState = InteractionState.idle;
@@ -90,6 +110,7 @@ class InteractionManager extends ChangeNotifier {
     this._agentService,
     this._audioPipeline,
     this._feedbackService,
+    this._gptAgentService, // Ajouter le nouveau service
   ) {
     // Subscribe to Speech events via the pipeline's raw stream
     // pour pouvoir caster en AzureSpeechEvent (ou autre type si repo local)
@@ -131,10 +152,17 @@ class InteractionManager extends ChangeNotifier {
         _pendingAzureFinalEvent = null;
         _processFinalTranscript(eventToProcess!);
       } else {
-        ConsoleLogger.info("InteractionManager: TTS finished or stopped. Transitioning to ready and starting listening.");
+        ConsoleLogger.info("InteractionManager: TTS finished or stopped. Transitioning to ready and starting listening after delay.");
         setState(InteractionState.ready);
+        
+        // Ajouter un délai avant de commencer à écouter pour éviter les transitions trop rapides
         if (!_audioPipelineDisposed && _currentScenario != null) {
-           startListening(_currentScenario!.language);
+          // Délai de 500ms pour laisser le temps à l'utilisateur de se préparer
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (!_audioPipelineDisposed && _currentState == InteractionState.ready && _currentScenario != null) {
+              startListening(_currentScenario!.language);
+            }
+          });
         }
       }
     } else {
@@ -345,8 +373,14 @@ class InteractionManager extends ChangeNotifier {
           if (_currentState == InteractionState.listening) {
             // Ne pas mettre à jour _partialTranscriptNotifier ici, géré par le stream dédié
           } else if (_currentState == InteractionState.speaking) {
-            ConsoleLogger.info("InteractionManager: Barge-in detected via partial transcript while speaking. Stopping TTS.");
-            _stopTtsForBargeIn();
+            // Vérifier si le texte partiel est significatif avant de considérer comme un barge-in
+            final partialText = event.text ?? '';
+            if (partialText.trim().length > 3) {  // Ignorer les partiels trop courts
+              ConsoleLogger.info("InteractionManager: Barge-in detected via partial transcript while speaking: '$partialText'. Stopping TTS.");
+              _stopTtsForBargeIn();
+            } else {
+              ConsoleLogger.info("InteractionManager: Ignoring short partial transcript during speaking: '$partialText'");
+            }
           } else {
             ConsoleLogger.info("InteractionManager: Ignoring partial transcript received in state $_currentState");
           }
@@ -400,6 +434,15 @@ class InteractionManager extends ChangeNotifier {
   Future<void> _stopTtsForBargeIn() async {
     if (_currentState == InteractionState.speaking && !_audioPipelineDisposed) {
       try {
+        // Ajouter un petit délai avant d'arrêter le TTS pour éviter les faux barge-ins
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        // Vérifier à nouveau l'état car il pourrait avoir changé pendant le délai
+        if (_currentState != InteractionState.speaking || _audioPipelineDisposed) {
+          ConsoleLogger.info("InteractionManager: State changed during barge-in delay. Aborting TTS stop.");
+          return;
+        }
+        
         await _audioPipeline.stop();
         ConsoleLogger.info("InteractionManager: TTS stop requested due to barge-in.");
       } catch (e) {
@@ -421,7 +464,20 @@ class InteractionManager extends ChangeNotifier {
 
     _partialTranscriptNotifier.value = '';
 
-    if (transcript != null && transcript.isNotEmpty) {
+    // Ignorer les transcriptions vides ou trop courtes (moins de 2 mots)
+    if (transcript != null && transcript.trim().isNotEmpty) {
+      // Vérifier si la transcription est significative (au moins 2 mots)
+      final words = transcript.trim().split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
+      if (words.length < 2) {
+        ConsoleLogger.info("InteractionManager: Final transcript too short (${words.length} words). Ignoring: '$transcript'");
+        setState(InteractionState.ready);
+        _lastUserMetrics = null;
+        _pendingAzureFinalEvent = null;
+        if (!_audioPipelineDisposed && _currentScenario != null) {
+          startListening(_currentScenario!.language);
+        }
+        return;
+      }
       double? accuracyScore;
       double? fluencyScore;
       double? prosodyScore;
@@ -460,8 +516,8 @@ class InteractionManager extends ChangeNotifier {
       }
 
       final fillerWords = ['euh', 'hum', 'ben', 'alors', 'voilà', 'en fait', 'du coup'];
-      final words = transcript.toLowerCase().split(RegExp(r'\s+')).where((s) => s.isNotEmpty);
-      final fillerWordCount = words.where((word) => fillerWords.contains(word.replaceAll(RegExp(r'[^\w]'), ''))).length;
+      final wordsForFillerCount = transcript.toLowerCase().split(RegExp(r'\s+')).where((s) => s.isNotEmpty);
+      final fillerWordCount = wordsForFillerCount.where((word) => fillerWords.contains(word.replaceAll(RegExp(r'[^\w]'), ''))).length;
       ConsoleLogger.info("InteractionManager: Calculated Fillers: $fillerWordCount");
 
       _lastUserMetrics = UserVocalMetrics(
@@ -527,16 +583,27 @@ class InteractionManager extends ChangeNotifier {
       if (_audioPipelineDisposed) return;
 
       try {
-        ConsoleLogger.info("InteractionManager: Calling OpenAI Service (Attempt $currentTry/$maxRetries)...");
-        String aiResponseJson = await _agentService.getNextResponse(
-          context: _currentScenario!,
-          history: _conversationHistory,
-          lastUserMetrics: metrics,
-        );
+        // Utiliser le service GPT pour les exercices professionnels
+        if (_isBusinessExercise(_currentScenario?.exerciseId)) {
+          ConsoleLogger.info("InteractionManager: Calling GPT Service for business exercise (Attempt $currentTry/$maxRetries)...");
+          aiResponseText = await _gptAgentService.getNextResponse(
+            context: _currentScenario!,
+            history: _conversationHistory,
+            lastUserMetrics: metrics,
+          );
+          
+          ConsoleLogger.info("InteractionManager: GPT call successful for business exercise.");
+        } else {
+          ConsoleLogger.info("InteractionManager: Calling standard OpenAI Service (Attempt $currentTry/$maxRetries)...");
+          String aiResponseJson = await _agentService.getNextResponse(
+            context: _currentScenario!,
+            history: _conversationHistory,
+            lastUserMetrics: metrics,
+          );
 
-        aiResponseText = _extractMessageContentFromJson(aiResponseJson);
-        ConsoleLogger.info("InteractionManager: OpenAI call successful.");
-
+          aiResponseText = _extractMessageContentFromJson(aiResponseJson);
+          ConsoleLogger.info("InteractionManager: Standard OpenAI call successful.");
+        }
       } catch (e) {
         ConsoleLogger.error("InteractionManager: Error getting AI response (Attempt $currentTry): $e");
         bool isRateLimitError = e.toString().contains('429');
@@ -752,5 +819,3 @@ class InteractionManager extends ChangeNotifier {
     super.dispose();
   }
 }
-
-

@@ -9,8 +9,15 @@ import '../../../app/theme.dart';
 
 class ImpactProfessionnelExerciseScreen extends StatefulWidget {
   final String exerciseId;
+  final VoidCallback? onBackPressed;
+  final Function(Map<String, dynamic> results)? onExerciseCompleted;
 
-  const ImpactProfessionnelExerciseScreen({super.key, required this.exerciseId});
+  const ImpactProfessionnelExerciseScreen({
+    super.key, 
+    required this.exerciseId,
+    this.onBackPressed,
+    this.onExerciseCompleted,
+  });
 
   @override
   State<ImpactProfessionnelExerciseScreen> createState() => _ImpactProfessionnelExerciseScreenState();
@@ -63,6 +70,12 @@ class _ImpactProfessionnelExerciseScreenState extends State<ImpactProfessionnelE
               title: Text(manager.currentScenario?.exerciseTitle ?? "Exercice d'Impact Professionnel"),
               backgroundColor: Colors.transparent,
               elevation: 0,
+              leading: widget.onBackPressed != null
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: widget.onBackPressed,
+                  )
+                : null,
               actions: [
                 if (manager.currentState != InteractionState.finished &&
                     manager.currentState != InteractionState.analyzing &&
@@ -105,13 +118,20 @@ class _ImpactProfessionnelExerciseScreenState extends State<ImpactProfessionnelE
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           final resultsData = {
-            'exercise': scenario,
-            'results': {
-              'interactiveFeedback': manager.feedbackResult,
-              'conversationHistory': manager.conversationHistory,
-            }
+            'interactiveFeedback': manager.feedbackResult,
+            'conversationHistory': manager.conversationHistory,
           };
-          Navigator.pushReplacementNamed(context, '/exercise_result', arguments: resultsData);
+          
+          // Utiliser le callback onExerciseCompleted s'il est fourni
+          if (widget.onExerciseCompleted != null) {
+            widget.onExerciseCompleted!(resultsData);
+          } else {
+            // Fallback au cas où le callback n'est pas fourni
+            Navigator.pushReplacementNamed(context, '/exercise_result', arguments: {
+              'exercise': scenario,
+              'results': resultsData
+            });
+          }
         }
       });
       return const Scaffold(
@@ -124,63 +144,128 @@ class _ImpactProfessionnelExerciseScreenState extends State<ImpactProfessionnelE
   }
 
   Widget _buildBriefingUI(BuildContext context, ScenarioContext scenario) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 400;
+    
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppTheme.spacing5),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            scenario.exerciseTitle,
-            style: Theme.of(context).textTheme.displaySmall?.copyWith(color: AppTheme.primaryColor),
-          ),
-          const SizedBox(height: AppTheme.spacing4),
-          _buildBriefingSection(
-            icon: Icons.description_outlined,
-            title: "Contexte du Scénario",
-            content: scenario.scenarioDescription,
-          ),
-          _buildBriefingSection(
-            icon: Icons.person_outline,
-            title: "Votre Rôle",
-            content: scenario.userRole,
-          ),
-          _buildBriefingSection(
-            icon: Icons.smart_toy_outlined,
-            title: "Rôle de l'IA",
-            content: scenario.aiRole,
-          ),
-          const SizedBox(height: AppTheme.spacing6),
-          Center(
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: const Text("Commencer l'Interaction"),
-              onPressed: () => _interactionManager?.startInteraction(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Titre élégant
+            Container(
+              margin: const EdgeInsets.only(bottom: 24.0),
+              child: Text(
+                scenario.exerciseTitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppTheme.primaryColor,
+                  fontSize: isSmallScreen ? 24 : 30,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
             ),
-          ),
-        ],
+            
+            // Sections dans des cards
+            _buildBriefingSection(
+              icon: Icons.description_outlined,
+              title: "Contexte du Scénario",
+              content: scenario.scenarioDescription,
+              isSmallScreen: isSmallScreen,
+            ),
+            _buildBriefingSection(
+              icon: Icons.person_outline,
+              title: "Votre Rôle",
+              content: scenario.userRole,
+              isSmallScreen: isSmallScreen,
+            ),
+            _buildBriefingSection(
+              icon: Icons.smart_toy_outlined,
+              title: "Rôle de l'IA",
+              content: scenario.aiRole,
+              isSmallScreen: isSmallScreen,
+            ),
+            
+            // Bouton d'action
+            Container(
+              margin: const EdgeInsets.only(top: 24.0, bottom: 16.0),
+              child: ElevatedButton.icon(
+                icon: Icon(Icons.play_arrow_rounded, size: 20),
+                label: Text(
+                  "Commencer",
+                  style: TextStyle(fontSize: 16),
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 24,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                onPressed: () => _interactionManager?.startInteraction(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildBriefingSection({required IconData icon, required String title, required String content}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppTheme.spacing4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: AppTheme.primaryColor.withOpacity(0.8)),
-              const SizedBox(width: AppTheme.spacing2),
-              Text(title, style: Theme.of(context).textTheme.headlineSmall),
-            ],
-          ),
-          const SizedBox(height: AppTheme.spacing2),
-          Text(
-            content,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
-          ),
-        ],
+  Widget _buildBriefingSection({
+    required IconData icon,
+    required String title,
+    required String content,
+    bool isSmallScreen = false,
+  }) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16.0),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      color: Colors.grey[850],
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon, 
+                  color: AppTheme.primaryColor.withOpacity(0.9),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 16, thickness: 0.5, color: Colors.grey),
+            Text(
+              content,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[300],
+                height: 1.4,
+              ),
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }

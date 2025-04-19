@@ -154,7 +154,7 @@ class AzureTtsService implements ITtsService {
 
   /// Synthétise le texte donné avec la voix et le style spécifiés et le joue
   @override
-  Future<void> synthesizeAndPlay(String text, {String? voiceName, String? style}) async {
+  Future<void> synthesizeAndPlay(String text, {String? voiceName, String? style, bool ssml = false}) async {
     if (!_isInitialized) {
       ConsoleLogger.error('[AzureTtsService] Service non initialisé.');
       return;
@@ -174,26 +174,40 @@ class AzureTtsService implements ITtsService {
     final String ttsUrl = 'https://$_region.tts.speech.microsoft.com/cognitiveservices/v1';
 
     // Construction du corps SSML avec gestion du style optionnel
-    String ssmlContent;
-    if (style != null && style.isNotEmpty) {
-      // Inclure l'élément express-as si un style est fourni
-      ssmlContent = '''
-          <mstts:express-as style="$style">
-              $text
-          </mstts:express-as>
-      ''';
-    } else {
-      // Sinon, utiliser le texte simple
-      ssmlContent = text;
-    }
-
-    final String ssmlBody = '''
+    String ssmlBody;
+    
+    if (ssml) {
+      // Si le texte contient déjà des balises SSML, l'envelopper dans le format complet
+      ssmlBody = '''
       <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts' xml:lang='fr-FR'>
           <voice name='$effectiveVoice'>
-              $ssmlContent
+              $text
           </voice>
       </speak>
-    ''';
+      ''';
+    } else {
+      // Construction normale du SSML pour du texte brut
+      String ssmlContent;
+      if (style != null && style.isNotEmpty) {
+        // Inclure l'élément express-as si un style est fourni
+        ssmlContent = '''
+            <mstts:express-as style="$style">
+                $text
+            </mstts:express-as>
+        ''';
+      } else {
+        // Sinon, utiliser le texte simple
+        ssmlContent = text;
+      }
+
+      ssmlBody = '''
+        <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts' xml:lang='fr-FR'>
+            <voice name='$effectiveVoice'>
+                $ssmlContent
+            </voice>
+        </speak>
+      ''';
+    }
 
     File? tempFile; // Déclarer ici pour accès dans finally
     try {

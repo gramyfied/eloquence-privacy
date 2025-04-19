@@ -30,7 +30,8 @@ abstract class ITtsService {
   /// [text] : Le texte à synthétiser.
   /// [voiceName] : Nom de la voix à utiliser (optionnel).
   /// [style] : Style de la voix (optionnel, peut être ignoré).
-  Future<void> synthesizeAndPlay(String text, {String? voiceName, String? style});
+  /// [ssml] : Indique si le texte contient des balises SSML (optionnel).
+  Future<void> synthesizeAndPlay(String text, {String? voiceName, String? style, bool ssml = false});
 
   /// Arrête la lecture audio en cours.
   Future<void> stop();

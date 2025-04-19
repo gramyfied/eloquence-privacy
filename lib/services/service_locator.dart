@@ -23,6 +23,8 @@ import '../infrastructure/native/azure_speech_api.g.dart'; // API Pigeon génér
 import 'remote/remote_speech_repository.dart'; // Ajouté pour le mode distant
 import 'remote/remote_tts_service.dart'; // Ajouté pour le mode distant
 import 'remote/remote_feedback_service.dart'; // Ajouté pour le mode distant
+import 'remote/remote_test_service.dart'; // Ajouté pour les tests d'upload audio
+import 'remote/remote_exercise_service.dart'; // Ajouté pour les tests d'exercices
 
 // Services
 import 'azure/azure_tts_service.dart'; // Ajouté
@@ -41,7 +43,9 @@ import 'lexique/syllabification_service.dart'; // Ajout du service de syllabific
 import 'audio/audio_analysis_service.dart'; // Correction: Chemin correct
 import 'audio/audio_service.dart'; // Ajouté pour l'injection
 import 'openai/openai_service.dart'; // Service OpenAI générique
+import 'openai/gpt_conversational_agent_service.dart'; // Ajout du service GPT
 import 'interactive_exercise/scenario_generator_service.dart';
+import 'interactive_exercise/enhanced_scenario_generator_service.dart'; // Ajout du service amélioré
 import 'interactive_exercise/conversational_agent_service.dart';
 import 'interactive_exercise/feedback_analysis_service.dart';
 import 'interactive_exercise/realtime_audio_pipeline.dart';
@@ -58,7 +62,7 @@ import 'mistral/mistral_feedback_service.dart';
 final serviceLocator = GetIt.instance;
 
 // Lire la variable d'environnement pour déterminer le mode
-const String appMode = String.fromEnvironment('APP_MODE', defaultValue: 'remote'); // 'cloud', 'local' ou 'remote'
+const String appMode = String.fromEnvironment('APP_MODE', defaultValue: 'cloud'); // 'cloud', 'local' ou 'remote'
 
 // Configuration du serveur distant
 const String apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://51.159.110.4:3000');
@@ -129,7 +133,14 @@ void setupServiceLocator() {
         audioRepository: serviceLocator<AudioRepository>(),
       )
     );
-    
+    // Enregistrement explicite pour accès direct dans les tests
+    serviceLocator.registerLazySingleton<RemoteSpeechRepository>(
+      () => RemoteSpeechRepository(
+        apiUrl: apiUrl,
+        apiKey: apiKey,
+        audioRepository: serviceLocator<AudioRepository>(),
+      )
+    );
     print("INFO: Enregistrement de RemoteSpeechRepository pour le mode distant.");
   } else {
     // Mode Cloud: Enregistrer l'implémentation Azure
@@ -168,6 +179,13 @@ void setupServiceLocator() {
   } else if (appMode == 'remote') {
     // Mode Remote: Enregistrer RemoteFeedbackService
     serviceLocator.registerLazySingleton<IFeedbackService>(
+      () => RemoteFeedbackService(
+        apiUrl: apiUrl,
+        apiKey: apiKey,
+      )
+    );
+    // Enregistrement explicite pour accès direct dans les tests
+    serviceLocator.registerLazySingleton<RemoteFeedbackService>(
       () => RemoteFeedbackService(
         apiUrl: apiUrl,
         apiKey: apiKey,
@@ -216,10 +234,22 @@ void setupServiceLocator() {
           audioPlayer: serviceLocator<AudioPlayer>(),
         )
       );
+      // Enregistrement explicite pour accès direct dans les tests
+      serviceLocator.registerLazySingleton<RemoteTtsService>(
+        () => RemoteTtsService(
+          apiUrl: apiUrl,
+          apiKey: apiKey,
+          audioPlayer: serviceLocator<AudioPlayer>(),
+        )
+      );
       print("INFO: Enregistrement de RemoteTtsService pour le mode distant.");
   } else {
       // Mode Cloud: Enregistrer AzureTtsService
       serviceLocator.registerLazySingleton<ITtsService>(
+        () => AzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
+      );
+      // Correction : enregistrer explicitement AzureTtsService pour les accès directs
+      serviceLocator.registerLazySingleton<AzureTtsService>(
         () => AzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
       );
   }
@@ -264,7 +294,11 @@ void setupServiceLocator() {
 
   // Enregistrer les services spécifiques aux exercices interactifs (communs)
   serviceLocator.registerLazySingleton<ScenarioGeneratorService>(() => ScenarioGeneratorService(serviceLocator<OpenAIService>()));
+  // Enregistrer le service amélioré pour les scénarios
+  serviceLocator.registerLazySingleton<EnhancedScenarioGeneratorService>(() => EnhancedScenarioGeneratorService(serviceLocator<OpenAIService>()));
   serviceLocator.registerLazySingleton<ConversationalAgentService>(() => ConversationalAgentService(serviceLocator<OpenAIService>()));
+  // Enregistrer le service GPT pour les exercices professionnels
+  serviceLocator.registerLazySingleton<GPTConversationalAgentService>(() => GPTConversationalAgentService(serviceLocator<OpenAIService>()));
   // FeedbackAnalysisService dépend de OpenAIService, il utilisera donc Azure OpenAI pour l'instant.
   // Si Mistral doit faire l'analyse, il faudra créer une implémentation spécifique.
   serviceLocator.registerLazySingleton<FeedbackAnalysisService>(() => FeedbackAnalysisService(serviceLocator<OpenAIService>()));
@@ -287,7 +321,20 @@ void setupServiceLocator() {
       serviceLocator<ConversationalAgentService>(),
       serviceLocator<RealTimeAudioPipeline>(),
       serviceLocator<FeedbackAnalysisService>(),
-      // AzureSpeechService n'est plus injecté directement, il est dans RealTimeAudioPipeline
+      serviceLocator<GPTConversationalAgentService>(), // Ajouter le service GPT
+    )
+  );
+  
+  // Enregistrer le service de test pour l'upload audio
+  serviceLocator.registerLazySingleton<RemoteTestService>(
+    () => RemoteTestService(baseUrl: apiUrl)
+  );
+  
+  // Enregistrer RemoteExerciseService pour les tests
+  serviceLocator.registerLazySingleton<RemoteExerciseService>(
+    () => RemoteExerciseService(
+      baseUrl: apiUrl,
+      apiKey: apiKey,
     )
   );
 

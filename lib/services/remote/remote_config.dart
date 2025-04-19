@@ -28,7 +28,7 @@ class RemoteConfig {
   /// Crée une instance pour le développement local
   factory RemoteConfig.local() {
     return RemoteConfig(
-      baseUrl: 'http://localhost:3000',
+      baseUrl: 'http://10.0.2.2:3000',
       apiKey: '2a0a606dd7133f983b9b700f975c6e7f2931c17c41f2b6294ea70111afdee566',
     );
   }

@@ -33,12 +33,19 @@ class RemoteFeedbackService implements IFeedbackService {
     required Map<String, dynamic> metrics,
   }) async {
     try {
+      // Préparer les en-têtes
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+      };
+      
+      // Ajouter l'en-tête d'authentification si la clé API est définie
+      if (apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
+      
       final response = await _httpClient!.post(
         Uri.parse('$apiUrl/api/coaching'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
+        headers: headers,
         body: json.encode({
           'userInput': spokenText,
           'assessmentResults': {
@@ -76,12 +83,19 @@ class RemoteFeedbackService implements IFeedbackService {
     String language = 'fr-FR',
   }) async {
     try {
+      // Préparer les en-têtes
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+      };
+      
+      // Ajouter l'en-tête d'authentification si la clé API est définie
+      if (apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
+      
       final response = await _httpClient!.post(
         Uri.parse('$apiUrl/api/coaching/generate-exercise'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
+        headers: headers,
         body: json.encode({
           'type': 'articulation',
           'language': language.split('-')[0], // Extraire le code langue (ex: 'fr' de 'fr-FR')
@@ -117,12 +131,19 @@ class RemoteFeedbackService implements IFeedbackService {
     String language = 'fr-FR',
   }) async {
     try {
+      // Préparer les en-têtes
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+      };
+      
+      // Ajouter l'en-tête d'authentification si la clé API est définie
+      if (apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
+      
       final response = await _httpClient!.post(
         Uri.parse('$apiUrl/api/coaching/generate-exercise'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
+        headers: headers,
         body: json.encode({
           'type': 'rhythm',
           'language': language.split('-')[0], // Extraire le code langue (ex: 'fr' de 'fr-FR')
@@ -158,12 +179,19 @@ class RemoteFeedbackService implements IFeedbackService {
     String language = 'fr-FR',
   }) async {
     try {
+      // Préparer les en-têtes
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+      };
+      
+      // Ajouter l'en-tête d'authentification si la clé API est définie
+      if (apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
+      
       final response = await _httpClient!.post(
         Uri.parse('$apiUrl/api/coaching/generate-exercise'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
+        headers: headers,
         body: json.encode({
           'type': 'intonation',
           'language': language.split('-')[0], // Extraire le code langue (ex: 'fr' de 'fr-FR')
@@ -205,10 +233,16 @@ class RemoteFeedbackService implements IFeedbackService {
         Uri.parse('$apiUrl/api/coaching/intonation-feedback'),
       );
       
+      // Préparer les en-têtes
+      final headers = <String, String>{};
+      
+      // Ajouter l'en-tête d'authentification si la clé API est définie
+      if (apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
+      
       // Ajouter les en-têtes
-      request.headers.addAll({
-        'Authorization': 'Bearer $apiKey',
-      });
+      request.headers.addAll(headers);
       
       // Ajouter les champs
       request.fields['targetEmotion'] = targetEmotion;
@@ -258,12 +292,19 @@ class RemoteFeedbackService implements IFeedbackService {
     String language = 'fr-FR',
   }) async {
     try {
+      // Préparer les en-têtes
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+      };
+      
+      // Ajouter l'en-tête d'authentification si la clé API est définie
+      if (apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
+      
       final response = await _httpClient!.post(
         Uri.parse('$apiUrl/api/coaching/generate-exercise'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
+        headers: headers,
         body: json.encode({
           'type': 'finales_nettes',
           'language': language.split('-')[0], // Extraire le code langue (ex: 'fr' de 'fr-FR')
@@ -300,12 +341,19 @@ class RemoteFeedbackService implements IFeedbackService {
     String language = 'fr-FR',
   }) async {
     try {
+      // Préparer les en-têtes
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+      };
+      
+      // Ajouter l'en-tête d'authentification si la clé API est définie
+      if (apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
+      
       final response = await _httpClient!.post(
         Uri.parse('$apiUrl/api/coaching/generate-exercise'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
+        headers: headers,
         body: json.encode({
           'type': 'syllabic',
           'language': language.split('-')[0], // Extraire le code langue (ex: 'fr' de 'fr-FR')

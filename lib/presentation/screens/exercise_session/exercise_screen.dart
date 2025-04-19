@@ -322,87 +322,149 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   }
 
   Widget _buildExerciseHeader() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: AppTheme.accentRed,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          padding: const EdgeInsets.all(8),
-          child: const Icon(
-            Icons.adjust,
-            color: Colors.white,
-            size: 24,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.exercise.title,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+    return Card(
+      color: Colors.grey[850],
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: AppTheme.accentRed.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Niveau: ${_difficultyToString(widget.exercise.difficulty)}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.white.withOpacity(0.7),
-                ),
+              padding: const EdgeInsets.all(8),
+              child: const Icon(
+                Icons.adjust,
+                color: Colors.white,
+                size: 20,
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.exercise.title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _getDifficultyColor(widget.exercise.difficulty).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _getDifficultyColor(widget.exercise.difficulty),
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          _difficultyToString(widget.exercise.difficulty),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: _getDifficultyColor(widget.exercise.difficulty),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
-  Widget _buildTextToReadSection() {
-     // Utiliser le texte généré ou afficher l'état de chargement/erreur
-     String textToDisplay;
-     if (_isLoadingText) {
-       textToDisplay = "Génération du texte...";
-     } else if (_loadingError != null) {
-       textToDisplay = _loadingError!;
-     } else {
-       textToDisplay = _generatedTextToRead;
-     }
+  Color _getDifficultyColor(ExerciseDifficulty difficulty) {
+    switch (difficulty) {
+      case ExerciseDifficulty.facile:
+        return Colors.green;
+      case ExerciseDifficulty.moyen:
+        return Colors.orange;
+      case ExerciseDifficulty.difficile:
+        return Colors.red;
+    }
+  }
 
-     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppTheme.darkSurface,
-            borderRadius: BorderRadius.circular(AppTheme.borderRadius3),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.1),
-              width: 1,
-            ),
-          ),
-           child: Text(
-                  textToDisplay,
-                  textAlign: TextAlign.center,
+  Widget _buildTextToReadSection() {
+    // Utiliser le texte généré ou afficher l'état de chargement/erreur
+    String textToDisplay;
+    if (_isLoadingText) {
+      textToDisplay = "Génération du texte...";
+    } else if (_loadingError != null) {
+      textToDisplay = _loadingError!;
+    } else {
+      textToDisplay = _generatedTextToRead;
+    }
+
+    return Card(
+      color: Colors.grey[850],
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.text_fields,
+                  color: AppTheme.primaryColor.withOpacity(0.9),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  "Texte à lire",
                   style: TextStyle(
-                    fontSize: 18,
-                    color: _loadingError != null ? AppTheme.accentRed : Colors.white, // Couleur d'erreur si besoin
-                    height: 1.5,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
                   ),
                 ),
+              ],
+            ),
+            const Divider(height: 16, thickness: 0.5, color: Colors.grey),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                textToDisplay,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: _loadingError != null ? AppTheme.accentRed : Colors.white,
+                  height: 1.4,
+                ),
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
-   }
+  }
 
   Widget _buildBottomSection() {
     return Container(

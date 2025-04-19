@@ -9,7 +9,12 @@ import '../../widgets/glassmorphic_container.dart';
 
 /// Écran de débogage pour l'application
 class DebugScreen extends StatefulWidget {
-  const DebugScreen({super.key});
+  final VoidCallback? onBackPressed;
+  
+  const DebugScreen({
+    super.key,
+    this.onBackPressed,
+  });
 
   @override
   _DebugScreenState createState() => _DebugScreenState();
@@ -202,6 +207,12 @@ class _DebugScreenState extends State<DebugScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: widget.onBackPressed != null
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: widget.onBackPressed,
+            )
+          : null,
         title: const Text(
           'Outils de débogage',
           style: TextStyle(

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
@@ -81,7 +80,7 @@ class RemoteTtsService implements ITtsService {
   }
 
   @override
-  Future<void> synthesizeAndPlay(String text, {String? voiceName, String? style}) async {
+  Future<void> synthesizeAndPlay(String text, {String? voiceName, String? style, bool ssml = false}) async {
     if (!_isInitialized) {
       throw ServerException("Service TTS distant non initialisé.");
     }
@@ -96,13 +95,20 @@ class RemoteTtsService implements ITtsService {
       final voice = voiceName ?? _defaultVoice ?? 'fr-FR-female';
       final language = voice.split('-')[0]; // Extraire le code langue (ex: 'fr' de 'fr-FR-female')
       
+      // Préparer les en-têtes
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+      };
+      
+      // Ajouter l'en-tête d'authentification si la clé API est définie
+      if (apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
+      
       // Envoyer la requête au serveur
       final response = await _httpClient!.post(
         Uri.parse('$apiUrl/api/tts/synthesize'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
+        headers: headers,
         body: json.encode({
           'text': text,
           'language': language,

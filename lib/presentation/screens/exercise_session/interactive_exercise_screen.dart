@@ -16,12 +16,14 @@ import '../../widgets/animations/pulsating_widget.dart'; // AJOUT: Pour l'animat
 
 class InteractiveExerciseScreen extends StatefulWidget {
   final String exerciseId;
+  final VoidCallback? onBackPressed;
   // TODO: Inject InteractionManager via Provider or service locator
   // final InteractionManager interactionManager;
 
   const InteractiveExerciseScreen({
     super.key,
     required this.exerciseId,
+    this.onBackPressed,
     // required this.interactionManager,
   });
 
@@ -106,6 +108,12 @@ class _InteractiveExerciseScreenState extends State<InteractiveExerciseScreen> {
               title: Text(manager.currentScenario?.exerciseTitle ?? "Exercice Interactif"),
               backgroundColor: Colors.transparent,
               elevation: 0,
+              leading: widget.onBackPressed != null
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: widget.onBackPressed,
+                  )
+                : null,
               // Utiliser manager (de watch) pour conditionner l'affichage
               actions: [
                 // Utiliser manager (de watch) pour conditionner l'affichage
@@ -219,76 +227,125 @@ class _InteractiveExerciseScreenState extends State<InteractiveExerciseScreen> {
   // UI de Briefing
   // ===========================================================================
   Widget _buildBriefingUI(BuildContext context, ScenarioContext scenario) {
-     return SingleChildScrollView( // Permet le défilement si le texte est long
-       padding: const EdgeInsets.all(AppTheme.spacing5), // Utiliser les constantes de thème
-       child: Column(
-         crossAxisAlignment: CrossAxisAlignment.start,
-         children: [
-           Text(
-             scenario.exerciseTitle,
-             style: Theme.of(context).textTheme.displaySmall?.copyWith(color: AppTheme.primaryColor),
-           ),
-           const SizedBox(height: AppTheme.spacing4),
-           _buildBriefingSection(
-             icon: Icons.description_outlined,
-             title: "Contexte du Scénario",
-             content: scenario.scenarioDescription,
-           ),
-           _buildBriefingSection(
-             icon: Icons.person_outline,
-             title: "Votre Rôle",
-             content: scenario.userRole,
-           ),
-           _buildBriefingSection(
-             icon: _selectedAiAvatar, // Utiliser l'avatar IA
-             title: "Rôle de l'IA (${scenario.aiRole})",
-             content: scenario.aiObjective,
-           ),
-           // TODO: Ajouter section "Objectifs / Indicateurs Clés" si pertinent
-           const SizedBox(height: AppTheme.spacing6),
-           Center(
-             child: ElevatedButton.icon(
-               icon: const Icon(Icons.play_arrow_rounded),
-               label: const Text("Commencer l'Interaction"),
-               style: ElevatedButton.styleFrom(
-                 padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing6, vertical: AppTheme.spacing4),
-                 textStyle: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.white),
-               ),
-               onPressed: () {
-                 print("Briefing terminé, appel de startInteraction...");
-                 _interactionManager?.startInteraction(); // Démarrer l'interaction
-               },
-             ),
-           ),
-           const SizedBox(height: AppTheme.spacing4), // Espace en bas
-         ],
-       ),
-     );
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 400;
+    
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Titre élégant
+            Container(
+              margin: const EdgeInsets.only(bottom: 24.0),
+              child: Text(
+                scenario.exerciseTitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppTheme.primaryColor,
+                  fontSize: isSmallScreen ? 24 : 30,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            
+            // Sections dans des cards
+            _buildBriefingSection(
+              icon: Icons.description_outlined,
+              title: "Contexte du Scénario",
+              content: scenario.scenarioDescription,
+            ),
+            _buildBriefingSection(
+              icon: Icons.person_outline,
+              title: "Votre Rôle",
+              content: scenario.userRole,
+            ),
+            _buildBriefingSection(
+              icon: _selectedAiAvatar,
+              title: "Rôle de l'IA",
+              content: scenario.aiObjective,
+            ),
+            
+            // Bouton d'action
+            Container(
+              margin: const EdgeInsets.only(top: 24.0, bottom: 16.0),
+              child: ElevatedButton.icon(
+                icon: Icon(Icons.play_arrow_rounded, size: 20),
+                label: Text(
+                  "Commencer",
+                  style: TextStyle(fontSize: 16),
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 24,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                onPressed: () {
+                  print("Briefing terminé, appel de startInteraction...");
+                  _interactionManager?.startInteraction();
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildBriefingSection({required IconData icon, required String title, required String content}) {
-     return Padding(
-       padding: const EdgeInsets.only(bottom: AppTheme.spacing4),
-       child: Column(
-         crossAxisAlignment: CrossAxisAlignment.start,
-         children: [
-           Row(
-             children: [
-               Icon(icon, color: AppTheme.primaryColor.withOpacity(0.8), size: 20),
-               const SizedBox(width: AppTheme.spacing2),
-               Text(title, style: Theme.of(context).textTheme.headlineSmall),
-             ],
-           ),
-           const SizedBox(height: AppTheme.spacing2),
-           Text(
-             content,
-             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary, height: 1.5),
-           ),
-           const SizedBox(height: AppTheme.spacing3),
-           Divider(color: Colors.white.withOpacity(0.1)),
-         ],
-       ),
-     );
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16.0),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      color: Colors.grey[850],
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon, 
+                  color: AppTheme.primaryColor.withOpacity(0.9),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 16, thickness: 0.5, color: Colors.grey),
+            Text(
+              content,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[300],
+                height: 1.4,
+              ),
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
 

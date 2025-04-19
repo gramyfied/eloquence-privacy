@@ -129,7 +129,7 @@ class PiperTtsService implements ITtsService {
   /// [voiceName] : Nom de la voix à utiliser (optionnel, utilise la voix par défaut si non spécifié)
   /// [style] : Style de la voix (ignoré pour Piper, inclus pour compatibilité avec l'interface)
   @override
-  Future<void> synthesizeAndPlay(String text, {String? voiceName, String? style}) async {
+  Future<void> synthesizeAndPlay(String text, {String? voiceName, String? style, bool ssml = false}) async {
     if (!_isInitialized) {
       ConsoleLogger.error('[PiperTtsService] Service non initialisé.');
       return;

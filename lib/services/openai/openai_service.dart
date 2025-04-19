@@ -20,6 +20,45 @@ class OpenAIService {
     _apiEndpoint = '$endpoint/openai/deployments/$deploymentName/chat/completions?api-version=2023-05-15';
   }
 
+  /// Makes a chat completion request to the OpenAI API and returns the parsed message content.
+  /// Returns a Map with the message content and other metadata.
+  /// Throws an exception if the API call fails.
+  Future<Map<String, dynamic>> getChatCompletion({
+    required String systemPrompt,
+    required List<Map<String, String>> messages, // Format: [{'role': 'user'/'assistant'/'system', 'content': '...'}, ...]
+    String? model = 'gpt-4o', // Modèle par défaut
+    double? temperature = 0.7, // Température par défaut
+    int? maxTokens = 1000, // Limite par défaut
+    bool? jsonMode = false, // Mode JSON désactivé par défaut
+  }) async {
+    // Obtenir la réponse JSON brute
+    String rawResponse = await getChatCompletionRaw(
+      systemPrompt: systemPrompt,
+      messages: messages,
+      model: model,
+      temperature: temperature,
+      maxTokens: maxTokens,
+      jsonMode: jsonMode,
+    );
+    
+    try {
+      // Décoder la réponse JSON
+      Map<String, dynamic> responseMap = json.decode(rawResponse);
+      
+      // Extraire le contenu du message
+      if (responseMap.containsKey('choices') && 
+          responseMap['choices'] is List && 
+          responseMap['choices'].isNotEmpty &&
+          responseMap['choices'][0].containsKey('message')) {
+        return responseMap['choices'][0]['message'];
+      } else {
+        throw Exception('Invalid JSON structure in OpenAI response');
+      }
+    } catch (e) {
+      throw Exception('Error parsing OpenAI response: $e');
+    }
+  }
+
   /// Makes a chat completion request to the OpenAI API.
   /// Returns the raw JSON response content as a string.
   /// Throws an exception if the API call fails.

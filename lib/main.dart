@@ -6,8 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart'; // Pour initialiser les locales intl
 import 'package:hive_flutter/hive_flutter.dart'; // Ajouté pour Hive
 
-import 'app/app.dart';
-// import 'app/router.dart'; // L'import du router n'est pas nécessaire ici
+import 'app/router.dart'; // Ajouté pour createRouter
 import 'services/service_locator.dart'; // Contient setupServiceLocator et serviceLocator
 import 'services/lexique/syllabification_service.dart'; // Importer le service
 // Importer AzureSpeechService
@@ -176,9 +175,11 @@ void main() async {
   // Riverpod pourra y accéder via des providers si nécessaire.
 
   runApp(
-    // Envelopper l'application avec ProviderScope pour Riverpod
-    const ProviderScope(
-      child: App(),
+    ProviderScope(
+      child: MaterialApp.router(
+        debugShowCheckedModeBanner: false,
+        routerConfig: createRouter(serviceLocator<AuthRepository>()),
+      ),
     ),
   );
 }

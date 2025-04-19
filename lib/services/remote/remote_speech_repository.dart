@@ -55,12 +55,18 @@ class RemoteSpeechRepository implements IAzureSpeechRepository {
     try {
       _recognitionStreamController?.add(AzureSpeechEvent.status("Initialisation du service distant..."));
       
+      // Préparer les en-têtes
+      final headers = <String, String>{};
+      
+      // Ajouter l'en-tête d'authentification si la clé API est définie
+      if (apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
+      
       // Vérifier que le serveur est accessible
       final response = await _httpClient!.get(
         Uri.parse(apiUrl),
-        headers: {
-          'Authorization': 'Bearer $apiKey',
-        },
+        headers: headers,
       ).timeout(const Duration(seconds: 5));
       
       if (response.statusCode != 200) {
@@ -182,10 +188,16 @@ class RemoteSpeechRepository implements IAzureSpeechRepository {
       // Envoyer l'audio et le texte de référence au serveur
       final request = http.MultipartRequest('POST', Uri.parse('$apiUrl/api/pronunciation/evaluate'));
       
+      // Préparer les en-têtes
+      final headers = <String, String>{};
+      
+      // Ajouter l'en-tête d'authentification si la clé API est définie
+      if (apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
+      
       // Ajouter les en-têtes
-      request.headers.addAll({
-        'Authorization': 'Bearer $apiKey',
-      });
+      request.headers.addAll(headers);
       
       // Ajouter les champs
       request.fields['referenceText'] = referenceText;
@@ -326,10 +338,16 @@ class RemoteSpeechRepository implements IAzureSpeechRepository {
       // Créer la requête multipart
       final request = http.MultipartRequest('POST', Uri.parse('$apiUrl/api/speech/recognize'));
       
+      // Préparer les en-têtes
+      final headers = <String, String>{};
+      
+      // Ajouter l'en-tête d'authentification si la clé API est définie
+      if (apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
+      
       // Ajouter les en-têtes
-      request.headers.addAll({
-        'Authorization': 'Bearer $apiKey',
-      });
+      request.headers.addAll(headers);
       
       // Ajouter les champs
       request.fields['language'] = language;

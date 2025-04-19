@@ -344,9 +344,17 @@ class RealTimeAudioPipeline {
     // if (!_ttsService.isInitialized) { ... } // Supposant une propriété isInitialized
 
     try {
+      // Vérifier si le texte contient des balises SSML
+      bool containsSsml = text.contains("<break") || 
+                          text.contains("<prosody") || 
+                          text.contains("<emphasis") || 
+                          text.contains("<say-as");
+      
       // La mise à jour de _isSpeakingController est gérée par _subscribeToTtsState
       print("RealTimeAudioPipeline: Calling synthesizeAndPlay on TTS service for: '$text'");
-      await _ttsService.synthesizeAndPlay(text);
+      print("RealTimeAudioPipeline: Text contains SSML: $containsSsml");
+      
+      await _ttsService.synthesizeAndPlay(text, ssml: containsSsml);
       print("TTS synthesizeAndPlay call completed.");
       // La complétion réelle est gérée par le stream d'état
     } catch (e) {

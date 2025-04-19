@@ -19,10 +19,16 @@ class RemoteExerciseService {
 
   /// Récupère les en-têtes HTTP pour les requêtes JSON
   Map<String, String> _getHeaders() {
-    return {
+    final headers = <String, String>{
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer $apiKey',
     };
+    
+    // Ajouter l'en-tête d'authentification si la clé API est définie
+    if (apiKey.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $apiKey';
+    }
+    
+    return headers;
   }
 
   /// Génère du contenu pour un exercice via l'API

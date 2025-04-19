@@ -28,8 +28,15 @@ class WordTarget {
 
 class FinalesNettesExerciseScreen extends StatefulWidget {
   final Exercise exercise;
+  final Function(Map<String, dynamic> results) onExerciseCompleted;
+  final VoidCallback onExitPressed;
 
-  const FinalesNettesExerciseScreen({super.key, required this.exercise});
+  const FinalesNettesExerciseScreen({
+    super.key, 
+    required this.exercise,
+    required this.onExerciseCompleted,
+    required this.onExitPressed,
+  });
 
   @override
   State<FinalesNettesExerciseScreen> createState() => _FinalesNettesExerciseScreenState();
