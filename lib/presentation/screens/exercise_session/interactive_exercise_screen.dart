@@ -12,6 +12,7 @@ import '../../../domain/entities/interactive_exercise/conversation_turn.dart';
 import '../../../domain/entities/interactive_exercise/scenario_context.dart'; // Added import
 import '../../providers/interaction_manager.dart';
 import '../../widgets/animations/pulsating_widget.dart'; // AJOUT: Pour l'animation d'écoute
+import '../../widgets/animations/animated_conversation_bubble.dart'; // AJOUT: Pour les bulles de conversation animées
 // Import other necessary widgets/services like service_locator if needed
 
 class InteractiveExerciseScreen extends StatefulWidget {
@@ -116,6 +117,22 @@ class _InteractiveExerciseScreenState extends State<InteractiveExerciseScreen> {
                 : null,
               // Utiliser manager (de watch) pour conditionner l'affichage
               actions: [
+                // Bouton pour accéder au tableau de bord d'évaluation
+                if (manager.currentState != InteractionState.finished &&
+                    manager.currentState != InteractionState.error)
+                  IconButton(
+                    icon: const Icon(Icons.analytics_outlined),
+                    tooltip: "Tableau de bord d'évaluation",
+                    onPressed: () {
+                      // Naviguer vers le tableau de bord d'évaluation
+                      context.push(
+                        AppRoutes.evaluationDashboard.replaceFirst(
+                          ':exerciseId', 
+                          widget.exerciseId
+                        )
+                      );
+                    },
+                  ),
                 // Utiliser manager (de watch) pour conditionner l'affichage
                 if (manager.currentState != InteractionState.finished &&
                     manager.currentState != InteractionState.analyzing &&
@@ -366,8 +383,8 @@ class _InteractiveExerciseScreenState extends State<InteractiveExerciseScreen> {
            ),
            const SizedBox(height: 20), // Augmenter l'espace
 
-           // Affichage Contexte Minimal (Dernière phrase dite) - Visible quand ni l'IA ni l'utilisateur ne parle activement
-           if (interactionState != InteractionState.listening && interactionState != InteractionState.speaking && manager.conversationHistory.isNotEmpty)
+           // Affichage Contexte Minimal (Dernière phrase dite) - Toujours visible si l'historique existe
+           if (manager.conversationHistory.isNotEmpty)
              Padding(
                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                child: Text(
@@ -383,11 +400,8 @@ class _InteractiveExerciseScreenState extends State<InteractiveExerciseScreen> {
                ),
              ),
 
-           // Historique de conversation : Masqué pendant l'écoute ou la parole
-           if (interactionState != InteractionState.listening && interactionState != InteractionState.speaking)
-             Expanded(child: _buildConversationHistory(manager.conversationHistory))
-           else
-             const Spacer(), // Garde l'indicateur en haut quand l'historique est masqué
+           // Historique de conversation : Toujours visible
+           Expanded(child: _buildConversationHistory(manager.conversationHistory)),
          ],
        ),
      );
@@ -429,20 +443,14 @@ class _InteractiveExerciseScreenState extends State<InteractiveExerciseScreen> {
       itemBuilder: (context, index) {
         final turn = history[history.length - 1 - index]; // Access in reverse
         bool isUser = turn.speaker == Speaker.user;
-        return Align(
-          alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-            decoration: BoxDecoration(
-              color: isUser ? AppTheme.primaryColor.withOpacity(0.8) : Colors.grey[700],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              turn.text,
-              style: const TextStyle(color: Colors.white),
-            ),
-          ),
+        
+        // Animation pour les bulles de conversation
+        return AnimatedConversationBubble(
+          isUser: isUser,
+          text: turn.text,
+          // Ajouter un délai pour que les bulles apparaissent progressivement
+          // Les plus récentes apparaissent plus rapidement
+          animationDelay: Duration(milliseconds: index * 50),
         );
       },
     );
@@ -638,9 +646,19 @@ class ConversationStateIndicator extends StatelessWidget {
             String statusText = "";
 
             // Déterminer l'état principal basé sur le manager ET les booléens du pipeline
+            // Priorité: listening > speaking > thinking > analyzing > ready
             InteractionState displayState = state;
-            if (listening) displayState = InteractionState.listening;
-            if (speaking) displayState = InteractionState.speaking;
+            if (listening) {
+              displayState = InteractionState.listening;
+            } else if (speaking) {
+              displayState = InteractionState.speaking;
+            } else if (state == InteractionState.thinking) {
+              displayState = InteractionState.thinking;
+            } else if (state == InteractionState.analyzing) {
+              displayState = InteractionState.analyzing;
+            } else if (state == InteractionState.ready) {
+              displayState = InteractionState.ready;
+            }
 
             switch (displayState) {
               case InteractionState.speaking:
@@ -675,11 +693,24 @@ class ConversationStateIndicator extends StatelessWidget {
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Animation plus fluide pour les transitions d'état
                 AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
+                  duration: const Duration(milliseconds: 500), // Durée plus longue pour une transition plus douce
                   transitionBuilder: (Widget child, Animation<double> animation) {
-                    // AJOUT: Transition en fondu
-                    return FadeTransition(opacity: animation, child: child);
+                    // Combinaison de fondu et de translation pour une transition plus fluide
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0.0, 0.1),
+                          end: Offset.zero,
+                        ).animate(CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOutCubic, // Courbe d'animation plus naturelle
+                        )),
+                        child: child,
+                      ),
+                    );
                   },
                   child: SizedBox(
                      key: ValueKey(displayState), // Important pour AnimatedSwitcher
