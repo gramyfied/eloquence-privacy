@@ -247,12 +247,27 @@ class EnhancedInteractionManager extends InteractionManager {
           } else if (currentState == InteractionState.speaking) {
             // Vérifier si le texte partiel est significatif avant de considérer comme un barge-in
             final partialText = event.text ?? '';
-            if (partialText.trim().length > 3) {  // Ignorer les partiels trop courts
+            
+            // Ignorer les répétitions de ce que l'IA vient de dire
+            bool isRepetition = false;
+            if (conversationHistory.isNotEmpty && conversationHistory.last.speaker == Speaker.ai) {
+              final lastAiText = conversationHistory.last.text.toLowerCase();
+              final userPartialText = partialText.toLowerCase();
+              
+              // Vérifier si l'utilisateur répète le début de ce que l'IA vient de dire
+              if (lastAiText.startsWith(userPartialText) || 
+                  userPartialText.startsWith(lastAiText.substring(0, lastAiText.length < 20 ? lastAiText.length : 20))) {
+                isRepetition = true;
+                ConsoleLogger.info("EnhancedInteractionManager: Ignoring repetition of AI's speech: '$partialText'");
+              }
+            }
+            
+            if (partialText.trim().length > 5 && !isRepetition) {  // Ignorer les partiels trop courts et les répétitions
               ConsoleLogger.info("EnhancedInteractionManager: Barge-in detected via partial transcript while speaking: '$partialText'. Stopping TTS.");
               _userWasInterrupted = true;
               _enhancedStopTtsForBargeIn();
             } else {
-              ConsoleLogger.info("EnhancedInteractionManager: Ignoring short partial transcript during speaking: '$partialText'");
+              ConsoleLogger.info("EnhancedInteractionManager: Ignoring short or repetitive partial transcript during speaking: '$partialText'");
             }
           } else {
             ConsoleLogger.info("EnhancedInteractionManager: Ignoring partial transcript received in state $currentState");
