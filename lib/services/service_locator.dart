@@ -49,7 +49,12 @@ import 'interactive_exercise/enhanced_scenario_generator_service.dart'; // Ajout
 import 'interactive_exercise/conversational_agent_service.dart';
 import 'interactive_exercise/feedback_analysis_service.dart';
 import 'interactive_exercise/realtime_audio_pipeline.dart';
+import 'interactive_exercise/enhanced_realtime_audio_pipeline.dart';
+import 'evaluation/evaluation_validator_service.dart'; // Service de validation des évaluations
 import '../presentation/providers/interaction_manager.dart'; // Assurez-vous que le chemin est correct
+import '../presentation/providers/i_interaction_manager.dart'; // Interface pour InteractionManager
+import '../presentation/providers/enhanced_interaction_manager.dart'; // Décorateur pour InteractionManager
+import '../presentation/providers/enhanced_interaction_manager_v2.dart'; // Version améliorée de InteractionManager
 // Importer les interfaces et implémentations des nouveaux plugins
 import 'package:whisper_stt_plugin/whisper_stt_plugin.dart';
 import 'package:piper_tts_plugin/piper_tts_plugin.dart';
@@ -303,25 +308,58 @@ void setupServiceLocator() {
   // Si Mistral doit faire l'analyse, il faudra créer une implémentation spécifique.
   serviceLocator.registerLazySingleton<FeedbackAnalysisService>(() => FeedbackAnalysisService(serviceLocator<OpenAIService>()));
 
-  // Enregistrer le pipeline audio temps réel
-  // MODIFICATION: Dépend de IAzureSpeechRepository et du service TTS enregistré via l'interface
+  // Enregistrer le pipeline audio temps réel amélioré
+  // MODIFICATION: Utiliser EnhancedRealTimeAudioPipeline au lieu de RealTimeAudioPipeline
   serviceLocator.registerLazySingleton<RealTimeAudioPipeline>(
-    () => RealTimeAudioPipeline(
+    () => EnhancedRealTimeAudioPipeline(
       serviceLocator<AudioService>(),
       serviceLocator<IAzureSpeechRepository>(), // Injection correcte du Repository
       serviceLocator<ITtsService>(), // Injection du service TTS via l'interface
     )
   );
+  
+  // Enregistrer explicitement EnhancedRealTimeAudioPipeline pour les accès directs
+  serviceLocator.registerLazySingleton<EnhancedRealTimeAudioPipeline>(
+    () => EnhancedRealTimeAudioPipeline(
+      serviceLocator<AudioService>(),
+      serviceLocator<IAzureSpeechRepository>(),
+      serviceLocator<ITtsService>(),
+    )
+  );
+
+  // Enregistrer le service de validation des évaluations
+  serviceLocator.registerLazySingleton<EvaluationValidatorService>(
+    () => EvaluationValidatorService()
+  );
 
   // Enregistrer InteractionManager (commun)
   // Il dépend de RealTimeAudioPipeline qui encapsule maintenant le repo speech.
   serviceLocator.registerFactory<InteractionManager>(
-    () => InteractionManager(
+    () => EnhancedInteractionManager(
       serviceLocator<ScenarioGeneratorService>(),
       serviceLocator<ConversationalAgentService>(),
       serviceLocator<RealTimeAudioPipeline>(),
       serviceLocator<FeedbackAnalysisService>(),
       serviceLocator<GPTConversationalAgentService>(), // Ajouter le service GPT
+    )
+  );
+  
+  // Enregistrer explicitement EnhancedInteractionManager pour les accès directs
+  serviceLocator.registerFactory<EnhancedInteractionManager>(
+    () => EnhancedInteractionManager(
+      serviceLocator<ScenarioGeneratorService>(),
+      serviceLocator<ConversationalAgentService>(),
+      serviceLocator<RealTimeAudioPipeline>(),
+      serviceLocator<FeedbackAnalysisService>(),
+      serviceLocator<GPTConversationalAgentService>(),
+    )
+  );
+  
+  // Enregistrer le décorateur InteractionManagerDecorator qui implémente IInteractionManager
+  serviceLocator.registerFactory<IInteractionManager>(
+    () => InteractionManagerDecorator(
+      serviceLocator<InteractionManager>(),
+      validationEnabled: true,
     )
   );
   
