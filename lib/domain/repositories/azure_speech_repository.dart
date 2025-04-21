@@ -31,6 +31,14 @@ abstract class IAzureSpeechRepository {
   /// Le type d'événement peut être `dynamic` ou une classe/enum spécifique.
   Stream<dynamic> get recognitionEvents;
 
+  /// Vérifie si le recognizer est initialisé et prêt à être utilisé.
+  /// Retourne true si le recognizer est prêt, false sinon.
+  Future<bool> isRecognizerInitialized();
+
+  /// Réinitialise complètement le repository, y compris le recognizer.
+  /// Utile en cas d'erreur ou de blocage du recognizer.
+  Future<void> resetRepository();
+
   // Ajoutez d'autres méthodes si nécessaire (ex: synthèse vocale)
   // Future<Uint8List> synthesizeSpeech(String text, String language, String voiceName);
 }

@@ -13,19 +13,20 @@ import '../../services/interactive_exercise/scenario_generator_service.dart';
 import '../../services/openai/gpt_conversational_agent_service.dart';
 import 'interaction_manager.dart';
 
-/// Version améliorée de l'InteractionManager qui optimise la détection de fin de phrase
-/// et réduit les problèmes de coupure de parole.
-class EnhancedInteractionManager extends InteractionManager {
+/// Version améliorée V2 de l'InteractionManager qui optimise la détection de fin de phrase
+/// et réduit les problèmes de coupure de parole et d'écho audio.
+class EnhancedInteractionManagerV2 extends InteractionManager {
   // Délais configurables pour les transitions d'état
-  final int delayAfterSpeakingMs = 1500;  // Délai après que l'IA a fini de parler (augmenté davantage)
-  final int minUtteranceDurationMs = 2000;  // Durée minimale d'un énoncé utilisateur (augmentée)
-  final int maxSilenceDurationMs = 1800;  // Silence max avant de considérer fin de phrase (augmenté)
+  final int delayAfterSpeakingMs = 3000;  // Délai après que l'IA a fini de parler (augmenté significativement)
+  final int minUtteranceDurationMs = 3000;  // Durée minimale d'un énoncé utilisateur (augmentée significativement)
+  final int maxSilenceDurationMs = 3000;  // Silence max avant de considérer fin de phrase (augmenté significativement)
   
   // Indicateurs d'état améliorés
   bool _userWasInterrupted = false;
   DateTime? _speechStartTime;
   DateTime? _lastSpeechActivityTime;
   Timer? _endOfSpeechTimer;
+  bool _isTransitioning = false; // Verrou pour éviter les transitions concurrentes
   
   // Variables pour remplacer celles de la classe parente qui sont privées
   bool _enhancedAudioPipelineDisposed = false;
@@ -42,7 +43,7 @@ class EnhancedInteractionManager extends InteractionManager {
   // Getter pour la transcription partielle
   ValueListenable<String> get enhancedPartialTranscript => _enhancedPartialTranscriptNotifier;
 
-  EnhancedInteractionManager(
+  EnhancedInteractionManagerV2(
     ScenarioGeneratorService scenarioService,
     ConversationalAgentService agentService,
     RealTimeAudioPipeline audioPipeline,
@@ -68,6 +69,25 @@ class EnhancedInteractionManager extends InteractionManager {
   void _enhancedHandleTtsCompletion(bool success) async {
     if (_enhancedAudioPipelineDisposed) return;
     ConsoleLogger.info("EnhancedInteractionManager: TTS completion received (success: $success). Current state: $currentState");
+    
+    _logDebugState("_enhancedHandleTtsCompletion");
+
+    // Vérifier si la synthèse vocale est toujours active malgré l'événement de complétion
+    // Cela peut arriver si l'événement est déclenché prématurément
+    if (_enhancedAudioPipeline.isSpeaking.value) {
+      ConsoleLogger.warning("EnhancedInteractionManager: TTS completion received but isSpeaking is still true. Ignoring this event.");
+      return;
+    }
+
+    // Attendre un court délai pour s'assurer que la synthèse vocale est bien terminée
+    // et que tous les événements audio ont été traités
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    // Vérifier à nouveau si la synthèse vocale est toujours active
+    if (_enhancedAudioPipeline.isSpeaking.value) {
+      ConsoleLogger.warning("EnhancedInteractionManager: TTS still active after delay. Ignoring completion event.");
+      return;
+    }
 
     if (!success && _enhancedPendingAzureFinalEvent == null) {
       ConsoleLogger.info("EnhancedInteractionManager: TTS stopped or failed (success: false) without a pending final transcript.");
@@ -81,14 +101,32 @@ class EnhancedInteractionManager extends InteractionManager {
         _enhancedProcessFinalTranscript(eventToProcess!);
       } else {
         ConsoleLogger.info("EnhancedInteractionManager: TTS finished or stopped. Transitioning to ready and starting listening after delay.");
+        
+        // S'assurer que la reconnaissance vocale est bien arrêtée avant de passer à l'état ready
+        if (_enhancedAudioPipeline.isListening.value) {
+          ConsoleLogger.warning("EnhancedInteractionManager: Recognition still active after TTS completion. Forcing stop.");
+          await _enhancedAudioPipeline.forceStopRecognition();
+          await Future.delayed(const Duration(milliseconds: 200));
+        }
+        
         setState(InteractionState.ready);
         
         // Ajouter un délai plus long avant de commencer à écouter pour éviter les transitions trop rapides
         if (!_enhancedAudioPipelineDisposed && currentScenario != null) {
           // Délai configurable pour laisser le temps à l'utilisateur de se préparer
+          ConsoleLogger.info("EnhancedInteractionManager: Waiting $delayAfterSpeakingMs ms before starting listening...");
           Future.delayed(Duration(milliseconds: delayAfterSpeakingMs), () {
             if (!_enhancedAudioPipelineDisposed && currentState == InteractionState.ready && currentScenario != null) {
+              // Vérifier une dernière fois que la synthèse vocale est bien terminée
+              if (_enhancedAudioPipeline.isSpeaking.value) {
+                ConsoleLogger.warning("EnhancedInteractionManager: TTS still active before starting listening. Aborting listening start.");
+                return;
+              }
+              
+              ConsoleLogger.info("EnhancedInteractionManager: Delay completed, starting listening now.");
               startListening(currentScenario!.language);
+            } else {
+              ConsoleLogger.warning("EnhancedInteractionManager: Cannot start listening after delay: disposed=$_enhancedAudioPipelineDisposed, state=$currentState, scenario=${currentScenario != null}");
             }
           });
         }
@@ -211,10 +249,29 @@ class EnhancedInteractionManager extends InteractionManager {
     }
   }
 
+  /// Méthode surchargée pour déclencher la réponse de l'IA
+  @override
+  Future<void> triggerAIResponse() async {
+    if (_enhancedAudioPipelineDisposed) {
+      ConsoleLogger.info("EnhancedInteractionManager: triggerAIResponse called after dispose. Aborting.");
+      return;
+    }
+    
+    // Appeler la méthode parente pour générer la réponse de l'IA
+    await super.triggerAIResponse();
+  }
+
   /// Méthode améliorée pour gérer les événements de reconnaissance vocale
   @override
   void _handleSpeechEvent(dynamic event) {
     if (_enhancedAudioPipelineDisposed) return;
+
+    // IMPORTANT: Ignorer complètement tous les événements de reconnaissance vocale si l'IA est en train de parler
+    // Cela empêche l'IA de s'entendre et de se répondre à elle-même
+    if (_enhancedAudioPipeline.isSpeaking.value) {
+      ConsoleLogger.warning("EnhancedInteractionManager: IGNORING ALL SPEECH EVENTS WHILE AI IS SPEAKING to prevent echo");
+      return;
+    }
 
     // Mettre à jour le timestamp de la dernière activité vocale
     _lastSpeechActivityTime = DateTime.now();
@@ -222,6 +279,45 @@ class EnhancedInteractionManager extends InteractionManager {
     // Tenter de traiter comme AzureSpeechEvent (pour la compatibilité actuelle)
     if (event is AzureSpeechEvent) {
       ConsoleLogger.info("EnhancedInteractionManager received Azure event: ${event.type}. Current state: $currentState");
+
+      // Vérifier si l'événement est une répétition de ce que l'IA vient de dire
+      bool isEcho = false;
+      if (conversationHistory.isNotEmpty && conversationHistory.last.speaker == Speaker.ai) {
+        final lastAiText = conversationHistory.last.text.toLowerCase();
+        final eventText = (event.text ?? '').toLowerCase();
+        
+        // Méthode améliorée pour détecter les échos
+        if (eventText.isNotEmpty) {
+          // 1. Diviser les textes en mots pour une comparaison plus précise
+          final aiWords = lastAiText.split(RegExp(r'\s+'));
+          final eventWords = eventText.split(RegExp(r'\s+'));
+          
+          // 2. Calculer le nombre de mots communs
+          int commonWords = 0;
+          for (final word in eventWords) {
+            if (word.length > 3 && aiWords.contains(word)) { // Ignorer les mots courts comme "le", "la", "et", etc.
+              commonWords++;
+            }
+          }
+          
+          // 3. Calculer le pourcentage de mots communs
+          final percentageCommon = eventWords.isEmpty ? 0 : (commonWords / eventWords.length) * 100;
+          
+          // 4. Si plus de 60% des mots sont communs, considérer comme un écho
+          if (percentageCommon > 60) {
+            isEcho = true;
+            ConsoleLogger.warning("EnhancedInteractionManager: DETECTED ECHO of AI's speech: '$eventText'. Common words: $commonWords/${eventWords.length} (${percentageCommon.toStringAsFixed(1)}%). IGNORING.");
+            return; // Ignorer complètement cet événement
+          }
+          
+          // 5. Vérifier également les phrases complètes
+          if (lastAiText.contains(eventText) || eventText.contains(lastAiText.substring(0, lastAiText.length < 20 ? lastAiText.length : 20))) {
+            isEcho = true;
+            ConsoleLogger.warning("EnhancedInteractionManager: DETECTED ECHO of AI's speech (phrase match): '$eventText'. IGNORING.");
+            return; // Ignorer complètement cet événement
+          }
+        }
+      }
 
       switch (event.type) {
         case AzureSpeechEventType.partial:
@@ -248,26 +344,12 @@ class EnhancedInteractionManager extends InteractionManager {
             // Vérifier si le texte partiel est significatif avant de considérer comme un barge-in
             final partialText = event.text ?? '';
             
-            // Ignorer les répétitions de ce que l'IA vient de dire
-            bool isRepetition = false;
-            if (conversationHistory.isNotEmpty && conversationHistory.last.speaker == Speaker.ai) {
-              final lastAiText = conversationHistory.last.text.toLowerCase();
-              final userPartialText = partialText.toLowerCase();
-              
-              // Vérifier si l'utilisateur répète le début de ce que l'IA vient de dire
-              if (lastAiText.startsWith(userPartialText) || 
-                  userPartialText.startsWith(lastAiText.substring(0, lastAiText.length < 20 ? lastAiText.length : 20))) {
-                isRepetition = true;
-                ConsoleLogger.info("EnhancedInteractionManager: Ignoring repetition of AI's speech: '$partialText'");
-              }
-            }
-            
-            if (partialText.trim().length > 5 && !isRepetition) {  // Ignorer les partiels trop courts et les répétitions
+            if (partialText.trim().length > 5 && !isEcho) {  // Ignorer les partiels trop courts et les échos
               ConsoleLogger.info("EnhancedInteractionManager: Barge-in detected via partial transcript while speaking: '$partialText'. Stopping TTS.");
               _userWasInterrupted = true;
               _enhancedStopTtsForBargeIn();
             } else {
-              ConsoleLogger.info("EnhancedInteractionManager: Ignoring short or repetitive partial transcript during speaking: '$partialText'");
+              ConsoleLogger.info("EnhancedInteractionManager: Ignoring short or echo partial transcript during speaking: '$partialText'");
             }
           } else {
             ConsoleLogger.info("EnhancedInteractionManager: Ignoring partial transcript received in state $currentState");
@@ -281,15 +363,15 @@ class EnhancedInteractionManager extends InteractionManager {
           // Réinitialiser les indicateurs de début de parole
           _speechStartTime = null;
           
-          if (currentState == InteractionState.listening) {
+          if (currentState == InteractionState.listening && !isEcho) {
             ConsoleLogger.info("EnhancedInteractionManager: Processing final transcript received while listening.");
             _enhancedProcessFinalTranscript(event); // Passer l'événement complet
-          } else if (currentState == InteractionState.speaking) {
+          } else if (currentState == InteractionState.speaking && !isEcho) {
             ConsoleLogger.info("EnhancedInteractionManager: Final transcript received during speaking. Storing and stopping TTS.");
             _enhancedPendingAzureFinalEvent = event;
             _enhancedStopTtsForBargeIn();
           } else {
-            ConsoleLogger.info("EnhancedInteractionManager: Ignoring final transcript received in state $currentState.");
+            ConsoleLogger.info("EnhancedInteractionManager: Ignoring final transcript received in state $currentState or detected as echo.");
           }
           break;
 
@@ -388,6 +470,116 @@ class EnhancedInteractionManager extends InteractionManager {
     }
   }
 
+  /// Méthode pour synthétiser et jouer du texte avec désactivation complète de la reconnaissance vocale
+  Future<void> speak(String text, {String? voiceName}) async {
+    _logDebugState("speak");
+    
+    // Ne pas vérifier si l'état est déjà speaking, car startInteraction définit l'état à speaking avant d'appeler speak
+    // if (currentState == InteractionState.speaking) {
+    //   ConsoleLogger.info("EnhancedInteractionManager: Already speaking, ignoring speak request.");
+    //   return;
+    // }
+
+    try {
+      // 0. Attendre un court délai avant de commencer pour s'assurer que tout est prêt
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // 1. Arrêter explicitement la reconnaissance vocale avec plusieurs tentatives
+      int maxAttempts = 5; // Augmenter le nombre de tentatives
+      for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (_enhancedAudioPipeline.isListening.value) {
+          ConsoleLogger.info("EnhancedInteractionManager: Stopping speech recognition before speaking (attempt $attempt/$maxAttempts).");
+          
+          if (attempt > 1) {
+            // Pour les tentatives après la première, utiliser forceStopRecognition
+            await _enhancedAudioPipeline.forceStopRecognition();
+          } else {
+            // Pour la première tentative, utiliser stop normal
+            await _enhancedAudioPipeline.stop();
+          }
+          
+          // Attendre un délai plus long pour s'assurer que la reconnaissance est bien arrêtée
+          await Future.delayed(const Duration(milliseconds: 300));
+          
+          if (!_enhancedAudioPipeline.isListening.value) {
+            ConsoleLogger.info("EnhancedInteractionManager: Successfully stopped speech recognition on attempt $attempt.");
+            break;
+          }
+        } else {
+          ConsoleLogger.info("EnhancedInteractionManager: Speech recognition already stopped.");
+          break;
+        }
+      }
+      
+      // 2. Vérification finale que la reconnaissance est bien arrêtée
+      if (_enhancedAudioPipeline.isListening.value) {
+        ConsoleLogger.error("EnhancedInteractionManager: CRITICAL - Failed to stop speech recognition after multiple attempts!");
+        // Essayer une dernière fois avec une méthode plus agressive
+        try {
+          await _enhancedAudioPipeline.forceStopRecognition();
+          await Future.delayed(const Duration(milliseconds: 500));
+        } catch (e) {
+          ConsoleLogger.error("EnhancedInteractionManager: Final attempt to stop recognition failed: $e");
+        }
+      }
+      
+      // Vérifier à nouveau
+      if (_enhancedAudioPipeline.isListening.value) {
+        ConsoleLogger.error("EnhancedInteractionManager: CRITICAL - Recognition still active after all attempts! Proceeding anyway but expect issues.");
+      }
+
+      // 3. Mettre à jour l'état avant de commencer la synthèse
+      setState(InteractionState.speaking);
+      
+      // Attendre un court délai supplémentaire pour s'assurer que l'état est bien mis à jour
+      await Future.delayed(const Duration(milliseconds: 200));
+      
+      // 4. Démarrer la synthèse vocale
+      ConsoleLogger.info("EnhancedInteractionManager: Starting TTS with recognition disabled.");
+      await _enhancedAudioPipeline.speakText(text);
+      
+      // Note: La transition vers l'état suivant sera gérée par le gestionnaire d'événements TTS
+    } catch (e) {
+      ConsoleLogger.error("EnhancedInteractionManager: Error during speak: $e");
+      setState(InteractionState.ready);
+    }
+  }
+
+  /// Méthode surchargée pour démarrer l'interaction après que l'utilisateur a examiné le briefing
+  @override
+  Future<void> startInteraction() async {
+    _logDebugState("startInteraction");
+    
+    if (currentState != InteractionState.briefing || currentScenario == null) {
+      ConsoleLogger.info("EnhancedInteractionManager: Cannot start interaction. State is not 'briefing' or scenario is null.");
+      handleError("Impossible de démarrer l'interaction. Scénario non prêt.");
+      return;
+    }
+
+    ConsoleLogger.info("EnhancedInteractionManager: Starting interaction...");
+    addTurn(Speaker.ai, currentScenario!.startingPrompt);
+    
+    // Ne pas définir l'état à speaking ici, car la méthode speak le fait déjà
+    // setState(InteractionState.speaking);
+
+    try {
+      if (_enhancedAudioPipelineDisposed) {
+        ConsoleLogger.info("EnhancedInteractionManager: _audioPipeline has been disposed, cannot speak text.");
+        return;
+      }
+
+      // Utiliser notre méthode speak au lieu de _audioPipeline.speakText
+      await speak(currentScenario!.startingPrompt);
+
+      if (_enhancedAudioPipelineDisposed) return;
+      ConsoleLogger.info("EnhancedInteractionManager: Initial AI speech finished.");
+      
+      // La transition vers l'état ready et le démarrage de l'écoute sont gérés par _enhancedHandleTtsCompletion
+    } catch (e) {
+      handleError("Failed to start interaction audio: $e");
+    }
+  }
+
   /// Méthode améliorée pour arrêter le TTS lors d'une interruption
   @override
   Future<void> _stopTtsForBargeIn() async {
@@ -413,6 +605,8 @@ class EnhancedInteractionManager extends InteractionManager {
   /// Méthode améliorée pour démarrer l'écoute
   @override
   Future<void> startListening(String language) async {
+    _logDebugState("startListening");
+    
     if (_enhancedAudioPipelineDisposed) {
       ConsoleLogger.info("EnhancedInteractionManager: Attempted startListening but pipeline is disposed.");
       return;
@@ -439,6 +633,8 @@ class EnhancedInteractionManager extends InteractionManager {
   /// Méthode améliorée pour arrêter l'écoute
   @override
   Future<void> stopListening() async {
+    _logDebugState("stopListening");
+    
     // Annuler le timer de fin de parole
     _cancelEndOfSpeechTimer();
     
@@ -465,13 +661,99 @@ class EnhancedInteractionManager extends InteractionManager {
     await super.resetState();
   }
 
+  /// Méthode surchargée pour mettre à jour l'état avec un verrou pour éviter les transitions concurrentes
+  @override
+  void setState(InteractionState newState) {
+    _logDebugState("setState (before) - Requested: $newState");
+    
+    if (_isTransitioning) {
+      ConsoleLogger.warning("EnhancedInteractionManager: setState called during transition. Current: $currentState, Requested: $newState. Ignoring.");
+      return;
+    }
+    
+    _isTransitioning = true;
+    
+    try {
+      final oldState = currentState;
+      ConsoleLogger.info("EnhancedInteractionManager State: $oldState -> $newState");
+      
+      // Logique spécifique avant la transition
+      if (oldState == InteractionState.speaking && newState == InteractionState.ready) {
+        // S'assurer que la reconnaissance est bien arrêtée avant de passer à ready
+        if (_enhancedAudioPipeline.isListening.value) {
+          ConsoleLogger.warning("EnhancedInteractionManager: Recognition active when transitioning from speaking to ready. Stopping first.");
+          _enhancedAudioPipeline.stop();
+        }
+      }
+      
+      // Appeler la méthode parente pour mettre à jour l'état
+      super.setState(newState);
+      
+      // Logique spécifique après la transition
+      if (newState == InteractionState.speaking) {
+        // Vérifier que la reconnaissance est bien arrêtée
+        if (_enhancedAudioPipeline.isListening.value) {
+          ConsoleLogger.warning("EnhancedInteractionManager: Recognition still active in speaking state. Forcing stop.");
+          _enhancedAudioPipeline.forceStopRecognition();
+        }
+      }
+    } finally {
+      _isTransitioning = false;
+    }
+  }
+
+  /// Méthode pour journaliser l'état détaillé du gestionnaire d'interaction
+  void _logDebugState(String action) {
+    logger.debug("""
+    ======== DEBUG STATE [$action] ========
+    Current state: $currentState
+    Audio pipeline listening: ${_enhancedAudioPipeline.isListening.value}
+    TTS active: ${_enhancedAudioPipeline.isSpeaking.value}
+    Pending final event: ${_enhancedPendingAzureFinalEvent != null}
+    Speech start time: $_speechStartTime
+    Last speech activity: $_lastSpeechActivityTime
+    User was interrupted: $_userWasInterrupted
+    End of speech timer active: ${_endOfSpeechTimer != null}
+    Is transitioning: $_isTransitioning
+    ====================================
+    """);
+  }
+
   /// Méthode améliorée pour disposer les ressources
+  bool _isDisposed = false;
+  
   @override
   Future<void> dispose() async {
+    if (_isDisposed) {
+      ConsoleLogger.warning("EnhancedInteractionManagerV2: dispose called on already disposed instance. Ignoring.");
+      return;
+    }
+    
+    _logDebugState("dispose");
+    
+    // Marquer comme disposé pour éviter les appels ultérieurs
+    _isDisposed = true;
+    _enhancedAudioPipelineDisposed = true;
+    
     // Annuler le timer de fin de parole
     _cancelEndOfSpeechTimer();
     
-    // Continuer avec l'implémentation existante
-    await super.dispose();
+    try {
+      // Annuler l'abonnement au stream de complétion TTS
+      await _ttsCompletionSubscription?.cancel();
+      _ttsCompletionSubscription = null;
+      
+      // Réinitialiser les variables d'état
+      _enhancedPendingAzureFinalEvent = null;
+      _enhancedLastUserMetrics = null;
+      _enhancedPartialTranscriptNotifier.value = '';
+      
+      // Continuer avec l'implémentation existante
+      await super.dispose();
+      
+      ConsoleLogger.info("EnhancedInteractionManagerV2: Disposed successfully.");
+    } catch (e) {
+      ConsoleLogger.error("EnhancedInteractionManagerV2: Error during dispose: $e");
+    }
   }
 }

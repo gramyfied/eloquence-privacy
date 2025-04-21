@@ -271,6 +271,95 @@ class RemoteSpeechRepository implements IAzureSpeechRepository {
     }
   }
 
+  @override
+  Future<bool> isRecognizerInitialized() async {
+    try {
+      // Vérifier si le service distant est initialisé
+      if (!_isInitialized) {
+        return false;
+      }
+
+      // Vérifier que le serveur est toujours accessible
+      if (_httpClient == null) {
+        return false;
+      }
+
+      try {
+        // Préparer les en-têtes
+        final headers = <String, String>{};
+        
+        // Ajouter l'en-tête d'authentification si la clé API est définie
+        if (apiKey.isNotEmpty) {
+          headers['Authorization'] = 'Bearer $apiKey';
+        }
+        
+        // Faire une requête ping au serveur pour vérifier qu'il est toujours accessible
+        final response = await _httpClient!.get(
+          Uri.parse('$apiUrl/api/health'),
+          headers: headers,
+        ).timeout(const Duration(seconds: 2));
+        
+        return response.statusCode == 200;
+      } catch (e) {
+        _recognitionStreamController?.add(AzureSpeechEvent.error(
+          "SERVER_CHECK_ERROR",
+          "Erreur lors de la vérification de l'état du serveur: $e",
+        ));
+        return false;
+      }
+    } catch (e) {
+      _recognitionStreamController?.add(AzureSpeechEvent.error(
+        "CHECK_STATE_ERROR",
+        "Erreur lors de la vérification de l'état du recognizer: $e",
+      ));
+      return false;
+    }
+  }
+
+  @override
+  Future<void> resetRepository() async {
+    try {
+      _recognitionStreamController?.add(AzureSpeechEvent.status("Réinitialisation du repository distant..."));
+      
+      // Arrêter toute reconnaissance en cours
+      await stopRecognition();
+      
+      // Réinitialiser les flags
+      _isInitialized = false;
+      _isContinuousRecognition = false;
+      _isRecording = false;
+      _currentRecordingPath = null;
+      
+      // Annuler les timers
+      _silenceTimer?.cancel();
+      _silenceTimer = null;
+      
+      // Fermer et recréer le client HTTP
+      _httpClient?.close();
+      _httpClient = http.Client();
+      
+      // Réinitialiser le StreamController
+      await _recognitionStreamController?.close();
+      _recognitionStreamController = StreamController<AzureSpeechEvent>.broadcast();
+      
+      // Réinitialiser la connexion au serveur
+      try {
+        await initialize('', ''); // Les paramètres sont ignorés pour ce repository
+        _recognitionStreamController?.add(AzureSpeechEvent.status("Repository distant réinitialisé avec succès."));
+      } catch (e) {
+        _recognitionStreamController?.add(AzureSpeechEvent.error(
+          "RESET_EXCEPTION",
+          "Exception lors de la réinitialisation de la connexion au serveur: $e",
+        ));
+      }
+    } catch (e) {
+      _recognitionStreamController?.add(AzureSpeechEvent.error(
+        "REPOSITORY_RESET_ERROR",
+        "Erreur lors de la réinitialisation du repository: $e",
+      ));
+    }
+  }
+
   // Méthode privée pour capturer l'audio
   Future<Uint8List> _captureAudio() async {
     String? recordingPath;

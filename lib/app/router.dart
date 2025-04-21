@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'routes.dart';
 import '../domain/repositories/auth_repository.dart';
 import '../domain/repositories/exercise_repository.dart';
 import '../services/service_locator.dart';
+import '../presentation/providers/interaction_manager.dart';
 import '../presentation/screens/auth/auth_screen.dart';
 import '../presentation/screens/home/home_screen.dart';
 import '../presentation/screens/exercises/exercise_categories_screen.dart';
@@ -34,6 +36,7 @@ import '../presentation/screens/exercise_session/expressive_intonation_exercise_
 import '../presentation/screens/exercise_session/pitch_variation_exercise_screen.dart'; // AJOUT: Import pour Variation de Hauteur
 import '../presentation/screens/exercise_session/vocal_stability_exercise_screen.dart'; // AJOUT: Import pour Stabilité Vocale
 import '../presentation/screens/exercise_session/interactive_exercise_screen.dart'; // AJOUT: Import pour Exercice Interactif
+import '../presentation/screens/exercise_session/evaluation_dashboard_screen.dart'; // AJOUT: Import pour Tableau de bord d'évaluation
 
 
 // Helper function to get the route path based on exercise ID
@@ -475,9 +478,31 @@ GoRouter createRouter(AuthRepository authRepository) {
         builder: (context, state) {
           final exerciseId = state.pathParameters['exerciseId'];
           final exercise = state.extra as Exercise? ?? Exercise(id: exerciseId ?? 'impact-professionnel', title: 'Impact Professionnel', objective: 'Améliorer votre impact en situation professionnelle', instructions: 'Suivez les instructions du coach virtuel.', category: ExerciseCategory(id: 'professional-application', name: 'Application Professionnelle', description: '', type: ExerciseCategoryType.applicationProfessionnelle, iconPath: ''), difficulty: ExerciseDifficulty.moyen, evaluationParameters: {});
-          return InteractiveExerciseScreen(
-            exerciseId: exerciseId ?? 'impact-professionnel',
-            onBackPressed: () => context.pop(),
+          
+          // Créer une instance de InteractionManager à partir du service locator
+          // et l'envelopper dans un ChangeNotifierProvider pour le rendre disponible à l'écran
+          return ChangeNotifierProvider<InteractionManager>(
+            create: (_) => serviceLocator<InteractionManager>(),
+            child: InteractiveExerciseScreen(
+              exerciseId: exerciseId ?? 'impact-professionnel',
+              onBackPressed: () => context.pop(),
+            ),
+          );
+        },
+      ),
+      // Tableau de bord d'évaluation
+      GoRoute(
+        path: AppRoutes.evaluationDashboard,
+        builder: (context, state) {
+          final exerciseId = state.pathParameters['exerciseId'];
+          
+          // Créer une instance de InteractionManager à partir du service locator
+          // et l'envelopper dans un ChangeNotifierProvider pour le rendre disponible à l'écran
+          return ChangeNotifierProvider<InteractionManager>(
+            create: (_) => serviceLocator<InteractionManager>(),
+            child: EvaluationDashboardScreen(
+              exerciseId: exerciseId ?? 'impact-professionnel',
+            ),
           );
         },
       ),

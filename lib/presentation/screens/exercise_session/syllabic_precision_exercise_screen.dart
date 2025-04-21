@@ -334,7 +334,7 @@ class _SyllabicPrecisionExerciseScreenState
   void _nextWord() {
     if (_wordList.isEmpty) {
        print("Impossible de passer au mot suivant, liste vide.");
-       if (mounted) Navigator.pop(context);
+       if (mounted) widget.onExitPressed();
        return;
     }
 
@@ -857,7 +857,8 @@ class _SyllabicPrecisionExerciseScreenState
         AppRoutes.exerciseResult, // Utiliser le CHEMIN de la route défini dans AppRoutes
         extra: {
           'exercise': widget.exercise,
-          'results': resultsData,
+          'result': resultsData,
+          'exerciseId': widget.exercise.id, // Ajouter l'ID de l'exercice pour permettre de réessayer
         },
       );
     });
@@ -925,7 +926,7 @@ class _SyllabicPrecisionExerciseScreenState
         systemOverlayStyle: SystemUiOverlayStyle.light,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.maybePop(context),
+          onPressed: widget.onExitPressed,
           color: Colors.white,
         ),
         title: Text(

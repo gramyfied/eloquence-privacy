@@ -135,11 +135,39 @@ class AzureSpeechRepositoryImpl implements IAzureSpeechRepository {
     try {
       // Appeler la méthode Pigeon correspondante en utilisant la variable membre _nativeApi
       await _nativeApi.startContinuousRecognition(language);
+      
+      // Mettre à jour les variables d'état pour le suivi du recognizer
+      _lastSuccessfulOperation = DateTime.now();
+      _recognizerReady = true;
+      _consecutiveErrors = 0;
+      
+      print("🟢 [AzureSpeechRepoImpl] Continuous recognition started successfully for language: $language");
+      
       // Les résultats seront gérés par l'EventChannel écouté par AzureSpeechService
     } on PlatformException catch (e) {
+      // Incrémenter le compteur d'erreurs consécutives
+      _consecutiveErrors++;
+      
+      // Mettre à jour l'état du recognizer
+      if (_consecutiveErrors >= _maxConsecutiveErrors) {
+        _recognizerReady = false;
+        print("🔴 [AzureSpeechRepoImpl] Too many consecutive errors ($_consecutiveErrors). Recognizer marked as not ready.");
+      }
+      
       // Convertir PlatformException en une exception plus spécifique si nécessaire
+      print("🔴 [AzureSpeechRepoImpl] Pigeon API call failed for startContinuousRecognition: ${e.message}");
       throw Exception('Pigeon API call failed for startContinuousRecognition: ${e.message}');
     } catch (e) {
+      // Incrémenter le compteur d'erreurs consécutives
+      _consecutiveErrors++;
+      
+      // Mettre à jour l'état du recognizer
+      if (_consecutiveErrors >= _maxConsecutiveErrors) {
+        _recognizerReady = false;
+        print("🔴 [AzureSpeechRepoImpl] Too many consecutive errors ($_consecutiveErrors). Recognizer marked as not ready.");
+      }
+      
+      print("🔴 [AzureSpeechRepoImpl] Failed to start continuous recognition: $e");
       throw Exception('Failed to start continuous recognition: $e');
     }
   }
@@ -148,15 +176,147 @@ class AzureSpeechRepositoryImpl implements IAzureSpeechRepository {
   Future<void> stopRecognition() async {
     try {
       await _nativeApi.stopRecognition();
+      
+      // Mettre à jour les variables d'état pour le suivi du recognizer
+      _lastSuccessfulOperation = DateTime.now();
+      _consecutiveErrors = 0;
+      
+      print("🟢 [AzureSpeechRepoImpl] Recognition stopped successfully.");
+      
       // Optionnel: Annuler l'écoute des événements ici ? Ou seulement dans dispose/initialize ?
       // _nativeEventSubscription?.cancel();
       // _nativeEventSubscription = null;
     } on PlatformException catch (e, s) {
+      // Incrémenter le compteur d'erreurs consécutives
+      _consecutiveErrors++;
+      
+      // Mettre à jour l'état du recognizer
+      if (_consecutiveErrors >= _maxConsecutiveErrors) {
+        _recognizerReady = false;
+        print("🔴 [AzureSpeechRepoImpl] Too many consecutive errors ($_consecutiveErrors). Recognizer marked as not ready.");
+      }
+      
+      print("🔴 [AzureSpeechRepoImpl] Error stopping recognition: ${e.message} (${e.code})");
       throw NativePlatformException(
           'Erreur native lors de l\'arrêt de la reconnaissance: ${e.message} (${e.code})', s);
     } catch (e, s) {
+      // Incrémenter le compteur d'erreurs consécutives
+      _consecutiveErrors++;
+      
+      // Mettre à jour l'état du recognizer
+      if (_consecutiveErrors >= _maxConsecutiveErrors) {
+        _recognizerReady = false;
+        print("🔴 [AzureSpeechRepoImpl] Too many consecutive errors ($_consecutiveErrors). Recognizer marked as not ready.");
+      }
+      
+      print("🔴 [AzureSpeechRepoImpl] Unexpected error stopping recognition: $e");
       throw UnexpectedException(
           'Erreur inattendue lors de l\'arrêt de la reconnaissance: ${e.toString()}', s);
+    }
+  }
+
+  // Variable pour suivre l'état du recognizer
+  bool _recognizerReady = false;
+  DateTime? _lastSuccessfulOperation;
+  int _consecutiveErrors = 0;
+  static const int _maxConsecutiveErrors = 3;
+
+  @override
+  Future<bool> isRecognizerInitialized() async {
+    try {
+      // Vérifier d'abord si le repository lui-même est initialisé
+      if (!_isInitialized) {
+        print("🟠 [AzureSpeechRepoImpl] Repository not initialized.");
+        return false;
+      }
+
+      // Vérifier si nous avons eu des erreurs consécutives
+      if (_consecutiveErrors >= _maxConsecutiveErrors) {
+        print("🟠 [AzureSpeechRepoImpl] Too many consecutive errors ($_consecutiveErrors). Recognizer needs reset.");
+        return false;
+      }
+
+      // Vérifier si le recognizer a été utilisé récemment avec succès
+      if (_lastSuccessfulOperation != null) {
+        final timeSinceLastSuccess = DateTime.now().difference(_lastSuccessfulOperation!).inMinutes;
+        if (timeSinceLastSuccess > 5) {
+          // Si ça fait plus de 5 minutes, on considère que le recognizer pourrait être dans un état incertain
+          print("🟠 [AzureSpeechRepoImpl] Last successful operation was $timeSinceLastSuccess minutes ago. Recognizer state uncertain.");
+          _recognizerReady = false;
+        }
+      }
+
+      // Si nous n'avons pas d'information sur l'état du recognizer, on fait une vérification indirecte
+      if (!_recognizerReady) {
+        print("🟠 [AzureSpeechRepoImpl] Performing indirect check of recognizer state...");
+        
+        // Nous pourrions essayer d'appeler une méthode native simple qui échouerait si le recognizer n'est pas initialisé
+        // Comme nous n'avons pas de méthode native directe, nous nous basons sur l'état d'initialisation
+        // et sur l'historique des opérations
+        
+        _recognizerReady = _isInitialized && _consecutiveErrors == 0;
+      }
+      
+      print("🔵 [AzureSpeechRepoImpl] Recognizer state check result: $_recognizerReady");
+      return _recognizerReady;
+    } catch (e) {
+      print("🔴 [AzureSpeechRepoImpl] Error checking recognizer state: $e");
+      _consecutiveErrors++;
+      _recognizerReady = false;
+      return false;
+    }
+  }
+
+  @override
+  Future<void> resetRepository() async {
+    try {
+      print("🔵 [AzureSpeechRepoImpl] Resetting repository...");
+      
+      // Annuler l'abonnement aux événements
+      _cancelNativeEventSubscription();
+      
+      // Réinitialiser l'état
+      _isInitialized = false;
+      _recognizerReady = false;
+      _lastSuccessfulOperation = null;
+      _consecutiveErrors = 0;
+      
+      // Tenter d'arrêter la reconnaissance en cours (si elle existe)
+      try {
+        await _nativeApi.stopRecognition();
+        print("🔵 [AzureSpeechRepoImpl] Recognition stopped during reset.");
+      } catch (e) {
+        print("🟠 [AzureSpeechRepoImpl] Error stopping recognition during reset: $e");
+        // Continuer malgré l'erreur
+      }
+      
+      // Attendre un court délai pour s'assurer que les ressources sont libérées
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Réinitialiser le StreamController
+      _recognitionEventsController?.close();
+      _initRecognitionEventsStream();
+      
+      // Tenter de réinitialiser le SDK natif
+      try {
+        // Nous n'avons pas de méthode native directe pour réinitialiser le SDK,
+        // mais nous pouvons essayer de le réinitialiser en appelant initialize à nouveau
+        // avec les mêmes paramètres (qui seront ignorés dans cette implémentation)
+        await initialize("", "");
+        print("🟢 [AzureSpeechRepoImpl] Native SDK reinitialized successfully.");
+        
+        // Marquer comme une opération réussie
+        _lastSuccessfulOperation = DateTime.now();
+        _recognizerReady = true;
+      } catch (e) {
+        print("🔴 [AzureSpeechRepoImpl] Error reinitializing native SDK: $e");
+        // Continuer malgré l'erreur
+      }
+      
+      print("🔵 [AzureSpeechRepoImpl] Repository reset completed.");
+    } catch (e) {
+      print("🔴 [AzureSpeechRepoImpl] Error resetting repository: $e");
+      throw UnexpectedException('Erreur lors de la réinitialisation du repository: $e', StackTrace.current);
     }
   }
 

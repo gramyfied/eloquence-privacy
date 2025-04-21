@@ -12,11 +12,7 @@ import 'realtime_audio_pipeline.dart';
 /// basé sur l'analyse de la prosodie pour une détection plus naturelle des fins de phrases.
 class EnhancedRealTimeAudioPipeline extends RealTimeAudioPipeline {
   // Détecteur de fin de phrase basé sur la prosodie
-  final ProsodyBasedEndpointDetector _endpointDetector = ProsodyBasedEndpointDetector(
-    pitchDropThreshold: 0.25,
-    energyDropThreshold: 0.30,
-    minSilenceDurationMs: 500,
-  );
+  final ProsodyEndpointDetector _endpointDetector = ProsodyEndpointDetector();
   
   // État de détection de silence
   bool _isSilence = false;
@@ -65,7 +61,8 @@ class EnhancedRealTimeAudioPipeline extends RealTimeAudioPipeline {
         if (event.type == AzureSpeechEventType.partial) {
           // Analyser la prosodie si possible
           // Note: Cette partie peut être adaptée selon la structure réelle de l'événement
-          _endpointDetector.analyzeProsody(AudioFrame(Uint8List(0))); // Simulé car pas d'accès direct aux données audio
+          // Simuler des valeurs de prosodie car nous n'avons pas accès direct aux données audio
+          _endpointDetector.analyzeAudioFrame(100.0, 0.5); // Valeurs simulées de pitch et d'énergie
           
           _isSilence = false;
           _silenceDurationMs = 0;
@@ -101,7 +98,7 @@ class EnhancedRealTimeAudioPipeline extends RealTimeAudioPipeline {
       _silenceDurationMs = elapsed;
       
       // Vérifier si c'est une fin de phrase selon le détecteur de prosodie
-      if (_endpointDetector.detectEndpoint(_isSilence, _silenceDurationMs)) {
+      if (_endpointDetector.isEndpointDetected(_isSilence, _silenceDurationMs)) {
         // Fin de phrase détectée par la prosodie
         if (!_endpointDetected) {
           _endpointDetected = true;

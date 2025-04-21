@@ -233,6 +233,69 @@ class WhisperSpeechRepositoryImpl implements IAzureSpeechRepository {
     }
   }
 
+  @override
+  Future<bool> isRecognizerInitialized() async {
+    try {
+      // Vérifier si le plugin Whisper est initialisé
+      return _isInitialized;
+    } catch (e) {
+      _recognitionStreamController?.add(AzureSpeechEvent.error(
+        "CHECK_STATE_ERROR",
+        "Erreur lors de la vérification de l'état du recognizer: $e",
+      ));
+      return false;
+    }
+  }
+
+  @override
+  Future<void> resetRepository() async {
+    try {
+      _recognitionStreamController?.add(AzureSpeechEvent.status("Réinitialisation du repository Whisper..."));
+      
+      // Arrêter toute reconnaissance en cours
+      await stopRecognition();
+      
+      // Réinitialiser les flags
+      _isInitialized = false;
+      _isContinuousRecognition = false;
+      _isRecording = false;
+      _currentRecordingPath = null;
+      
+      // Annuler les timers
+      _silenceTimer?.cancel();
+      _silenceTimer = null;
+      
+      // Réinitialiser le StreamController
+      await _recognitionStreamController?.close();
+      _recognitionStreamController = StreamController<AzureSpeechEvent>.broadcast();
+      
+      // Réinitialiser le plugin Whisper
+      try {
+        // Réinitialiser le plugin avec le modèle par défaut
+        final success = await _whisperPlugin.initialize(modelName: 'tiny');
+        if (success) {
+          _isInitialized = true;
+          _recognitionStreamController?.add(AzureSpeechEvent.status("Repository Whisper réinitialisé avec succès."));
+        } else {
+          _recognitionStreamController?.add(AzureSpeechEvent.error(
+            "RESET_FAILED",
+            "Échec de la réinitialisation du plugin Whisper.",
+          ));
+        }
+      } catch (e) {
+        _recognitionStreamController?.add(AzureSpeechEvent.error(
+          "RESET_EXCEPTION",
+          "Exception lors de la réinitialisation du plugin Whisper: $e",
+        ));
+      }
+    } catch (e) {
+      _recognitionStreamController?.add(AzureSpeechEvent.error(
+        "REPOSITORY_RESET_ERROR",
+        "Erreur lors de la réinitialisation du repository: $e",
+      ));
+    }
+  }
+
   // Méthode privée pour capturer l'audio
   Future<Uint8List> _captureAudio() async {
     String? recordingPath;

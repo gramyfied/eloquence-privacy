@@ -1,228 +1,291 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
-import '../../core/utils/console_logger.dart';
+
+import '../../core/utils/enhanced_logger.dart';
+import '../../domain/entities/interactive_exercise/conversation_turn.dart';
 import '../../domain/entities/interactive_exercise/scenario_context.dart';
 import '../../domain/repositories/azure_speech_repository.dart';
-import '../../services/audio/prosody_endpoint_detector.dart';
+import '../../presentation/widgets/evaluation/evaluation_metrics_widget.dart';
+import '../../services/evaluation/evaluation_validator_service.dart';
 import '../../services/interactive_exercise/conversational_agent_service.dart';
 import '../../services/interactive_exercise/feedback_analysis_service.dart';
 import '../../services/interactive_exercise/realtime_audio_pipeline.dart';
 import '../../services/interactive_exercise/scenario_generator_service.dart';
 import '../../services/openai/gpt_conversational_agent_service.dart';
-import '../providers/interaction_manager.dart';
+import 'i_interaction_manager.dart';
+import 'interaction_manager.dart';
 
-/// Gestionnaire d'interaction amélioré avec détection de prosodie et meilleure gestion des transitions
-/// 
-/// Étend les fonctionnalités du InteractionManager standard pour améliorer
-/// la détection de fin de phrase et éviter les coupures de parole.
-class EnhancedInteractionManager extends InteractionManager {
-  // Délais configurables pour les transitions d'état
-  final int delayAfterSpeakingMs;  // Délai après que l'IA a fini de parler
-  final int minUtteranceDurationMs;  // Durée minimale d'un énoncé utilisateur
-  final int maxSilenceDurationMs;  // Silence max avant de considérer fin de phrase
+/// Décorateur pour InteractionManager qui ajoute des fonctionnalités de validation des évaluations
+class InteractionManagerDecorator implements IInteractionManager {
+  /// Le gestionnaire d'interaction décoré
+  final InteractionManager _interactionManager;
   
-  // Détecteur de prosodie pour la détection de fin de phrase
-  final ProsodyBasedEndpointDetector _prosodyDetector;
+  /// Service de validation des évaluations
+  final EvaluationValidatorService _evaluationValidator = EvaluationValidatorService();
   
-  // Indicateurs d'état améliorés
-  bool _userWasInterrupted = false;
-  DateTime? _speechStartTime;
-  DateTime? _lastSpeechActivityTime;
-  Timer? _silenceTimer;
+  /// Indique si la validation des évaluations est activée
+  final bool _validationEnabled;
   
-  // Accès aux champs protégés de la classe parent
-  bool get _audioPipelineDisposed => super.audioPipelineDisposed;
-  InteractionState get _currentState => super.currentState;
-  ScenarioContext? get _currentScenario => super.currentScenario;
-  AzureSpeechEvent? get _pendingAzureFinalEvent => pendingAzureFinalEvent;
-  set _pendingAzureFinalEvent(AzureSpeechEvent? value) => pendingAzureFinalEvent = value;
+  /// Liste des événements de validation
+  final List<EvaluationValidationEvent> _validationEvents = [];
   
-  /// Constructeur avec paramètres configurables
-  EnhancedInteractionManager({
-    required ScenarioGeneratorService scenarioService,
-    required ConversationalAgentService agentService,
-    required RealTimeAudioPipeline audioPipeline,
-    required FeedbackAnalysisService feedbackService,
-    required GPTConversationalAgentService gptAgentService,
-    this.delayAfterSpeakingMs = 800,
-    this.minUtteranceDurationMs = 1500,
-    this.maxSilenceDurationMs = 1200,
-    ProsodyBasedEndpointDetector? prosodyDetector,
-  }) : _prosodyDetector = prosodyDetector ?? ProsodyBasedEndpointDetector(),
-       super(scenarioService, agentService, audioPipeline, feedbackService, gptAgentService);
+  /// Callback appelé lorsqu'une évaluation est invalide
+  final void Function(String message)? onInvalidEvaluation;
+  
+  /// Historique des métriques vocales
+  final List<Map<String, dynamic>> _metricsHistory = [];
+  
+  /// Contrôleur de flux pour les événements de validation
+  final StreamController<AzureSpeechEvent> _speechEventController = StreamController<AzureSpeechEvent>.broadcast();
+  
+  /// Abonnement au flux d'événements de reconnaissance vocale
+  StreamSubscription? _speechEventSubscription;
+  
+  /// Getter pour l'historique des métriques vocales
+  List<Map<String, dynamic>> get metricsHistory => List.unmodifiable(_metricsHistory);
+  
+  /// Getter pour les événements de validation
+  List<EvaluationValidationEvent> get validationEvents => List.unmodifiable(_validationEvents);
+  
+  /// Indique si la dernière évaluation est valide
+  bool _lastEvaluationValid = true;
+  
+  /// Getter pour indiquer si la dernière évaluation est valide
+  bool get isLastEvaluationValid => _lastEvaluationValid;
+  
+  /// Crée un décorateur pour InteractionManager
+  InteractionManagerDecorator(
+    this._interactionManager, {
+    bool validationEnabled = true,
+    this.onInvalidEvaluation,
+  }) : _validationEnabled = validationEnabled {
+    // S'abonner aux événements de validation
+    _evaluationValidator.validationEvents.listen(_handleValidationEvent);
+    
+    // Nous ne pouvons pas accéder directement au pipeline audio depuis InteractionManager
+    // Nous allons donc créer notre propre flux d'événements et le remplir manuellement
+    logger.info('Initialisation du décorateur InteractionManager avec validation', tag: 'EVALUATION');
+  }
+  
+  /// Gère un événement de validation
+  void _handleValidationEvent(EvaluationValidationEvent event) {
+    _validationEvents.add(event);
+    
+    // Mettre à jour l'état de validité
+    if (event.severity == EvaluationValidationSeverity.error) {
+      _lastEvaluationValid = false;
+      
+      // Notifier le parent si une évaluation est invalide
+      if (onInvalidEvaluation != null) {
+        onInvalidEvaluation!(event.message);
+      }
+    }
+    
+    // Journaliser l'événement
+    switch (event.severity) {
+      case EvaluationValidationSeverity.info:
+        logger.info('Validation des métriques: ${event.message}', tag: 'EVALUATION');
+        break;
+      case EvaluationValidationSeverity.warning:
+        logger.warning('Validation des métriques: ${event.message}', tag: 'EVALUATION');
+        break;
+      case EvaluationValidationSeverity.error:
+        logger.error('Validation des métriques: ${event.message}', tag: 'EVALUATION');
+        break;
+    }
+    
+    // Notifier les écouteurs
+    notifyListeners();
+  }
+  
+  /// Gère un événement de reconnaissance vocale
+  void _handleSpeechEvent(dynamic event) {
+    // Vérifier si c'est un événement final
+    if (event is AzureSpeechEvent && event.type == AzureSpeechEventType.finalResult) {
+      // Valider l'événement si la validation est activée
+      if (_validationEnabled) {
+        _lastEvaluationValid = true; // Réinitialiser l'état de validité
+        _validationEvents.clear(); // Effacer les événements précédents
+        
+        // Valider l'événement
+        final isValid = _evaluationValidator.validateSpeechEvent(event);
+        
+        if (!isValid) {
+          logger.warning('Événement de reconnaissance vocale invalide', tag: 'EVALUATION');
+        }
+      }
+      
+      // Extraire et stocker les métriques vocales
+      if (event.pronunciationResult != null) {
+        final metrics = _extractMetricsFromEvent(event);
+        if (metrics.isNotEmpty) {
+          _metricsHistory.add(metrics);
+        }
+      }
+    }
+    
+    // Transmettre l'événement au contrôleur
+    if (event is AzureSpeechEvent) {
+      _speechEventController.add(event);
+    }
+  }
+  
+  /// Extrait les métriques vocales d'un événement de reconnaissance vocale
+  Map<String, dynamic> _extractMetricsFromEvent(AzureSpeechEvent event) {
+    final result = <String, dynamic>{};
+    
+    // Ajouter la transcription
+    result['transcript'] = event.text ?? '';
+    
+    // Extraire les métriques de prononciation
+    if (event.pronunciationResult != null &&
+        event.pronunciationResult!['NBest'] is List &&
+        (event.pronunciationResult!['NBest'] as List).isNotEmpty &&
+        event.pronunciationResult!['NBest'][0] is Map &&
+        event.pronunciationResult!['NBest'][0]['PronunciationAssessment'] is Map) {
+      final assessment = event.pronunciationResult!['NBest'][0]['PronunciationAssessment'];
+      
+      // Extraire les scores
+      if (assessment['AccuracyScore'] is num) {
+        result['accuracyScore'] = (assessment['AccuracyScore'] as num).toDouble();
+      }
+      
+      if (assessment['FluencyScore'] is num) {
+        result['fluencyScore'] = (assessment['FluencyScore'] as num).toDouble();
+      }
+      
+      if (assessment['ProsodyScore'] is num) {
+        result['prosodyScore'] = (assessment['ProsodyScore'] as num).toDouble();
+      }
+      
+      // Extraire la durée
+      if (assessment['Duration'] is num) {
+        final durationTicks = assessment['Duration'] as num;
+        result['durationInSeconds'] = durationTicks / 10000000.0;
+      }
+    }
+    
+    // Calculer le rythme
+    if (result.containsKey('durationInSeconds') && result.containsKey('transcript')) {
+      final durationInSeconds = result['durationInSeconds'] as double;
+      final transcript = result['transcript'] as String;
+      
+      if (durationInSeconds > 0 && transcript.isNotEmpty) {
+        final wordCount = transcript.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).length;
+        if (wordCount > 0) {
+          result['pace'] = (wordCount / durationInSeconds) * 60;
+        }
+      }
+    }
+    
+    // Calculer le nombre de mots de remplissage
+    if (result.containsKey('transcript')) {
+      final transcript = result['transcript'] as String;
+      final fillerWords = ['euh', 'hum', 'ben', 'alors', 'voilà', 'en fait', 'du coup'];
+      final wordsForFillerCount = transcript.toLowerCase().split(RegExp(r'\s+')).where((s) => s.isNotEmpty);
+      final fillerWordCount = wordsForFillerCount.where((word) => fillerWords.contains(word.replaceAll(RegExp(r'[^\w]'), ''))).length;
+      result['fillerWordCount'] = fillerWordCount;
+    }
+    
+    return result;
+  }
+  
+  /// Valide l'historique de conversation
+  bool validateConversationHistory() {
+    if (!_validationEnabled) return true;
+    
+    return _evaluationValidator.validateConversationHistory(conversationHistory);
+  }
+  
+  /// Efface l'historique des métriques vocales
+  void clearMetricsHistory() {
+    _metricsHistory.clear();
+    notifyListeners();
+  }
+  
+  // --- Implémentation de IInteractionManager ---
+  
+  @override
+  InteractionState get currentState => _interactionManager.currentState;
+  
+  @override
+  ScenarioContext? get currentScenario => _interactionManager.currentScenario;
+  
+  @override
+  List<ConversationTurn> get conversationHistory => _interactionManager.conversationHistory;
+  
+  @override
+  String? get errorMessage => _interactionManager.errorMessage;
+  
+  @override
+  Object? get feedbackResult => _interactionManager.feedbackResult;
+  
+  @override
+  ValueListenable<bool> get isListening => _interactionManager.isListening;
+  
+  @override
+  ValueListenable<bool> get isSpeaking => _interactionManager.isSpeaking;
+  
+  @override
+  ValueListenable<String> get partialTranscript => _interactionManager.partialTranscript;
+  
+  @override
+  Stream<dynamic> get rawRecognitionEventsStream => _speechEventController.stream;
+  
+  @override
+  Future<void> prepareScenario(String exerciseId) {
+    return _interactionManager.prepareScenario(exerciseId);
+  }
+  
+  @override
+  Future<void> startInteraction() {
+    return _interactionManager.startInteraction();
+  }
+  
+  @override
+  Future<void> startListening(String language) {
+    return _interactionManager.startListening(language);
+  }
+  
+  @override
+  Future<void> stopListening() {
+    return _interactionManager.stopListening();
+  }
+  
+  @override
+  Future<void> finishExercise() {
+    return _interactionManager.finishExercise();
+  }
+  
+  @override
+  void handleError(String message) {
+    _interactionManager.handleError(message);
+  }
+  
+  @override
+  Future<void> resetState() async {
+    // Effacer les événements de validation et l'historique des métriques
+    _validationEvents.clear();
+    _lastEvaluationValid = true;
+    
+    // Appeler la méthode du gestionnaire décoré
+    await _interactionManager.resetState();
+  }
+  
+  @override
+  void notifyListeners() {
+    _interactionManager.notifyListeners();
+  }
   
   @override
   Future<void> dispose() async {
-    _silenceTimer?.cancel();
-    await super.dispose();
-  }
-  
-  /// Gestion améliorée de la fin de la synthèse vocale
-  @override
-  Future<void> handleTtsCompletion(bool success) async {
-    if (_audioPipelineDisposed) return;
-    ConsoleLogger.info("EnhancedInteractionManager: TTS completion received (success: $success). Current state: $_currentState");
-
-    if (_currentState == InteractionState.speaking) {
-      if (_pendingAzureFinalEvent != null) {
-        ConsoleLogger.info("EnhancedInteractionManager: Processing pending final transcript after TTS completion/stop.");
-        final eventToProcess = _pendingAzureFinalEvent;
-        _pendingAzureFinalEvent = null;
-        processFinalTranscript(eventToProcess!);
-      } else {
-        ConsoleLogger.info("EnhancedInteractionManager: TTS finished or stopped. Transitioning to ready and starting listening after delay.");
-        setState(InteractionState.ready);
-        
-        // Ajouter un délai plus long avant de commencer à écouter
-        if (!_audioPipelineDisposed && _currentScenario != null) {
-          // Délai augmenté pour laisser le temps à l'utilisateur de se préparer
-          Future.delayed(Duration(milliseconds: delayAfterSpeakingMs), () {
-            if (!_audioPipelineDisposed && _currentState == InteractionState.ready && _currentScenario != null) {
-              _speechStartTime = DateTime.now();
-              _lastSpeechActivityTime = _speechStartTime;
-              _prosodyDetector.reset(); // Réinitialiser le détecteur de prosodie
-              startListening(_currentScenario!.language);
-            }
-          });
-        }
-      }
-    }
-  }
-  
-  /// Gestion améliorée des événements de reconnaissance partielle
-  @override
-  void handleSpeechEvent(dynamic event) {
-    if (_audioPipelineDisposed) return;
-
-    if (event is AzureSpeechEvent) {
-      switch (event.type) {
-        case AzureSpeechEventType.partial:
-          if (_currentState == InteractionState.listening) {
-            _lastSpeechActivityTime = DateTime.now();
-            
-            // Analyser la prosodie si des données audio sont disponibles
-            // Note: AzureSpeechEvent n'a pas de champ audioData, nous devons adapter cette partie
-            // Pour l'instant, nous utilisons une implémentation simplifiée
-            
-            // Ne pas traiter les résultats partiels trop courts
-            final partialText = event.text ?? '';
-            if (partialText.split(' ').length < 3 && 
-                DateTime.now().difference(_speechStartTime!).inMilliseconds < minUtteranceDurationMs) {
-              return;
-            }
-            
-            // Démarrer ou redémarrer le timer de silence
-            _startSilenceTimer();
-            
-            // Mettre à jour le texte partiel via le notifier
-            if (partialText.isNotEmpty) {
-              updatePartialTranscript(partialText);
-            }
-          }
-          break;
-          
-        case AzureSpeechEventType.finalResult:
-          if (_currentState == InteractionState.listening) {
-            _silenceTimer?.cancel();
-            
-            // Vérifier si l'énoncé est suffisamment long
-            final finalText = event.text ?? '';
-            final utteranceDuration = DateTime.now().difference(_speechStartTime!).inMilliseconds;
-            
-            if (finalText.isEmpty || 
-                (finalText.split(' ').length < 2 && utteranceDuration < minUtteranceDurationMs)) {
-              // Ignorer les résultats trop courts ou vides et continuer à écouter
-              ConsoleLogger.info("EnhancedInteractionManager: Ignoring too short final result: '$finalText' (duration: ${utteranceDuration}ms)");
-              return;
-            }
-            
-            // Traiter le résultat final
-            processFinalTranscript(event);
-          } else if (_currentState == InteractionState.speaking) {
-            // Stocker l'événement pour traitement ultérieur
-            _pendingAzureFinalEvent = event;
-            ConsoleLogger.info("EnhancedInteractionManager: Storing final transcript for later processing (current state: speaking)");
-          }
-          break;
-          
-        case AzureSpeechEventType.error:
-          _silenceTimer?.cancel();
-          super.handleSpeechEvent(event);
-          break;
-          
-        case AzureSpeechEventType.status:
-          super.handleSpeechEvent(event);
-          break;
-      }
-    } else {
-      super.handleSpeechEvent(event);
-    }
-  }
-  
-  /// Démarre ou redémarre le timer de détection de silence
-  void _startSilenceTimer() {
-    _silenceTimer?.cancel();
-    _silenceTimer = Timer.periodic(Duration(milliseconds: 100), (timer) {
-      if (_currentState != InteractionState.listening || _lastSpeechActivityTime == null) {
-        timer.cancel();
-        return;
-      }
-      
-      final silenceDuration = DateTime.now().difference(_lastSpeechActivityTime!).inMilliseconds;
-      
-      // Vérifier si le silence est assez long pour être considéré comme une fin de phrase
-      if (silenceDuration > maxSilenceDurationMs) {
-        // Vérifier si l'énoncé est suffisamment long
-        final utteranceDuration = DateTime.now().difference(_speechStartTime!).inMilliseconds;
-        if (utteranceDuration < minUtteranceDurationMs) {
-          return; // Continuer à écouter si l'énoncé est trop court
-        }
-        
-        // Vérifier si la prosodie indique une fin de phrase
-        final isSilence = true; // Nous savons déjà qu'il y a un silence
-        if (_prosodyDetector.detectEndpoint(isSilence, silenceDuration)) {
-          ConsoleLogger.info("EnhancedInteractionManager: End of speech detected by prosody analysis (silence: ${silenceDuration}ms)");
-          timer.cancel();
-          stopListening(); // Arrêter l'écoute pour traiter le résultat final
-        }
-      }
-    });
-  }
-  
-  /// Traite un résultat final de reconnaissance vocale
-  @override
-  void processFinalTranscript(AzureSpeechEvent event) {
-    final finalText = event.text ?? '';
+    // Annuler l'abonnement aux événements de reconnaissance vocale
+    await _speechEventSubscription?.cancel();
     
-    if (finalText.isEmpty) {
-      ConsoleLogger.warning("EnhancedInteractionManager: Empty final transcript received, ignoring.");
-      return;
-    }
+    // Fermer le contrôleur de flux
+    await _speechEventController.close();
     
-    ConsoleLogger.info("EnhancedInteractionManager: Processing final transcript: '$finalText'");
-    
-    // Réinitialiser les indicateurs d'état
-    _userWasInterrupted = false;
-    _speechStartTime = null;
-    _lastSpeechActivityTime = null;
-    _silenceTimer?.cancel();
-    
-    // Traiter le résultat final avec la méthode parent
-    super.processFinalTranscript(event);
-  }
-  
-  /// Arrête l'écoute et réinitialise les indicateurs d'état
-  @override
-  Future<void> stopListening() async {
-    _silenceTimer?.cancel();
-    await super.stopListening();
-  }
-  
-  /// Méthode utilitaire pour mettre à jour le texte partiel
-  void updatePartialTranscript(String text) {
-    // Accéder au notifier de texte partiel via une méthode protégée
-    partialTranscriptNotifier.value = text;
-    notifyListeners();
+    // Disposer le gestionnaire décoré
+    await _interactionManager.dispose();
   }
 }

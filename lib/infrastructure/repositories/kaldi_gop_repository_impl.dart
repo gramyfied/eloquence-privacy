@@ -119,7 +119,73 @@ class KaldiGopRepositoryImpl implements IAzureSpeechRepository {
   Future<void> stopRecognition() async {
     _recognitionStreamController?.add(AzureSpeechEvent.status("Arrêt de l'évaluation Kaldi GOP."));
     // Arrêter la capture audio si nécessaire
-    // ...
+    if (_currentRecordingPath != null) {
+      try {
+        await _audioRepository.stopRecording();
+        _currentRecordingPath = null;
+      } catch (e) {
+        _recognitionStreamController?.add(AzureSpeechEvent.error(
+          "STOP_RECORDING_ERROR",
+          "Erreur lors de l'arrêt de l'enregistrement: $e",
+        ));
+      }
+    }
+  }
+
+  @override
+  Future<bool> isRecognizerInitialized() async {
+    try {
+      // Vérifier si le plugin Kaldi GOP est initialisé
+      return _isInitialized;
+    } catch (e) {
+      _recognitionStreamController?.add(AzureSpeechEvent.error(
+        "CHECK_STATE_ERROR",
+        "Erreur lors de la vérification de l'état du recognizer: $e",
+      ));
+      return false;
+    }
+  }
+
+  @override
+  Future<void> resetRepository() async {
+    try {
+      _recognitionStreamController?.add(AzureSpeechEvent.status("Réinitialisation du repository Kaldi GOP..."));
+      
+      // Arrêter toute évaluation en cours
+      await stopRecognition();
+      
+      // Réinitialiser les flags
+      _isInitialized = false;
+      _currentRecordingPath = null;
+      
+      // Réinitialiser le StreamController
+      await _recognitionStreamController?.close();
+      _recognitionStreamController = StreamController<AzureSpeechEvent>.broadcast();
+      
+      // Réinitialiser le plugin Kaldi GOP
+      try {
+        final success = await _kaldiPlugin.initialize(modelDir: _defaultKaldiModelDir);
+        if (success) {
+          _isInitialized = true;
+          _recognitionStreamController?.add(AzureSpeechEvent.status("Repository Kaldi GOP réinitialisé avec succès."));
+        } else {
+          _recognitionStreamController?.add(AzureSpeechEvent.error(
+            "RESET_FAILED",
+            "Échec de la réinitialisation du plugin Kaldi GOP.",
+          ));
+        }
+      } catch (e) {
+        _recognitionStreamController?.add(AzureSpeechEvent.error(
+          "RESET_EXCEPTION",
+          "Exception lors de la réinitialisation du plugin Kaldi GOP: $e",
+        ));
+      }
+    } catch (e) {
+      _recognitionStreamController?.add(AzureSpeechEvent.error(
+        "REPOSITORY_RESET_ERROR",
+        "Erreur lors de la réinitialisation du repository: $e",
+      ));
+    }
   }
 
   // Méthode privée pour capturer l'audio

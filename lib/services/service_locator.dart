@@ -53,9 +53,11 @@ import 'interactive_exercise/enhanced_realtime_audio_pipeline.dart';
 import 'evaluation/evaluation_validator_service.dart'; // Service de validation des évaluations
 import '../services/audio/prosody_endpoint_detector.dart'; // Détecteur de prosodie
 import '../services/audio/dynamic_silence_detector.dart'; // Détecteur de silence dynamique
+import '../services/audio/enhanced_speech_recognition_service.dart'; // Service de reconnaissance vocale amélioré
 import '../core/utils/state_transition.dart'; // Gestionnaire de transitions d'état
 import '../core/utils/enhanced_error_handler.dart'; // Gestionnaire d'erreurs amélioré
 import '../core/utils/console_logger.dart'; // Logger console
+import '../core/utils/echo_cancellation_system.dart'; // Système d'annulation d'écho
 import '../presentation/providers/interaction_manager.dart'; // Assurez-vous que le chemin est correct
 import '../presentation/providers/i_interaction_manager.dart'; // Interface pour InteractionManager
 import '../presentation/providers/enhanced_interaction_manager.dart'; // Décorateur pour InteractionManager
@@ -369,52 +371,65 @@ void setupServiceLocator() {
     )
   );
 
-  // Enregistrer InteractionManager (commun)
-  // Il dépend de RealTimeAudioPipeline qui encapsule maintenant le repo speech.
-  serviceLocator.registerFactory<InteractionManager>(
-    () => EnhancedInteractionManager(
-      serviceLocator<ScenarioGeneratorService>(),
-      serviceLocator<ConversationalAgentService>(),
-      serviceLocator<RealTimeAudioPipeline>(),
-      serviceLocator<FeedbackAnalysisService>(),
-      serviceLocator<GPTConversationalAgentService>(), // Ajouter le service GPT
+  // IMPORTANT: Enregistrer les services dans le bon ordre pour éviter les dépendances circulaires
+  
+  // 1. Enregistrer EchoCancellationSystem avec RealTimeAudioPipeline
+  final realTimeAudioPipeline = serviceLocator<RealTimeAudioPipeline>();
+  final echoCancellationSystem = EchoCancellationSystem(realTimeAudioPipeline);
+  
+  // 2. Enregistrer EchoCancellationSystem comme singleton
+  serviceLocator.registerLazySingleton<EchoCancellationSystem>(() => echoCancellationSystem);
+  
+  // 3. Enregistrer EnhancedSpeechRecognitionService AVANT de créer le gestionnaire d'interaction
+  serviceLocator.registerLazySingleton<EnhancedSpeechRecognitionService>(
+    () => EnhancedSpeechRecognitionService(
+      audioPipeline: serviceLocator<RealTimeAudioPipeline>(),
+      echoCancellation: serviceLocator<EchoCancellationSystem>(),
     )
   );
   
-  // Enregistrer explicitement EnhancedInteractionManager pour les accès directs
-  serviceLocator.registerFactory<EnhancedInteractionManager>(
-    () => EnhancedInteractionManager(
-      serviceLocator<ScenarioGeneratorService>(),
-      serviceLocator<ConversationalAgentService>(),
-      serviceLocator<RealTimeAudioPipeline>(),
-      serviceLocator<FeedbackAnalysisService>(),
-      serviceLocator<GPTConversationalAgentService>(),
-    )
+  // 4. Créer une seule instance de EchoCancellationInteractionManager
+  // et l'enregistrer comme singleton pour éviter les doublons
+  final baseInteractionManager = EchoCancellationInteractionManager(
+    serviceLocator<ScenarioGeneratorService>(),
+    serviceLocator<ConversationalAgentService>(),
+    realTimeAudioPipeline,
+    serviceLocator<FeedbackAnalysisService>(),
+    serviceLocator<GPTConversationalAgentService>(),
+    echoCancellationSystem,
+    serviceLocator<EnhancedSpeechRecognitionService>(), // IMPORTANT: Injecter le service ici
+  );
+
+  // 5. Enregistrer l'instance unique comme InteractionManager
+  serviceLocator.registerLazySingleton<InteractionManager>(() => baseInteractionManager);
+
+  // 6. Enregistrer l'instance unique comme EchoCancellationInteractionManager
+  serviceLocator.registerLazySingleton<EchoCancellationInteractionManager>(() => baseInteractionManager);
+
+  // 7. Enregistrer l'instance unique comme EnhancedInteractionManagerV2
+  serviceLocator.registerLazySingleton<EnhancedInteractionManagerV2>(() => baseInteractionManager);
+  
+  // Créer une seule instance de InteractionManagerDecorator
+  final decoratedManager = InteractionManagerDecorator(
+    baseInteractionManager,
+    validationEnabled: true,
   );
   
-  // Enregistrer EchoCancellationInteractionManager pour la suppression d'écho
-  serviceLocator.registerFactory<EchoCancellationInteractionManager>(
-    () => EchoCancellationInteractionManager(
-      serviceLocator<ScenarioGeneratorService>(),
-      serviceLocator<ConversationalAgentService>(),
-      serviceLocator<RealTimeAudioPipeline>(),
-      serviceLocator<FeedbackAnalysisService>(),
-      serviceLocator<GPTConversationalAgentService>(),
-    )
+  // Enregistrer l'instance unique comme InteractionManagerDecorator
+  serviceLocator.registerLazySingleton<InteractionManagerDecorator>(
+    () => decoratedManager
+  );
+  
+  // Enregistrer l'instance unique comme IInteractionManager
+  serviceLocator.registerLazySingleton<IInteractionManager>(
+    () => decoratedManager
   );
   
   // Enregistrer le décorateur EchoCancellationInteractionManagerDecorator
-  serviceLocator.registerFactory<EchoCancellationInteractionManagerDecorator>(
+  // mais en utilisant l'instance unique de baseInteractionManager
+  serviceLocator.registerLazySingleton<EchoCancellationInteractionManagerDecorator>(
     () => EchoCancellationInteractionManagerDecorator(
-      serviceLocator<InteractionManager>()
-    )
-  );
-  
-  // Enregistrer le décorateur InteractionManagerDecorator qui implémente IInteractionManager
-  serviceLocator.registerFactory<IInteractionManager>(
-    () => InteractionManagerDecorator(
-      serviceLocator<InteractionManager>(),
-      validationEnabled: true,
+      baseInteractionManager
     )
   );
   

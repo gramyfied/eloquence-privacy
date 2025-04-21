@@ -619,7 +619,11 @@ class _FinalesNettesExerciseScreenState extends State<FinalesNettesExerciseScree
       // Utiliser pushReplacement pour ne pas pouvoir revenir à l'écran d'exercice
       GoRouter.of(context).pushReplacement(
          AppRoutes.exerciseResult,
-         extra: {'exercise': widget.exercise, 'results': finalResultsPayload}
+         extra: {
+           'exercise': widget.exercise, 
+           'result': finalResultsPayload,
+           'exerciseId': widget.exercise.id, // Ajouter l'ID de l'exercice pour permettre de réessayer
+         }
       );
     }
   }
@@ -709,7 +713,7 @@ class _FinalesNettesExerciseScreenState extends State<FinalesNettesExerciseScree
            backgroundColor: AppTheme.darkBackground,
            leading: IconButton(
              icon: const Icon(Icons.arrow_back, color: Colors.white),
-             onPressed: () => Navigator.of(context).pop(),
+             onPressed: widget.onExitPressed,
            ),
          ),
          body: Center(
@@ -739,7 +743,7 @@ class _FinalesNettesExerciseScreenState extends State<FinalesNettesExerciseScree
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: widget.onExitPressed,
         ),
         actions: [
           // TODO: Ajouter l'icône (i) avec la modale d'information

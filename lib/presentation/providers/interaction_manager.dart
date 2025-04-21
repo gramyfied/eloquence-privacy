@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 // Added import for WidgetsBinding
 
 import '../../core/utils/console_logger.dart';
+import '../../core/utils/enhanced_logger.dart';
 import '../../domain/entities/interactive_exercise/conversation_turn.dart';
 import '../../domain/entities/interactive_exercise/scenario_context.dart';
 import '../../services/interactive_exercise/conversational_agent_service.dart';
@@ -12,6 +13,7 @@ import '../../services/interactive_exercise/realtime_audio_pipeline.dart';
 import '../../services/interactive_exercise/scenario_generator_service.dart';
 import '../../services/openai/gpt_conversational_agent_service.dart'; // Ajout du service GPT
 import '../../domain/repositories/azure_speech_repository.dart'; // Importer AzureSpeechEvent
+import '../../services/evaluation/evaluation_validator_service.dart'; // Service de validation des évaluations
 // Importer depuis le repository où les événements sont maintenant définis
 // Importer l'implémentation Whisper
 

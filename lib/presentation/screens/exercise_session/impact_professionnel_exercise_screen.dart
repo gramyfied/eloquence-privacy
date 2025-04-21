@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart'; // Add this import for ValueListenable
+import 'package:go_router/go_router.dart'; // Ajout de l'import pour GoRouter
 import '../../../domain/entities/interactive_exercise/scenario_context.dart';
 import '../../../domain/entities/interactive_exercise/conversation_turn.dart';
 import '../../providers/interaction_manager.dart';
 import '../../widgets/animations/pulsating_widget.dart';
 import '../../../app/theme.dart';
+import '../../../app/routes.dart'; // Ajout de l'import pour AppRoutes
 
 class ImpactProfessionnelExerciseScreen extends StatefulWidget {
   final String exerciseId;
@@ -127,10 +129,14 @@ class _ImpactProfessionnelExerciseScreenState extends State<ImpactProfessionnelE
             widget.onExerciseCompleted!(resultsData);
           } else {
             // Fallback au cas où le callback n'est pas fourni
-            Navigator.pushReplacementNamed(context, '/exercise_result', arguments: {
-              'exercise': scenario,
-              'results': resultsData
-            });
+            // Utiliser GoRouter au lieu de Navigator.pushReplacementNamed
+            context.push(
+              AppRoutes.exerciseResult,
+              extra: {
+                'exercise': scenario,
+                'results': resultsData
+              }
+            );
           }
         }
       });

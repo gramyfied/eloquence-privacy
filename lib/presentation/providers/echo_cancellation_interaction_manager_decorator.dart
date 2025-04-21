@@ -27,7 +27,7 @@ class EchoCancellationInteractionManagerDecorator implements IInteractionManager
   }
   
   // Getter pour obtenir le gestionnaire actif
-  InteractionManager get _activeManager => _usingSpeakers ? _echoCancellationManager : _baseManager;
+  dynamic get _activeManager => _usingSpeakers ? _echoCancellationManager : _baseManager;
   
   /// Définir si l'utilisateur utilise des haut-parleurs
   set usingSpeakers(bool value) {

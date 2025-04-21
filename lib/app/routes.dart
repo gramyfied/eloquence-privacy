@@ -26,5 +26,6 @@ class AppRoutes {
   static const String exercisePitchVariation = '/exercise/pitch-variation/:exerciseId'; // AJOUT: Route pour Variation de Hauteur
   static const String exerciseVocalStability = '/exercise/vocal-stability/:exerciseId'; // AJOUT: Route pour Stabilité Vocale
   static const String interactiveExercise = '/exercise/interactive/:exerciseId'; // Route pour les exercices interactifs
+  static const String evaluationDashboard = '/exercise/evaluation-dashboard/:exerciseId'; // Route pour le tableau de bord d'évaluation
   // Ajoutez d'autres routes spécifiques ici si nécessaire
 }
