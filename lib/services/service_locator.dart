@@ -28,6 +28,7 @@ import 'remote/remote_exercise_service.dart'; // Ajouté pour les tests d'exerci
 
 // Services
 import 'azure/azure_tts_service.dart'; // Ajouté
+import 'azure/enhanced_azure_tts_service.dart'; // Ajouté pour la voix fr-FR-DeniseNeural
 import 'azure/azure_speech_service.dart'; // Gardé pour l'instant (si PronunciationEvaluationResult est utilisé ailleurs)
 import 'package:just_audio/just_audio.dart'; // Ajouté pour AudioPlayer
 // Supprimer les imports FFI Whisper
@@ -258,13 +259,17 @@ void setupServiceLocator() {
       );
       print("INFO: Enregistrement de RemoteTtsService pour le mode distant.");
   } else {
-      // Mode Cloud: Enregistrer AzureTtsService
+      // Mode Cloud: Enregistrer EnhancedAzureTtsService avec la voix fr-FR-DeniseNeural
       serviceLocator.registerLazySingleton<ITtsService>(
-        () => AzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
+        () => EnhancedAzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
       );
-      // Correction : enregistrer explicitement AzureTtsService pour les accès directs
+      // Enregistrer explicitement EnhancedAzureTtsService pour les accès directs
+      serviceLocator.registerLazySingleton<EnhancedAzureTtsService>(
+        () => EnhancedAzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
+      );
+      // Enregistrer également AzureTtsService pour la compatibilité avec le code existant
       serviceLocator.registerLazySingleton<AzureTtsService>(
-        () => AzureTtsService(audioPlayer: serviceLocator<AudioPlayer>())
+        () => serviceLocator<EnhancedAzureTtsService>()
       );
   }
 
@@ -404,7 +409,17 @@ void setupServiceLocator() {
   serviceLocator.registerLazySingleton<InteractionManager>(() => baseInteractionManager);
 
   // 6. Enregistrer l'instance unique comme EchoCancellationInteractionManager
-  serviceLocator.registerLazySingleton<EchoCancellationInteractionManager>(() => baseInteractionManager);
+  // Utiliser registerFactory au lieu de registerLazySingleton pour créer une nouvelle instance à chaque fois
+  // Cela évite les problèmes de "disposed" lorsque l'instance est réutilisée après avoir été disposée
+  serviceLocator.registerFactory<EchoCancellationInteractionManager>(() => EchoCancellationInteractionManager(
+    serviceLocator<ScenarioGeneratorService>(),
+    serviceLocator<ConversationalAgentService>(),
+    serviceLocator<RealTimeAudioPipeline>(),
+    serviceLocator<FeedbackAnalysisService>(),
+    serviceLocator<GPTConversationalAgentService>(),
+    serviceLocator<EchoCancellationSystem>(),
+    serviceLocator<EnhancedSpeechRecognitionService>(),
+  ));
 
   // 7. Enregistrer l'instance unique comme EnhancedInteractionManagerV2
   serviceLocator.registerLazySingleton<EnhancedInteractionManagerV2>(() => baseInteractionManager);

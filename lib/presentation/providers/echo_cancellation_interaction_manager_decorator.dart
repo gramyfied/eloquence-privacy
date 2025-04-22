@@ -109,8 +109,12 @@ class EchoCancellationInteractionManagerDecorator implements IInteractionManager
   
   @override
   Future<void> dispose() async {
-    // Disposer les deux gestionnaires
+    // Disposer uniquement le gestionnaire de base
+    // Ne pas disposer le singleton EchoCancellationInteractionManager
+    // car il est géré par le service locator et peut être utilisé ailleurs
     await _baseManager.dispose();
-    await _echoCancellationManager.dispose();
+    
+    // Journaliser la disposition
+    print("EchoCancellationInteractionManagerDecorator: Disposed (base manager only)");
   }
 }

@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart'; // Pour les chemins de fichie
 
 import 'app/router.dart'; // Ajouté pour createRouter
 import 'services/service_locator.dart'; // Contient setupServiceLocator et serviceLocator
+import 'services/service_locator_update.dart'; // Contient updateServiceLocator pour NaturalInteractionManager
 import 'services/lexique/syllabification_service.dart'; // Importer le service
 // Importer AzureSpeechService
 import 'services/azure/azure_tts_service.dart'; // Importer AzureTtsService
@@ -192,7 +193,8 @@ void main() async {
 
   // Configurer l'injection de dépendances
   setupServiceLocator();
-  logger.info('Service locator configuré', tag: 'MAIN');
+  updateServiceLocator(); // Enregistrer NaturalInteractionManager
+  logger.info('Service locator configuré avec NaturalInteractionManager', tag: 'MAIN');
 
   try {
     // Charger le lexique de syllabification

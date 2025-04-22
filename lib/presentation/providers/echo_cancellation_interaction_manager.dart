@@ -427,107 +427,148 @@ class EchoCancellationInteractionManager extends EnhancedInteractionManagerV2 {
     });
   }
   
+  // Timer pour attendre d'autres segments de parole avant de traiter une transcription finale
+  Timer? _continuousSpeechTimer;
+  
+  // Tampon pour accumuler les transcriptions finales
+  final List<String> _transcriptionBuffer = [];
+  
   /// Méthode pour traiter les transcriptions finales
   Future<void> _processFinalTranscript(AzureSpeechEvent event) async {
     final String? transcript = event.text;
     final Map<String, dynamic>? pronResult = event.pronunciationResult;
     ConsoleLogger.info("EchoCancellationInteractionManager: Processing final transcript: '${transcript ?? ''}'");
     
-    // Ignorer les transcriptions vides ou trop courtes (moins de 2 mots)
-    if (transcript != null && transcript.trim().isNotEmpty) {
-      // Vérifier si la transcription est significative (au moins 2 mots)
-      final words = transcript.trim().split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
-      if (words.length < 2) {
-        ConsoleLogger.info("EchoCancellationInteractionManager: Final transcript too short (${words.length} words). Ignoring: '$transcript'");
-        setState(InteractionState.ready);
-        return;
-      }
-      
-      // [DEBUG] Désactivation temporaire de la logique de doublon pour test
-      // // Vérifier si cette transcription est un doublon
-      // if (_lastProcessedTranscript == transcript) {
-      //   // Vérifier si le dernier traitement était récent (moins de 2 secondes)
-      //   if (_lastProcessedTranscriptTime != null) {
-      //     final timeSinceLastProcessing = DateTime.now().difference(_lastProcessedTranscriptTime!).inMilliseconds;
-      //     if (timeSinceLastProcessing < 2000) {
-      //       ConsoleLogger.warning("EchoCancellationInteractionManager: Duplicate transcript detected and ignored: '$transcript'");
-      //       setState(InteractionState.ready);
-      //       return;
-      //     }
-      //   }
-      // }
-      
-      // Extraire les métriques vocales
-      double? accuracyScore;
-      double? fluencyScore;
-      double? prosodyScore;
-      double? durationInSeconds;
-      
-      if (pronResult != null &&
-          pronResult['NBest'] is List &&
-          (pronResult['NBest'] as List).isNotEmpty &&
-          pronResult['NBest'][0] is Map &&
-          pronResult['NBest'][0]['PronunciationAssessment'] is Map) {
-        final assessment = pronResult['NBest'][0]['PronunciationAssessment'];
-        accuracyScore = (assessment['AccuracyScore'] as num?)?.toDouble();
-        fluencyScore = (assessment['FluencyScore'] as num?)?.toDouble();
-        prosodyScore = (assessment['ProsodyScore'] as num?)?.toDouble();
-        final durationTicks = assessment['Duration'];
-        if (durationTicks is num && durationTicks > 0) {
-          durationInSeconds = durationTicks / 10000000.0;
-        }
-      }
-      
-      // Calculer le débit de parole (pace)
-      double? pace;
-      if (durationInSeconds != null && durationInSeconds > 0 && transcript.isNotEmpty) {
-        final wordCount = transcript.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).length;
-        if (wordCount > 0) {
-          pace = (wordCount / durationInSeconds) * 60;
-          ConsoleLogger.info("EchoCancellationInteractionManager: Calculated Pace: $pace WPM");
-        }
-      }
-      
-      // Calculer le nombre de mots de remplissage
-      final fillerWords = ['euh', 'hum', 'ben', 'alors', 'voilà', 'en fait', 'du coup'];
-      final wordsForFillerCount = transcript.toLowerCase().split(RegExp(r'\s+')).where((s) => s.isNotEmpty);
-      final fillerWordCount = wordsForFillerCount.where((word) => fillerWords.contains(word.replaceAll(RegExp(r'[^\w]'), ''))).length;
-      ConsoleLogger.info("EchoCancellationInteractionManager: Calculated Fillers: $fillerWordCount");
-      
-      // Créer les métriques vocales
-      _lastUserMetrics = UserVocalMetrics(
-        pace: pace,
-        fillerWordCount: fillerWordCount,
-        accuracyScore: accuracyScore,
-        fluencyScore: fluencyScore,
-        prosodyScore: prosodyScore,
-      );
-      
-      // Mettre à jour les indicateurs de doublon
-      _lastProcessedTranscript = transcript;
-      _lastProcessedTranscriptTime = DateTime.now();
-      
-      // Ajouter le tour à la conversation
-      addTurn(Speaker.user, transcript, audioDuration: durationInSeconds != null ? Duration(milliseconds: (durationInSeconds * 1000).round()) : null);
-
-      // Passer à l'état "thinking"
-      setState(InteractionState.thinking);
-      
-      // Attendre un court délai pour s'assurer que la transition d'état est terminée
-      // avant de déclencher la réponse de l'IA
-      Future.delayed(const Duration(milliseconds: 500), () {
-        // Vérifier que nous sommes bien dans l'état "thinking" avant de déclencher la réponse
-        if (currentState == InteractionState.thinking && !_isTransitioning) {
-          ConsoleLogger.info("EchoCancellationInteractionManager: Déclenchement différé de la réponse de l'IA après transition vers thinking");
-          triggerAIResponse();
-        } else {
-          ConsoleLogger.error("EchoCancellationInteractionManager: Impossible de déclencher la réponse de l'IA après délai. État actuel: $currentState, _isTransitioning: $_isTransitioning");
-        }
-      });
-    } else {
-      ConsoleLogger.info("EchoCancellationInteractionManager: Empty final transcript received. Returning to ready state.");
-      setState(InteractionState.ready);
+    // Ignorer les transcriptions vides
+    if (transcript == null || transcript.trim().isEmpty) {
+      ConsoleLogger.info("EchoCancellationInteractionManager: Empty final transcript received. Ignoring.");
+      return;
     }
+    
+    // Vérifier si la transcription est significative (au moins 2 mots)
+    final words = transcript.trim().split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
+    if (words.length < 2) {
+      ConsoleLogger.info("EchoCancellationInteractionManager: Final transcript too short (${words.length} words). Adding to buffer: '$transcript'");
+      _transcriptionBuffer.add(transcript);
+    } else {
+      // Ajouter la transcription au tampon
+      _transcriptionBuffer.add(transcript);
+      ConsoleLogger.info("EchoCancellationInteractionManager: Added to transcription buffer: '$transcript'");
+    }
+    
+    // Annuler le timer existant s'il y en a un
+    _continuousSpeechTimer?.cancel();
+    
+    // Créer un nouveau timer pour attendre d'autres segments de parole
+    _continuousSpeechTimer = Timer(const Duration(seconds: 2), () {
+      _processCombinedTranscriptions(pronResult);
+    });
+  }
+  
+  /// Méthode pour traiter les transcriptions combinées après le délai
+  Future<void> _processCombinedTranscriptions(Map<String, dynamic>? pronResult) async {
+    // Vérifier si le tampon est vide
+    if (_transcriptionBuffer.isEmpty) {
+      ConsoleLogger.info("EchoCancellationInteractionManager: Transcription buffer is empty. Returning to ready state.");
+      setState(InteractionState.ready);
+      return;
+    }
+    
+    // Combiner toutes les transcriptions du tampon
+    final combinedTranscript = _transcriptionBuffer.join(" ");
+    ConsoleLogger.info("EchoCancellationInteractionManager: Processing combined transcript: '$combinedTranscript'");
+    
+    // Vider le tampon
+    _transcriptionBuffer.clear();
+    
+    // Vérifier si la transcription combinée est significative (au moins 2 mots)
+    final words = combinedTranscript.trim().split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
+    if (words.length < 2) {
+      ConsoleLogger.info("EchoCancellationInteractionManager: Combined transcript too short (${words.length} words). Ignoring: '$combinedTranscript'");
+      setState(InteractionState.ready);
+      return;
+    }
+    
+    // Vérifier si cette transcription est un doublon
+    if (_lastProcessedTranscript == combinedTranscript) {
+      // Vérifier si le dernier traitement était récent (moins de 2 secondes)
+      if (_lastProcessedTranscriptTime != null) {
+        final timeSinceLastProcessing = DateTime.now().difference(_lastProcessedTranscriptTime!).inMilliseconds;
+        if (timeSinceLastProcessing < 2000) {
+          ConsoleLogger.warning("EchoCancellationInteractionManager: Duplicate transcript detected and ignored: '$combinedTranscript'");
+          setState(InteractionState.ready);
+          return;
+        }
+      }
+    }
+    
+    // Extraire les métriques vocales
+    double? accuracyScore;
+    double? fluencyScore;
+    double? prosodyScore;
+    double? durationInSeconds;
+    
+    if (pronResult != null &&
+        pronResult['NBest'] is List &&
+        (pronResult['NBest'] as List).isNotEmpty &&
+        pronResult['NBest'][0] is Map &&
+        pronResult['NBest'][0]['PronunciationAssessment'] is Map) {
+      final assessment = pronResult['NBest'][0]['PronunciationAssessment'];
+      accuracyScore = (assessment['AccuracyScore'] as num?)?.toDouble();
+      fluencyScore = (assessment['FluencyScore'] as num?)?.toDouble();
+      prosodyScore = (assessment['ProsodyScore'] as num?)?.toDouble();
+      final durationTicks = assessment['Duration'];
+      if (durationTicks is num && durationTicks > 0) {
+        durationInSeconds = durationTicks / 10000000.0;
+      }
+    }
+    
+    // Calculer le débit de parole (pace)
+    double? pace;
+    if (durationInSeconds != null && durationInSeconds > 0 && combinedTranscript.isNotEmpty) {
+      final wordCount = combinedTranscript.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).length;
+      if (wordCount > 0) {
+        pace = (wordCount / durationInSeconds) * 60;
+        ConsoleLogger.info("EchoCancellationInteractionManager: Calculated Pace: $pace WPM");
+      }
+    }
+    
+    // Calculer le nombre de mots de remplissage
+    final fillerWords = ['euh', 'hum', 'ben', 'alors', 'voilà', 'en fait', 'du coup'];
+    final wordsForFillerCount = combinedTranscript.toLowerCase().split(RegExp(r'\s+')).where((s) => s.isNotEmpty);
+    final fillerWordCount = wordsForFillerCount.where((word) => fillerWords.contains(word.replaceAll(RegExp(r'[^\w]'), ''))).length;
+    ConsoleLogger.info("EchoCancellationInteractionManager: Calculated Fillers: $fillerWordCount");
+    
+    // Créer les métriques vocales
+    _lastUserMetrics = UserVocalMetrics(
+      pace: pace,
+      fillerWordCount: fillerWordCount,
+      accuracyScore: accuracyScore,
+      fluencyScore: fluencyScore,
+      prosodyScore: prosodyScore,
+    );
+    
+    // Mettre à jour les indicateurs de doublon
+    _lastProcessedTranscript = combinedTranscript;
+    _lastProcessedTranscriptTime = DateTime.now();
+    
+    // Ajouter le tour à la conversation
+    addTurn(Speaker.user, combinedTranscript, audioDuration: durationInSeconds != null ? Duration(milliseconds: (durationInSeconds * 1000).round()) : null);
+
+    // Passer à l'état "thinking"
+    setState(InteractionState.thinking);
+    
+    // Attendre un court délai pour s'assurer que la transition d'état est terminée
+    // avant de déclencher la réponse de l'IA
+    Future.delayed(const Duration(milliseconds: 500), () {
+      // Vérifier que nous sommes bien dans l'état "thinking" avant de déclencher la réponse
+      if (currentState == InteractionState.thinking && !_isTransitioning) {
+        ConsoleLogger.info("EchoCancellationInteractionManager: Déclenchement différé de la réponse de l'IA après transition vers thinking");
+        triggerAIResponse();
+      } else {
+        ConsoleLogger.error("EchoCancellationInteractionManager: Impossible de déclencher la réponse de l'IA après délai. État actuel: $currentState, _isTransitioning: $_isTransitioning");
+      }
+    });
   }
   
   /// Empêche le double traitement de la transcription finale par la classe parente
@@ -677,25 +718,38 @@ class EchoCancellationInteractionManager extends EnhancedInteractionManagerV2 {
   /// Méthode surchargée pour déclencher la réponse de l'IA avec gestion d'erreurs améliorée
   @override
   Future<void> triggerAIResponse() async {
-    ConsoleLogger.info("EchoCancellationInteractionManager: Début de triggerAIResponse. État actuel: $currentState");
-    
-    // Vérifier que nous sommes bien dans l'état "thinking"
-    if (currentState != InteractionState.thinking) {
-      ConsoleLogger.warning("EchoCancellationInteractionManager: Impossible de déclencher la réponse de l'IA dans l'état $currentState.");
+    if (_isTransitioning || currentState != InteractionState.thinking) {
+      ConsoleLogger.warning("EchoCancellationInteractionManager: Impossible de déclencher la réponse de l'IA. État actuel: $currentState, En transition: $_isTransitioning");
       return;
     }
     
-    // Créer un timer de sécurité pour éviter les blocages
-    Timer? timeoutTimer = Timer(const Duration(seconds: 10), () {
+    ConsoleLogger.info("EchoCancellationInteractionManager: Début de triggerAIResponse. État actuel: $currentState");
+    
+    // Timer de sécurité pour éviter les blocages
+    Timer? timeoutTimer = Timer(const Duration(seconds: 20), () {
       ConsoleLogger.error("EchoCancellationInteractionManager: Timeout de triggerAIResponse détecté. Forçage du retour à l'état ready.");
-      if (currentState == InteractionState.thinking) {
-        setState(InteractionState.ready);
-      }
+      setState(InteractionState.ready);
     });
     
     try {
-      ConsoleLogger.info("EchoCancellationInteractionManager: Génération de la réponse de l'IA...");
-
+      // Générer la réponse de l'IA de manière asynchrone
+      _generateAIResponseAsync();
+      
+      // Ne pas attendre la fin de la génération, annuler le timer et retourner immédiatement
+      timeoutTimer?.cancel();
+      timeoutTimer = null;
+    } catch (e) {
+      ConsoleLogger.error("EchoCancellationInteractionManager: Erreur lors du démarrage de la génération de la réponse de l'IA: $e");
+      setState(InteractionState.ready);
+      timeoutTimer?.cancel();
+    }
+  }
+  
+  /// Méthode privée pour générer la réponse de l'IA de manière asynchrone
+  Future<void> _generateAIResponseAsync() async {
+    try {
+      ConsoleLogger.info("EchoCancellationInteractionManager: Génération asynchrone de la réponse de l'IA...");
+      
       // Récupérer le dernier tour utilisateur
       final lastUserTurn = conversationHistory.lastWhere(
         (turn) => turn.speaker == Speaker.user,
@@ -705,7 +759,6 @@ class EchoCancellationInteractionManager extends EnhancedInteractionManagerV2 {
       if (lastUserTurn.text.isEmpty) {
         ConsoleLogger.error("EchoCancellationInteractionManager: Aucun tour utilisateur trouvé. Impossible de générer une réponse.");
         setState(InteractionState.ready);
-        timeoutTimer.cancel();
         return;
       }
 
@@ -716,7 +769,7 @@ class EchoCancellationInteractionManager extends EnhancedInteractionManagerV2 {
         final responseCompleter = Completer<String>();
         
         // Créer un timer pour le timeout de la génération de réponse
-        final responseTimer = Timer(const Duration(seconds: 5), () {
+        final responseTimer = Timer(const Duration(seconds: 8), () {
           if (!responseCompleter.isCompleted) {
             ConsoleLogger.error("EchoCancellationInteractionManager: Timeout lors de la génération de la réponse de l'IA.");
             responseCompleter.complete("Je suis désolé, j'ai mis trop de temps à répondre. Pouvez-vous répéter s'il vous plaît ?");
@@ -753,10 +806,9 @@ class EchoCancellationInteractionManager extends EnhancedInteractionManagerV2 {
         aiResponse = "Je suis désolé, j'ai rencontré un problème. Pouvez-vous répéter s'il vous plaît ?";
       }
 
-      // Vérifier si nous sommes toujours dans l'état "thinking"
+      // Vérifier si l'état a changé pendant la génération
       if (currentState != InteractionState.thinking) {
         ConsoleLogger.warning("EchoCancellationInteractionManager: L'état a changé pendant la génération de la réponse. État actuel: $currentState");
-        timeoutTimer.cancel();
         return;
       }
 
@@ -769,7 +821,6 @@ class EchoCancellationInteractionManager extends EnhancedInteractionManagerV2 {
       // Vérifier à nouveau l'état actuel car il pourrait avoir changé pendant le délai
       if (currentState != InteractionState.speaking) {
         ConsoleLogger.warning("EchoCancellationInteractionManager: L'état a changé pendant le délai avant de parler. État actuel: $currentState");
-        timeoutTimer.cancel();
         return;
       }
 
@@ -804,13 +855,10 @@ class EchoCancellationInteractionManager extends EnhancedInteractionManagerV2 {
         setState(InteractionState.ready);
       }
     } catch (e) {
-      ConsoleLogger.error("EchoCancellationInteractionManager: Erreur lors du déclenchement de la réponse de l'IA: $e");
-      setState(InteractionState.ready);
-    } finally {
-      // Annuler le timer de sécurité
-      timeoutTimer.cancel();
-      
-      ConsoleLogger.info("EchoCancellationInteractionManager: Fin de triggerAIResponse");
+      ConsoleLogger.error("EchoCancellationInteractionManager: Erreur lors de la génération asynchrone de la réponse de l'IA: $e");
+      if (currentState == InteractionState.thinking) {
+        setState(InteractionState.ready);
+      }
     }
   }
 

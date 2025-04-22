@@ -694,6 +694,10 @@ class PitchVariationView extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: Text(exercise.title),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: onExitPressed,
+          ),
           actions: [
             IconButton(
               icon: const Icon(Icons.info_outline),
