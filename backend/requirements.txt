@@ -1,2 +1,15 @@
-flask
-flask-cors
+fastapi
+gunicorn
+uvicorn
+python-dotenv
+sqlalchemy
+psycopg2-binary
+asyncpg
+PyYAML
+pydantic-settings
+SoundFile
+faster-whisper
+aiohttp
+redis
+livekit-api
+python-multipart
