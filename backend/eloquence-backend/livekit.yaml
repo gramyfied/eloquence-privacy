@@ -1,0 +1,7 @@
+keys: 
+  devkey: devsecret123456789abcdef0123456789abcdef0123456789abcdef 
+port: 7881 
+webhook: 
+  api_key: devkey 
+  keys: 
+    devkey: devsecret123456789abcdef0123456789abcdef0123456789abcdef 
