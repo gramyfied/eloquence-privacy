@@ -1,0 +1,61 @@
+🚀 INSTRUCTIONS ULTRA-SIMPLES POUR LANCER LE TEST LIVEKIT
+=========================================================
+
+ÉTAPE 1: DOUBLE-CLIQUEZ SUR CE FICHIER
+--------------------------------------
+📁 DEMARRAGE_RAPIDE.bat
+
+Si ça ne marche pas, passez à l'étape 2.
+
+ÉTAPE 2: DIAGNOSTIC
+-------------------
+📁 diagnostic.bat
+
+Cela va identifier le problème et proposer des solutions.
+
+ÉTAPE 3: SI VOUS AVEZ DES ERREURS
+----------------------------------
+Consultez le fichier:
+📄 DEPANNAGE.md
+
+ÉTAPE 4: TEST SIMPLE
+--------------------
+Ouvrez une invite de commande dans ce dossier et tapez:
+python test_simple.py
+
+ÉTAPE 5: PROBLÈMES COURANTS
+---------------------------
+
+❌ "Python n'est pas reconnu"
+→ Installez Python depuis https://python.org
+→ Cochez "Add Python to PATH" lors de l'installation
+
+❌ "Module not found"
+→ Tapez: pip install livekit-server-sdk-python pyttsx3 colorama
+
+❌ "Connection refused"
+→ Démarrez le serveur LiveKit:
+   livekit-server --dev
+→ Ou avec Docker:
+   docker run --rm -p 7880:7880 livekit/livekit-server --dev
+
+ÉTAPE 6: AIDE RAPIDE
+--------------------
+Si rien ne marche, envoyez-moi:
+1. Le résultat de: python --version
+2. Le résultat de: diagnostic.bat
+3. Le message d'erreur exact
+
+FICHIERS IMPORTANTS:
+===================
+🟢 DEMARRAGE_RAPIDE.bat  ← COMMENCEZ ICI
+🔧 diagnostic.bat        ← Si problème
+📖 DEPANNAGE.md          ← Solutions détaillées
+🧪 test_simple.py        ← Test minimal
+🎯 run_tests.py          ← Tests complets
+
+RACCOURCIS CLAVIER:
+==================
+Windows + R → cmd → Entrée
+cd "chemin\vers\livekit_test_system"
+python test_simple.py
