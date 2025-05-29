@@ -94,6 +94,16 @@ class PipelineLogger:
         colored_msg = f"{Fore.GREEN}{Style.BRIGHT}✅ {msg}{Style.RESET_ALL}"
         self._log(logging.INFO, colored_msg, *args, **kwargs)
     
+    def ai_response(self, msg: str, *args, **kwargs):
+        """Log pour les réponses de l'IA (bleu clair)"""
+        colored_msg = f"{Fore.BLUE}{Style.BRIGHT}🤖 IA: {msg}{Style.RESET_ALL}"
+        self._log(logging.INFO, colored_msg, *args, **kwargs)
+
+    def user_message(self, msg: str, *args, **kwargs):
+        """Log pour les messages utilisateur (jaune clair)"""
+        colored_msg = f"{Fore.YELLOW}{Style.BRIGHT}👤 USER: {msg}{Style.RESET_ALL}"
+        self._log(logging.INFO, colored_msg, *args, **kwargs)
+
     def audio_packet(self, packet_id: int, size: int, timestamp: float, metadata: Optional[Dict] = None):
         """Log spécifique pour les paquets audio avec formatage distinct"""
         with self._lock:

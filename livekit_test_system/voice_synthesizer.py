@@ -10,6 +10,8 @@ import threading
 from pathlib import Path
 import wave
 import numpy as np
+from scipy.io import wavfile
+from scipy import signal
 
 from pipeline_logger import PipelineLogger, metrics_collector
 
@@ -149,9 +151,45 @@ class VoiceSynthesizer:
                 self.logger.error(f"❌ Échec de la génération audio pour {phrase_id}")
                 return None
             
+            # Rééchantillonner l'audio à 48kHz en utilisant scipy
+            try:
+                # Lire le fichier WAV
+                sample_rate_orig, audio_data_orig = wavfile.read(audio_file)
+                
+                # Convertir en mono si nécessaire (prendre un seul canal si stéréo)
+                if audio_data_orig.ndim > 1:
+                    audio_data_orig = audio_data_orig[:, 0] # Prendre le premier canal
+                    self.logger.info(f"🔄 Conversion de {audio_data_orig.ndim} canaux à 1 canal (mono) pour {audio_file.name}")
+
+                # Convertir en float pour le rééchantillonnage
+                audio_data_float = audio_data_orig.astype(np.float32)
+
+                target_sample_rate = 48000
+                if sample_rate_orig != target_sample_rate:
+                    num_samples_resampled = int(len(audio_data_float) * target_sample_rate / sample_rate_orig)
+                    audio_data_resampled = signal.resample(audio_data_float, num_samples_resampled)
+                    self.logger.info(f"🔄 Rééchantillonnage de {sample_rate_orig}Hz à {target_sample_rate}Hz pour {audio_file.name}")
+                else:
+                    audio_data_resampled = audio_data_float
+
+                # Convertir en int16 (format attendu par LiveKit)
+                # Normaliser à la plage [-32768, 32767] pour int16
+                audio_data_resampled_int16 = np.int16(audio_data_resampled / np.max(np.abs(audio_data_resampled)) * 32767)
+
+                resampled_audio_file = self.temp_dir / f"resampled_synth_audio_{phrase_id}.wav"
+                wavfile.write(resampled_audio_file, target_sample_rate, audio_data_resampled_int16)
+                
+                # Supprimer le fichier original généré par pyttsx3
+                audio_file.unlink()
+                audio_file = resampled_audio_file # Mettre à jour le chemin du fichier
+                
+            except Exception as e:
+                self.logger.error(f"💥 Erreur lors du rééchantillonnage ou de la conversion: {e}")
+                return None
+
             generation_time = (time.time() - generation_start) * 1000
             
-            # Analyser le fichier audio généré
+            # Analyser le fichier audio généré (maintenant rééchantillonné)
             audio_info = self._analyze_audio_file(audio_file)
             
             metadata = {
@@ -165,7 +203,7 @@ class VoiceSynthesizer:
             }
             
             self.logger.latency("génération", generation_time)
-            self.logger.success(f"Audio généré: {audio_file.name} ({metadata['file_size']} bytes)")
+            self.logger.success(f"Audio généré et rééchantillonné: {audio_file.name} ({metadata['file_size']} bytes)")
             
             return metadata
             

@@ -114,15 +114,21 @@ class AudioStreamer:
         except Exception as e:
             print(f"[{self.identity}] ❌ Erreur traitement audio: {e}")
     
-    def on_data_received(self, data, participant):
+    def on_data_received(self, data_packet):
         """Callback pour les données reçues"""
         self.received_data_count += 1
-        print(f"[{self.identity}] 📨 Données reçues #{self.received_data_count} de {participant.identity}: {len(data)} bytes")
+        data = data_packet.data
+        participant = data_packet.participant
+        kind = data_packet.kind # Peut être utile pour le débogage
+        
+        print(f"[{self.identity}] 📨 Données reçues #{self.received_data_count} de {participant.identity} (Kind: {kind}): {len(data)} bytes")
         try:
             message = data.decode('utf-8')
             print(f"[{self.identity}] 💬 Message: {message}")
-        except:
-            print(f"[{self.identity}] 📦 Données binaires reçues")
+        except UnicodeDecodeError:
+            print(f"[{self.identity}] 📦 Données binaires reçues (non-texte)")
+        except Exception as e:
+            print(f"[{self.identity}] ❌ Erreur décodage données: {e}")
     
     async def generate_and_send_tts(self, text):
         """Génère du TTS et l'envoie via LiveKit"""
@@ -191,6 +197,10 @@ class AudioStreamer:
             for i in range(0, len(audio_data), chunk_size):
                 chunk = audio_data[i:i+chunk_size]
                 
+                # Logs de débogage pour l'erreur TTS
+                # print(f"DEBUG: Type de chunk: {type(chunk)}, len(chunk): {len(chunk)}")
+                # print(f"DEBUG: Type de chunk_size: {type(chunk_size)}, chunk_size: {chunk_size}")
+
                 # Compléter le chunk si nécessaire
                 if len(chunk) < chunk_size:
                     chunk = np.pad(chunk, (0, chunk_size - len(chunk)), 'constant')
@@ -210,10 +220,15 @@ class AudioStreamer:
             
             print(f"[{self.identity}] ✅ Audio envoyé: {chunks_sent} chunks via LiveKit")
             
-            # Envoyer aussi un message de données
-            message = f"TTS envoyé: {text[:30]}... ({chunks_sent} chunks)"
-            await self.room.local_participant.publish_data(message.encode('utf-8'))
-            print(f"[{self.identity}] 📨 Message de données envoyé")
+            # Envoyer aussi un message de données (payload, topic, kind)
+            # Le topic peut être utilisé pour filtrer les messages
+            message_payload = f"TTS envoyé: {text[:30]}... ({chunks_sent} chunks)".encode('utf-8')
+            await self.room.local_participant.publish_data(
+                message_payload,
+                topic="tts_status", # Ajouter un topic pour identifier le type de message
+                kind=rtc.DataPacketKind.KIND_RELIABLE
+            )
+            print(f"[{self.identity}] 📨 Message de données envoyé (topic: tts_status)")
             
             # Nettoyer
             Path(temp_file).unlink()
