@@ -30,8 +30,8 @@ ROOM_NAME_PREFIX = "debat_test_" # Préfixe pour les noms de room LiveKit
 
 # LiveKit config (sera mis à jour par la réponse du backend)
 LIVEKIT_URL = "ws://localhost:7880" # Valeur par défaut, sera écrasée
-LIVEKIT_API_KEY = "devkey" # Clé API par défaut de LiveKit
-LIVEKIT_API_SECRET = "devsecret123456789abcdef0123456789abcdef0123456789abcdef" # Secret API par défaut de LiveKit
+LIVEKIT_API_KEY = "APIzdkP2xtqwZTm" # Clé API LiveKit Cloud
+LIVEKIT_API_SECRET = "Oe4KFyglWE5K865sFNilI5itntiasPSM9DZfoiQfvJEA" # Secret API LiveKit Cloud
 
 # --- Logger global ---
 logger = PipelineLogger("REALTIME_DIAGNOSIS")
@@ -75,7 +75,11 @@ async def create_backend_session(scenario_id: str) -> Optional[Dict[str, Any]]:
 
             # Mettre à jour les variables globales de LiveKit
             global LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
-            LIVEKIT_URL = livekit_url
+            # Convertir l'URL Docker en URL localhost pour le test depuis l'hôte
+            if livekit_url.startswith("ws://livekit:"):
+                LIVEKIT_URL = livekit_url.replace("ws://livekit:", "ws://localhost:")
+            else:
+                LIVEKIT_URL = livekit_url
             # Les clés API ne sont pas retournées par l'API de session, elles sont utilisées pour générer le token
             # On garde les valeurs par défaut ou celles définies manuellement pour le client LiveKit
             
@@ -147,10 +151,10 @@ class RealtimeAudioTester:
             
             # Si c'est un message de l'IA, on le logue comme une réponse et on l'ajoute à l'historique
             if participant.identity.startswith("backend-agent"):
-                self.logger.ai_response(message)
+                self.logger.info(f"🤖 IA: {message}") # Rendre le log de l'IA plus visible
                 self.ai_conversation_history.append({"sender": participant.identity, "message": message, "timestamp": time.time()})
             elif participant.identity.startswith("sender_test"): # Si c'est le message de confirmation de l'émetteur
-                self.logger.user_message(message) # Loguer comme un message utilisateur
+                self.logger.info(f"🗣️ Utilisateur: {message}") # Loguer comme un message utilisateur
         except UnicodeDecodeError:
             self.logger.info(f"📦 Données binaires reçues de {participant.identity} (non-texte, Kind: {kind})")
         except Exception as e:
@@ -208,10 +212,10 @@ class RealtimeAudioTester:
             send_end_time = time.time()
             
             if success:
-                self.logger.success(f"✅ Phrase audio {i+1} envoyée en {(send_end_time - send_start_time)*1000:.2f}ms")
+                self.logger.success(f"✅ Phrase audio {i+1} envoyée: '{phrase[:50]}...' en {(send_end_time - send_start_time)*1000:.2f}ms") # Ajout du texte de la phrase
                 self.sent_packets[i] = {"timestamp": send_start_time, "phrase": phrase}
             else:
-                self.logger.error(f"❌ Échec de l'envoi de la phrase audio {i+1}")
+                self.logger.error(f"❌ Échec de l'envoi de la phrase audio {i+1}: '{phrase[:50]}...'") # Ajout du texte de la phrase
             
             await asyncio.sleep(5) # Attendre la réponse de l'IA
 
@@ -274,13 +278,14 @@ class RealtimeAudioTester:
         logger.info(json.dumps(report, indent=2, ensure_ascii=False)) # ensure_ascii=False pour afficher les caractères spéciaux
         logger.info("-----------------------------")
         
-        if not self.ai_conversation_history:
-            logger.warning("⚠️ Aucun message de l'IA n'a été reçu pendant le test.")
-        else:
+        # Déplacer l'historique de conversation pour qu'il soit plus visible
+        if self.ai_conversation_history:
             logger.info("\n--- HISTORIQUE DE CONVERSATION IA ---")
             for msg in self.ai_conversation_history:
                 logger.info(f"[{time.strftime('%H:%M:%S', time.localtime(msg['timestamp']))}] {msg['sender']}: {msg['message']}")
             logger.info("-------------------------------------")
+        else:
+            logger.warning("⚠️ Aucun message de l'IA n'a été reçu pendant le test.")
 
         return report
 
@@ -313,10 +318,19 @@ async def main():
 
     try:
         success = await tester.run_test(phrases_a_envoyer, duration_seconds=30)
-        if success:
-            logger.success("Test de diagnostic terminé avec succès.")
+        
+        # Récupérer les métriques globales pour une analyse plus approfondie
+        global_metrics = metrics_collector.get_global_metrics()
+        livekit_sender_metrics = global_metrics['components'].get('LIVEKIT_SENDER', {})
+        
+        # Vérifier le taux de perte de paquets
+        packet_loss_rate = livekit_sender_metrics.get('packet_loss_rate', 1.0) # Default to 1.0 if not found
+        
+        if success and packet_loss_rate < 0.05: # Tolérance de 5% de perte de paquets
+            logger.success("Test de diagnostic terminé avec succès. Taux de perte de paquets acceptable.")
         else:
-            logger.error("Le test de diagnostic s'est terminé avec des erreurs.")
+            logger.error(f"Le test de diagnostic s'est terminé avec des erreurs ou un taux de perte de paquets élevé: {packet_loss_rate:.2%}")
+            success = False # Marquer le test comme échoué si la perte est trop élevée
     except Exception as e:
         logger.critical(f"Erreur critique durant l'exécution du test: {e}")
     finally:

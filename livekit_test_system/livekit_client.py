@@ -242,9 +242,15 @@ class LiveKitTestClient:
     
     async def publish_audio_track(self):
         """Publie une piste audio locale si elle n'existe pas déjà."""
-        if self.audio_track and self.audio_track.is_published:
-            self.logger.info("Piste audio déjà publiée et active.")
-            return
+        self.logger.info("Attempting to publish audio track...")
+        if self.audio_track:
+            self.logger.info("Piste audio déjà créée.")
+            # Vérifier si la piste est déjà publiée via la publication
+            if self.room and self.room.local_participant:
+                for pub in self.room.local_participant.track_publications.values():
+                    if pub.sid == self.audio_track.sid:
+                        self.logger.info("Piste audio déjà publiée et active.")
+                        return
 
         try:
             # Créer une piste audio locale
@@ -257,8 +263,10 @@ class LiveKitTestClient:
 
             publication = await self.room.local_participant.publish_track(self.audio_track, options)
             self.logger.success(f"Piste audio publiée: {publication.sid}. Track ID: {self.audio_track.sid}")
+            self.logger.info(f"Published track kind: {publication.kind}, source: {publication.source}") # Nouveau log
         except Exception as e:
             self.logger.error(f"💥 Erreur lors de la publication de la piste audio: {e}")
+            raise # Re-lancer l'exception pour la gestion d'erreur
 
     async def send_audio_frame(self, audio_data: bytes, sample_rate: int, channels: int, metadata: Optional[Dict] = None) -> bool:
         """
@@ -273,11 +281,26 @@ class LiveKitTestClient:
         Returns:
             True si l'envoi réussit, False sinon.
         """
-        if not self.audio_track or not self.audio_track.is_published:
-            self.logger.error("❌ Piste audio non publiée ou inactive. Tentative de publication.")
+        if not self.audio_track:
+            self.logger.error("❌ Piste audio non créée. Tentative de publication.")
             await self.publish_audio_track() # Tente de publier
-            if not self.audio_track or not self.audio_track.is_published:
-                self.logger.error("❌ Échec de la publication ou activation de la piste audio. Impossible d'envoyer des frames.")
+            if not self.audio_track: # Vérifier si la création a réussi
+                self.logger.error("❌ Échec de la création de la piste audio. Impossible d'envoyer des frames.")
+                return False
+        
+        # Vérifier si la piste est publiée
+        is_published = False
+        if self.room and self.room.local_participant:
+            for pub in self.room.local_participant.track_publications.values():
+                if pub.track and pub.track.sid == self.audio_track.sid:
+                    is_published = True
+                    break
+        
+        if not is_published:
+            self.logger.error("❌ Piste audio non publiée. Tentative de publication.")
+            await self.publish_audio_track() # Tente de publier
+            if not is_published: # Vérifier si la publication a réussi
+                self.logger.error("❌ Échec de la publication de la piste audio. Impossible d'envoyer des frames.")
                 return False
 
         try:
@@ -293,18 +316,11 @@ class LiveKitTestClient:
             await self.audio_source.capture_frame(audio_frame)
             
             self.packet_counter += 1
-            self.logger.debug(f"🎵 AUDIO PACKET #{self.packet_counter} | Size: {len(audio_data)} bytes | TS: {time.time()}, metadata: {metadata}")
-            self.logger.audio_packet(
-                self.packet_counter,
-                len(audio_data),
-                time.time(),
-                metadata
-            )
-            
+            self.logger.debug(f"🎵 AUDIO FRAME SENT | Packet #{self.packet_counter} | Size: {len(audio_data)} bytes | TS: {time.time()}, metadata: {metadata}")
             return True
         except Exception as e:
             self.logger.error(f"💥 Erreur lors de l'envoi du frame audio: {e}")
-            return False
+            raise # Re-lancer l'exception pour la gestion d'erreur
 
     async def send_audio_file(self, audio_file_path: Path, metadata: Optional[Dict] = None) -> bool:
         """
@@ -355,7 +371,10 @@ class LiveKitTestClient:
                         break
                     
                     await self.send_audio_frame(audio_chunk, sample_rate, channels, metadata)
-                    await asyncio.sleep(chunk_size / sample_rate) # Attendre la durée du chunk
+            
+            # Le compteur de paquets est déjà incrémenté dans send_audio_frame
+            # self.packet_counter += 1
+            self.logger.info(f"🎵 Fichier audio envoyé: {audio_file_path.name}")
             
             send_time = (time.time() - send_start) * 1000
             self.last_packet_time = time.time()
