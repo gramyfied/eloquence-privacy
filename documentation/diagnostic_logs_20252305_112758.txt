@@ -1,0 +1,221 @@
+======================================== 
+DIAGNOSTIC LOGS BACKEND - 23/05/2025 11:27:58,51 
+======================================== 
+ 
+[1/8] REPERTOIRES DE LOGS 
+======================= 
+Backend logs: TROUVE 
+Data directory: TROUVE 
+C:\gramyfied\eloquence-backend\eloquence-backend\data\audio
+C:\gramyfied\eloquence-backend\eloquence-backend\data\feedback
+C:\gramyfied\eloquence-backend\eloquence-backend\data\models
+C:\gramyfied\eloquence-backend\eloquence-backend\data\tts_cache
+C:\gramyfied\eloquence-backend\eloquence-backend\data\feedback\kaldi_raw
+ 
+[2/8] PROCESSUS ACTIFS 
+=================== 
+Backend uvicorn: INACTIF 
+Docker: ACCESSIBLE 
+NAMES                             STATUS                          PORTS
+eloquence-backend-api-1           Up 6 seconds                    0.0.0.0:8000->8000/tcp
+eloquence-backend-celery-1        Restarting (1) 16 seconds ago   
+kaldi_eloquence                   Up 8 minutes                    
+eloquence-backend-redis-1         Up 8 minutes                    0.0.0.0:6380->6379/tcp
+eloquence-backend-tts-service-1   Up 8 minutes                    0.0.0.0:5002->5002/tcp
+ 
+[3/8] PORTS UTILISES 
+================ 
+Port 8000: UTILISE 
+  TCP    0.0.0.0:8000           0.0.0.0:0              LISTENING       39808
+  TCP    [::]:8000              [::]:0                 LISTENING       39808
+  TCP    [::1]:8000             [::]:0                 LISTENING       22408
+Port 7881: LIBRE 
+ 
+[4/8] LOGS DOCKER 
+============= 
+=== eloquence-backend-api-1 === 
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -3] Temporary failure in name resolution
+
+[2025-05-23 09:27:46 +0000] [7] [ERROR] Application startup failed. Exiting.
+[2025-05-23 09:27:46 +0000] [7] [INFO] Worker exiting (pid: 7)
+[2025-05-23 09:27:47 +0000] [1] [ERROR] Worker (pid:7) exited with code 3
+[2025-05-23 09:27:47 +0000] [1] [ERROR] Shutting down: Master
+[2025-05-23 09:27:47 +0000] [1] [ERROR] Reason: Worker failed to boot.
+[2025-05-23 09:27:52 +0000] [1] [INFO] Starting gunicorn 23.0.0
+[2025-05-23 09:27:52 +0000] [1] [INFO] Listening at: http://0.0.0.0:8000 (1)
+[2025-05-23 09:27:52 +0000] [1] [INFO] Using worker: uvicorn.workers.UvicornWorker
+[2025-05-23 09:27:52 +0000] [7] [INFO] Booting worker with pid: 7
+INFO:services.tts_cache_service:Pool de connexion Redis pour le cache TTS crÃ©Ã© avec succÃ¨s.
+INFO:services.tts_service:Pool de connexion Redis pour le cache TTS crÃ©Ã©.
+INFO:services.tts_service:Initialisation du service TTS avec API URL: http://tts-service:5002/api/tts
+INFO:services.tts_service_optimized:Service TTS optimisÃ© initialisÃ©
+ERROR:app.routes.scenarios:<<<<< SCENARIOS.PY MODULE CHARGÃ‰ - V2 >>>>>
+[LIVEKIT] Configuration chargee - API Key: APIdJZvdWkDYNiD
+[2025-05-23 09:27:56 +0000] [7] [INFO] Started server process [7]
+[2025-05-23 09:27:56 +0000] [7] [INFO] Waiting for application startup.
+INFO:app.main:DÃ©marrage de l'application Eloquence Backend en mode DEBUG: True
+INFO:app.main:Configuration LiveKit - Host: ws://localhost:7880, API Key: APIdJZvdWkDYNiD
+INFO:core.database:Connexion Ã  la base de donnÃ©es Supabase: aws-0-eu-west-3.pooler.supabase.com:6543/postgres
+ 
+=== eloquence-backend-celery-1 === 
+  File "<frozen importlib._bootstrap>", line 1310, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 999, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/app/services/__init__.py", line 13, in <module>
+    from .kaldi_service import kaldi_service
+  File "/app/services/kaldi_service.py", line 16, in <module>
+    from core.database import get_sync_db # Importer la fonction pour session synchrone
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/core/database.py", line 25, in <module>
+    engine = create_async_engine(
+             ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py", line 120, in create_async_engine
+    sync_engine = _create_engine(url, **kw)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in create_engine
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/util/deprecations.py", line 281, in warned
+    return fn(*args, **kwargs)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/create.py", line 602, in create_engine
+    dbapi = dbapi_meth(**dbapi_args)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/dialects/sqlite/aiosqlite.py", line 376, in import_dbapi
+    __import__("aiosqlite"), __import__("sqlite3")
+    ^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'aiosqlite'
+ 
+=== eloquence-backend-tts-service-1 === 
+INFO:     Started server process [7]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:5002 (Press CTRL+C to quit)
+INFO:     Started server process [7]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:5002 (Press CTRL+C to quit)
+INFO:     Started server process [8]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:5002 (Press CTRL+C to quit)
+INFO:     Started server process [7]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:5002 (Press CTRL+C to quit)
+INFO:     Started server process [6]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:5002 (Press CTRL+C to quit)
+ 
+=== eloquence-backend-redis-1 === 
+1:M 23 May 2025 09:11:32.102 * Done loading RDB, keys loaded: 2, keys expired: 0.
+1:M 23 May 2025 09:11:32.102 * DB loaded from disk: 0.001 seconds
+1:M 23 May 2025 09:11:32.102 * Ready to accept connections tcp
+1:signal-handler (1747991974) Received SIGTERM scheduling shutdown...
+1:M 23 May 2025 09:19:34.616 * User requested shutdown...
+1:M 23 May 2025 09:19:34.616 * Saving the final RDB snapshot before exiting.
+1:M 23 May 2025 09:19:34.620 * DB saved on disk
+1:M 23 May 2025 09:19:34.620 # Redis is now ready to exit, bye bye...
+1:C 23 May 2025 09:19:49.717 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+1:C 23 May 2025 09:19:49.717 * Redis version=7.4.3, bits=64, commit=00000000, modified=0, pid=1, just started
+1:C 23 May 2025 09:19:49.717 # Warning: no config file specified, using the default config. In order to specify a config file use redis-server /path/to/redis.conf
+1:M 23 May 2025 09:19:49.717 * monotonic clock: POSIX clock_gettime
+1:M 23 May 2025 09:19:49.718 * Running mode=standalone, port=6379.
+1:M 23 May 2025 09:19:49.719 * Server initialized
+1:M 23 May 2025 09:19:49.719 * Loading RDB produced by version 7.4.3
+1:M 23 May 2025 09:19:49.719 * RDB age 15 seconds
+1:M 23 May 2025 09:19:49.719 * RDB memory usage when created 0.90 Mb
+1:M 23 May 2025 09:19:49.719 * Done loading RDB, keys loaded: 2, keys expired: 0.
+1:M 23 May 2025 09:19:49.720 * DB loaded from disk: 0.001 seconds
+1:M 23 May 2025 09:19:49.720 * Ready to accept connections tcp
+ 
+[5/8] LOGS BACKEND ELOQUENCE 
+========================= 
+Aucun fichier log backend 
+ 
+[6/8] LOGS SYSTEME WINDOWS 
+======================== 
+Erreurs systeme recentes: 
+
+TimeGenerated       Source                  Message                                                                                                                                                  
+-------------       ------                  -------                                                                                                                                                  
+23/05/2025 09:37:49 Service Control Manager Le service Service Google Update (gupdate) n'a pas pu d‚marrer en raison de l'erreurÿ:                                                                   
+                                            %%1053                                                                                                                                                   
+23/05/2025 09:37:49 Service Control Manager Le d‚passement de d‚lai (30000 millisecondes) a ‚t‚ atteint lors de l'attente de la connexion du service Service Google Update (gupdate).                
+23/05/2025 09:36:20 googledrivefs31626      The driver version of the disk does not match.                                                                                                           
+23/05/2025 09:35:41 Service Control Manager Le service l1vhlwf n'a pas pu d‚marrer en raison de l'erreurÿ:                                                                                           
+                                            %%3224698910                                                                                                                                             
+23/05/2025 09:35:00 DCOM                    La description de l'ID d'‚v‚nement '10010' dans la source 'DCOM' est introuvable. L'ordinateur local ne dispose peut-ˆtre pas des informations du        
+                                            Registre ou des fichiers DLL n‚cessaires … l'affichage du message, ou vous n'ˆtes peut-ˆtre pas autoris‚ … y acc‚der. Les informations suivantes ont     
+                                            trait … l'‚v‚nement :'{6FA05A24-B1DF-4155-909E-7B424F2D2BB5}'                                                                                            
+
+
+Erreurs applications: 
+
+TimeGenerated       Source            Message                                                                                                                                                        
+-------------       ------            -------                                                                                                                                                        
+23/05/2025 09:36:58 SideBySide        La cr‚ation du contexte d'activation a ‚chou‚ pour ®C:\Users\User\AppData\Local\CapCut\Apps\CapCut.exe¯. Erreur dans le fichier de manifeste ou de strat‚gie ® 
+                                      ¯ … la ligne .                                                                                                                                                 
+                                      Une version de composant n‚cessaire … l'application est en conflit avec une autre version de composant d‚j… active.                                            
+                                      Les composants en conflit sont :                                                                                                                               
+                                      Composant 1ÿ: C:\WINDOWS\WinSxS\manifests\x86_microsoft.windows.common-controls_6595b64144ccf1df_6.0.26100.3912_none_85b4cd13f7b13c84.manifest.                
+                                      Composant 2ÿ: C:\WINDOWS\WinSxS\manifests\amd64_microsoft.windows.common-controls_6595b64144ccf1df_6.0.26100.3912_none_3e07963ce335137e.manifest.              
+23/05/2025 09:36:07 SideBySide        La cr‚ation du contexte d'activation a ‚chou‚ pour ®C:\Users\User\AppData\Local\CapCut\Apps\CapCut.exe¯. Erreur dans le fichier de manifeste ou de strat‚gie ® 
+                                      ¯ … la ligne .                                                                                                                                                 
+                                      Une version de composant n‚cessaire … l'application est en conflit avec une autre version de composant d‚j… active.                                            
+                                      Les composants en conflit sont :                                                                                                                               
+                                      Composant 1ÿ: C:\WINDOWS\WinSxS\manifests\x86_microsoft.windows.common-controls_6595b64144ccf1df_6.0.26100.3912_none_85b4cd13f7b13c84.manifest.                
+                                      Composant 2ÿ: C:\WINDOWS\WinSxS\manifests\amd64_microsoft.windows.common-controls_6595b64144ccf1df_6.0.26100.3912_none_3e07963ce335137e.manifest.              
+23/05/2025 09:10:53 SideBySide        La cr‚ation du contexte d'activation a ‚chou‚ pour ®C:\Users\User\AppData\Local\CapCut\Apps\CapCut.exe¯. Erreur dans le fichier de manifeste ou de strat‚gie ® 
+                                      ¯ … la ligne .                                                                                                                                                 
+                                      Une version de composant n‚cessaire … l'application est en conflit avec une autre version de composant d‚j… active.                                            
+                                      Les composants en conflit sont :                                                                                                                               
+                                      Composant 1ÿ: C:\WINDOWS\WinSxS\manifests\x86_microsoft.windows.common-controls_6595b64144ccf1df_6.0.26100.3912_none_85b4cd13f7b13c84.manifest.                
+                                      Composant 2ÿ: C:\WINDOWS\WinSxS\manifests\amd64_microsoft.windows.common-controls_6595b64144ccf1df_6.0.26100.3912_none_3e07963ce335137e.manifest.              
+23/05/2025 01:51:13 Application Error Nom de l'application d‚faillante : ArmourySocketServer.exe, version : 0.1.20.13, horodatage : 0x66bb1e92                                                       
+                                      Nom du module d‚faillant : ArmourySocketServer.exe, version : 0.1.20.13, horodatage : 0x66bb1e92                                                               
+                                      Exception code: 0xc0000409                                                                                                                                     
+                                      Fault offset: 0x000000000011f0c1                                                                                                                               
+                                      Identifiant du processus d‚faillantÿ: 0xa48                                                                                                                    
+                                      Heure de d‚but de l'application d‚faillanteÿ: 0x1dbcb54c5e7ed6d                                                                                                
+                                      Chemin de l'application d‚faillanteÿ: C:\Program Files (x86)\ASUS\ArmouryDevice\dll\ArmourySocketServer\ArmourySocketServer.exe                                
+                                      Chemin du module d‚faillantÿ: C:\Program Files (x86)\ASUS\ArmouryDevice\dll\ArmourySocketServer\ArmourySocketServer.exe                                        
+                                      ID du rapportÿ: d9b547d2-55c0-4c18-83f5-dfecd8a2a8fb                                                                                                           
+                                      Nom complet du package d‚faillantÿ:                                                                                                                            
+                                      Package d‚faillantÿ- ID d'application relatifÿ:                                                                                                                
+22/05/2025 22:31:37 Application Error Nom de l'application d‚faillante : netsimd.exe, version : 0.0.0.0, horodatage : 0x66835a00                                                                     
+                                      Nom du module d‚faillant : ucrtbase.dll, version : 10.0.26100.4061, horodatage : 0x8ff2ad62                                                                    
+                                      Exception code: 0xc0000409                                                                                                                                     
+                                      Fault offset: 0x00000000000a4ace                                                                                                                               
+                                      Identifiant du processus d‚faillantÿ: 0x21c4                                                                                                                   
+                                      Heure de d‚but de l'application d‚faillanteÿ: 0x1dbcb587de8b194                                                                                                
+                                      Chemin de l'application d‚faillanteÿ: C:\Users\User\AppData\Local\Android\Sdk\emulator\netsimd.exe                                                             
+                                      Chemin du module d‚faillantÿ: C:\WINDOWS\System32\ucrtbase.dll                                                                                                 
+                                      ID du rapportÿ: fa6222dc-8315-4f76-bd1d-3f1abf478e44                                                                                                           
+                                      Nom complet du package d‚faillantÿ:                                                                                                                            
+                                      Package d‚faillantÿ- ID d'application relatifÿ:                                                                                                                
+
+
+ 
+[7/8] TEST CONNECTIVITE 
+=================== 
+Backend API: NE REPOND PAS 
+LiveKit: TIMEOUT
+ 
+[8/8] RESUME PROBLEMES 
+================== 
+Analyse automatique des logs : 
+PROBLEMES DETECTES: 0 
+ 
