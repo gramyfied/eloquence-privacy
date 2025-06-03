@@ -1,0 +1,61 @@
+# Fichiers de test et guides
+test_*.py
+*test*.py
+*_test.py
+debug_*.py
+*debug*.py
+DOCKER_*_GUIDE.md
+*guide*.md
+*GUIDE*.md
+
+# Logs et données temporaires
+*.log
+logs/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+
+# Environnements virtuels
+venv/
+env/
+ENV/
+
+# Fichiers de configuration locaux
+.env.local
+.env.development
+.env.test
+
+# Données et modèles
+data/
+models/
+*.pkl
+*.model
+
+# Docker volumes et données
+docker-data/
+postgres-data/
+redis-data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Fichiers temporaires
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Fichiers de sauvegarde
+*.bak
+*.backup

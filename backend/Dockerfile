@@ -44,4 +44,9 @@ EXPOSE 8000
 # --timeout 120: Timeout de 120 secondes pour les requêtes
 # --keep-alive 65: Garder les connexions ouvertes pendant 65 secondes
 # --log-level info: Niveau de log info
-CMD ["gunicorn", "app.main:app", "--workers", "1", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--keep-alive", "65", "--log-level", "info"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Commande par défaut - Utiliser Gunicorn avec 1 worker Uvicorn
+CMD ["gunicorn", "app:app", "--workers", "1", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--keep-alive", "65", "--log-level", "info"]

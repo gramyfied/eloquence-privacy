@@ -1,0 +1,76 @@
+# Configuration LiveKit Server Optimisée pour Coaching Vocal IA
+port: 7880
+bind_addresses:
+  - ""
+
+# Configuration WebRTC
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50019
+  use_external_ip: false
+  
+# Configuration TURN/STUN
+turn:
+  enabled: true
+  domain: ""
+  cert_file: ""
+  key_file: ""
+  tls_port: 7882
+  udp_port: 3478
+  relay_range_start: 50020
+  relay_range_end: 50039
+
+# Configuration Redis (optionnel pour la scalabilité)
+redis:
+  address: "redis:6379"
+  username: ""
+  password: ""
+  db: 0
+
+# Configuration des clés API
+keys:
+  devkey: devsecret123456789abcdef0123456789abcdef0123456789abcdef
+
+# Configuration des rooms
+room:
+  enabled_codecs:
+    - mime: audio/opus
+      fmtp_line: "minptime=10;useinbandfec=1"
+    - mime: audio/red
+    - mime: audio/PCMU
+    - mime: audio/PCMA
+  max_participants: 20
+  empty_timeout: 300s
+  departure_timeout: 20s
+
+# Configuration audio optimisée
+audio:
+  # Paramètres pour une latence minimale
+  update_interval: 10ms
+  
+# Configuration logging
+logging:
+  level: info
+  json: false
+  
+# Configuration développement
+development:
+  disable_strict_config: true
+  
+# Configuration webhook (optionnel)
+webhook:
+  api_key: devkey
+  urls: []
+
+# Configuration des limites
+limits:
+  bytes_per_sec: 100000000  # 100MB/s
+  
+# Configuration de la région
+region: "local"
+
+# Configuration des métriques (optionnel)
+prometheus:
+  port: 6789
+  disabled: true
