@@ -1,0 +1,14 @@
+# LiveKit SDK
+livekit>=0.11.1
+livekit-api>=0.4.0
+
+# HTTP et async
+aiohttp>=3.9.0
+httpx>=0.27.0
+
+# Utilitaires
+python-dotenv>=1.0
+numpy>=1.24.0
+
+# Audio processing (optionnel mais recommandé)
+pydub>=0.25.1

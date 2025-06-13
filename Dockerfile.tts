@@ -1,0 +1,41 @@
+# Dockerfile pour Piper TTS Service
+FROM python:3.11-slim
+
+# Variables d'environnement
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Répertoire de travail
+WORKDIR /app
+
+# Installation des dépendances système
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    espeak-ng \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installation de Piper TTS et FastAPI
+RUN pip install --no-cache-dir \
+    piper-tts \
+    fastapi \
+    uvicorn \
+    python-multipart \
+    aiofiles \
+    numpy
+
+# Téléchargement du modèle de voix française
+RUN mkdir -p /app/voices && \
+    wget -O /app/voices/fr_FR-upmc-medium.onnx \
+    "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/fr/fr_FR/upmc/medium/fr_FR-upmc-medium.onnx" && \
+    wget -O /app/voices/fr_FR-upmc-medium.onnx.json \
+    "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/fr/fr_FR/upmc/medium/fr_FR-upmc-medium.onnx.json"
+
+# Copie du service Piper
+COPY piper_service.py .
+
+# Exposition du port
+EXPOSE 5002
+
+# Commande de démarrage
+CMD ["python", "piper_service.py"]

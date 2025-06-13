@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.5.2
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "3478:3478/udp"
+      - "50000-50019:50000-50019/udp"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml
+    command: --config /etc/livekit.yaml
+    restart: unless-stopped
+    networks:
+      - livekit-network
+
+  backend:
+    build: ../backend  # Chemin vers le Dockerfile du backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Assurez-vous que ces variables correspondent à la configuration de LiveKit
+      - LIVEKIT_API_KEY=devkey
+      - LIVEKIT_API_SECRET=secret
+      - LIVEKIT_URL_EXTERNAL_ENV=ws://192.168.1.44:7880 # URL pour appareil physique sur le même réseau
+    networks:
+      - livekit-network # Garde la connexion au réseau interne pour LiveKit
+      - eloquence-network # Ajoute la connexion au réseau externe
+    depends_on:
+      - livekit # Le backend dépend de LiveKit
+
+  livekit_agent:
+    build: ../backend  # Utilise le même contexte de build que le backend
+    command: python services/livekit_agent_bark.py # Lance le script de l'agent
+    environment:
+      # Variables nécessaires pour l'agent
+      - LIVEKIT_URL=ws://livekit:7880 # URL interne pour se connecter au serveur LiveKit
+      - LIVEKIT_API_KEY=devkey
+      - LIVEKIT_API_SECRET=secret
+      - ROOM_NAME=coaching-room-1 # Doit correspondre à la room utilisée par le backend
+      - TTS_VOICE=v2/fr_speaker_1 # Voix Bark par défaut
+      # Potentiellement d'autres variables pour les URL des services ASR/TTS si elles ne sont pas hardcodées
+      # - ASR_SERVICE_URL=http://asr-service:8001
+      # - TTS_SERVICE_URL=http://tts-service-bark:5002
+    restart: unless-stopped
+    networks:
+      - livekit-network # Garde la connexion au réseau interne pour LiveKit
+      - eloquence-network # Ajoute la connexion au réseau externe
+    depends_on:
+      - livekit
+
+networks:
+  livekit-network:
+    driver: bridge
+  eloquence-network: # Définit le réseau utilisé par les autres services
+    name: projeteloquence_eloquence-network # Nom exact du réseau externe
+    external: true

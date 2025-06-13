@@ -1,0 +1,35 @@
+# Dockerfile pour Whisper STT Service
+FROM python:3.11-slim
+
+# Variables d'environnement
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Répertoire de travail
+WORKDIR /app
+
+# Installation des dépendances système
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installation de Whisper et FastAPI
+RUN pip install --no-cache-dir \
+    openai-whisper \
+    fastapi \
+    uvicorn \
+    python-multipart \
+    aiofiles
+
+# Téléchargement du modèle Whisper
+RUN python -c "import whisper; whisper.load_model('base')"
+
+# Copie du service Whisper
+COPY whisper_service.py .
+
+# Exposition du port
+EXPOSE 8001
+
+# Commande de démarrage
+CMD ["python", "whisper_service.py"]

@@ -1,0 +1,108 @@
+services:
+  # LiveKit Server
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --config /etc/livekit.yaml
+    restart: unless-stopped
+    ports:
+      - "7880:7880"
+      - "7881:7881" 
+      - "7882:7882/udp"
+      - "7888:7888"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml
+    environment:
+      - LIVEKIT_KEYS=devkey:devsecret123456789abcdef0123456789abcdef0123456789abcdef
+    networks:
+      - eloquence-network
+
+  # Whisper STT Service
+  whisper-stt:
+    build:
+      context: .
+      dockerfile: Dockerfile.asr
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - MODEL_SIZE=base
+      - LANGUAGE=fr
+    networks:
+      - eloquence-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Piper TTS Service  
+  piper-tts:
+    build:
+      context: .
+      dockerfile: Dockerfile.tts
+    restart: unless-stopped
+    ports:
+      - "5002:5002"
+    environment:
+      - VOICE_MODEL=fr_FR-upmc-medium
+    networks:
+      - eloquence-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Agent IA Eloquence
+  eloquence-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    restart: unless-stopped
+    depends_on:
+      - livekit
+      - whisper-stt
+      - piper-tts
+    environment:
+      - LIVEKIT_URL=ws://livekit:7888
+      - LIVEKIT_API_KEY=devkey
+      - LIVEKIT_API_SECRET=devsecret123456789abcdef0123456789abcdef0123456789abcdef
+      - WHISPER_STT_URL=http://whisper-stt:8001
+      - PIPER_TTS_URL=http://piper-tts:5002
+      - MISTRAL_API_KEY=fc23b118-a243-4e29-9d28-6c6106c997a4
+      - MISTRAL_BASE_URL=https://api.scaleway.ai/18f6cc9d-07fc-49c3-a142-67be9b59ac63/v1/chat/completions
+      - MISTRAL_MODEL=mistral-nemo-instruct-2407
+      - AGENT_NAME=Coach Entretien IA
+      - AGENT_LANGUAGE=fr
+    networks:
+      - eloquence-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health', timeout=5)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # API Backend (optionnel)
+  api-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - LIVEKIT_URL=ws://livekit:7888
+      - LIVEKIT_API_KEY=devkey
+      - LIVEKIT_API_SECRET=devsecret123456789abcdef0123456789abcdef0123456789abcdef
+    networks:
+      - eloquence-network
+    depends_on:
+      - livekit
+
+networks:
+  eloquence-network:
+    driver: bridge
+
+volumes:
+  livekit-data:
