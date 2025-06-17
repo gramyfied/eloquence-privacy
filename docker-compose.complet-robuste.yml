@@ -1,0 +1,221 @@
+services:
+  # LiveKit Server
+  livekit-server:
+    image: livekit/livekit-server:latest
+    container_name: livekit-server-complet
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882"
+      - "50000-50019:50000-50019/udp"
+    volumes:
+      - ./livekit.minimal.yaml:/livekit.yaml
+    command: --config /livekit.yaml
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - livekit-network
+
+  # Redis pour LiveKit et Celery
+  redis:
+    image: redis:7-alpine
+    container_name: redis-complet
+    ports:
+      - "6380:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - livekit-network
+
+  # Service ASR (Automatic Speech Recognition)
+  asr-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.asr.robust
+    container_name: asr-service-complet
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MODEL_SIZE=base
+      - DEVICE=cpu
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - livekit-network
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # Service TTS (Text-to-Speech)
+  tts-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.tts.robust
+    container_name: tts-service-complet
+    ports:
+      - "5002:5002"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TTS_MODEL=tts_models/fr/css10/vits
+      - DEVICE=cpu
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./models:/app/models
+      - ./output:/app/output
+      - ./logs:/app/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - livekit-network
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+        reservations:
+          memory: 2G
+
+  # Backend API avec Celery
+  backend-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.robust
+    container_name: backend-api-complet
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ASR_SERVICE_URL=http://asr-service:8001
+      - TTS_SERVICE_URL=http://tts-service:5002
+      - LIVEKIT_URL=ws://livekit-server:7880
+      - LIVEKIT_API_KEY=devkey
+      - LIVEKIT_API_SECRET=devsecret123456789abcdef0123456789abcdef0123456789abcdef
+      - REDIS_URL=redis://redis:6379
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    depends_on:
+      asr-service:
+        condition: service_started
+      tts-service:
+        condition: service_started
+      livekit-server:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      - livekit-network
+
+  # Celery Worker pour tâches asynchrones
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.robust
+    container_name: celery-worker-complet
+    command: celery -A app.celery worker --loglevel=info
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ASR_SERVICE_URL=http://asr-service:8001
+      - TTS_SERVICE_URL=http://tts-service:5002
+      - LIVEKIT_URL=ws://livekit-server:7880
+      - LIVEKIT_API_KEY=devkey
+      - LIVEKIT_API_SECRET=devsecret123456789abcdef0123456789abcdef0123456789abcdef
+      - REDIS_URL=redis://redis:6379
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend-api:
+        condition: service_started
+    networks:
+      - livekit-network
+
+  # Celery Beat pour tâches programmées
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.robust
+    container_name: celery-beat-complet
+    command: celery -A app.celery beat --loglevel=info
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend-api:
+        condition: service_started
+    networks:
+      - livekit-network
+
+  # Agent LiveKit pour gestion des sessions
+  livekit-agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.agent
+    container_name: livekit-agent-complet
+    command: ./start.sh
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LIVEKIT_URL=ws://livekit-server:7880
+      - LIVEKIT_API_KEY=devkey
+      - LIVEKIT_API_SECRET=devsecret123456789abcdef0123456789abcdef0123456789abcdef
+      - ASR_SERVICE_URL=http://asr-service:8001
+      - TTS_SERVICE_URL=http://tts-service:5002
+      - BACKEND_API_URL=http://backend-api:8000
+      - REDIS_URL=redis://redis:6379
+      - ROOM_NAME=session_default_1748954073
+      - LIVEKIT_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkZXZrZXkiLCJzdWIiOiJ1c2VyX3Rlc3RfdXNlcl8xMjMiLCJpYXQiOjE3NDg5NTQwNzMsImV4cCI6MTc0OTA0MDQ3Mywicm9vbSI6InNlc3Npb25fZGVmYXVsdF8xNzQ4OTU0MDczIiwiZ3JhbnRzIjp7InJvb20iOiJzZXNzaW9uX2RlZmF1bHRfMTc0ODk1NDA3MyIsInJvb21Kb2luIjp0cnVlLCJyb29tTGlzdCI6dHJ1ZSwicm9vbVJlY29yZCI6ZmFsc2UsInJvb21BZG1pbiI6ZmFsc2UsInJvb21DcmVhdGUiOmZhbHNlLCJjYW5QdWJsaXNoIjp0cnVlLCJjYW5TdWJzY3JpYmUiOnRydWUsImNhblB1Ymxpc2hEYXRhIjp0cnVlLCJjYW5VcGRhdGVPd25NZXRhZGF0YSI6dHJ1ZX19.kwN88AKFIOHcQpzyI0zCbCHF0l0b395uD0R5FZ3bcaA
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      livekit-server:
+        condition: service_started
+      backend-api:
+        condition: service_started
+      asr-service:
+        condition: service_started
+      tts-service:
+        condition: service_started
+    networks:
+      - livekit-network
+
+networks:
+  livekit-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  models:
+  logs:
+  output:

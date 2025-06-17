@@ -1,0 +1,35 @@
+======================================== 
+DIAGNOSTIC LOGS BACKEND - 23/05/2025 11:21:58,58 
+======================================== 
+ 
+[1/8] REPERTOIRES DE LOGS 
+======================= 
+Backend logs: TROUVE 
+Data directory: TROUVE 
+C:\gramyfied\eloquence-backend\eloquence-backend\data\audio
+C:\gramyfied\eloquence-backend\eloquence-backend\data\feedback
+C:\gramyfied\eloquence-backend\eloquence-backend\data\models
+C:\gramyfied\eloquence-backend\eloquence-backend\data\tts_cache
+C:\gramyfied\eloquence-backend\eloquence-backend\data\feedback\kaldi_raw
+ 
+[2/8] PROCESSUS ACTIFS 
+=================== 
+Backend uvicorn: INACTIF 
+Docker: ACCESSIBLE 
+NAMES                             STATUS                          PORTS
+eloquence-backend-api-1           Up 4 seconds                    0.0.0.0:8000->8000/tcp
+eloquence-backend-celery-1        Restarting (1) 33 seconds ago   
+kaldi_eloquence                   Up 2 minutes                    
+eloquence-backend-redis-1         Up 2 minutes                    0.0.0.0:6380->6379/tcp
+eloquence-backend-tts-service-1   Up 2 minutes                    0.0.0.0:5002->5002/tcp
+ 
+[3/8] PORTS UTILISES 
+================ 
+Port 8000: UTILISE 
+  TCP    0.0.0.0:8000           0.0.0.0:0              LISTENING       39808
+  TCP    [::]:8000              [::]:0                 LISTENING       39808
+  TCP    [::1]:8000             [::]:0                 LISTENING       22408
+Port 7881: LIBRE 
+ 
+[4/8] LOGS DOCKER 
+============= 

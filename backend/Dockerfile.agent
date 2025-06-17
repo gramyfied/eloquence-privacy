@@ -1,0 +1,78 @@
+# Dockerfile Backend Robuste - Compatible Python 3.10
+FROM python:3.10-slim
+
+# Variables d'environnement
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Installer les dépendances système et le client Docker
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libsndfile1-dev \
+    ffmpeg \
+    git \
+    curl \
+    wget \
+    pkg-config \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ajouter la clé GPG officielle de Docker
+RUN mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+# Configurer le dépôt APT
+RUN echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+    $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Installer le client Docker
+RUN apt-get update && apt-get install -y --no-install-recommends docker-ce-cli \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copier requirements.txt (nouvelle tentative)
+COPY requirements.agent.txt requirements.txt
+
+# Afficher le contenu de requirements.txt pour vérification
+RUN cat requirements.txt
+
+# Installer setuptools d'abord
+RUN pip install --no-cache-dir setuptools wheel
+
+# Installer les dépendances de base
+RUN pip install --no-cache-dir fastapi==0.104.1 uvicorn[standard]==0.24.0 gunicorn==21.2.0
+
+# Installer Celery et Redis
+RUN pip install --no-cache-dir celery==5.3.4 redis==5.0.1
+
+# Installer les autres dépendances
+# Installer les autres dépendances (invalider le cache)
+RUN pip install --no-cache-dir -r requirements.txt || \
+    (sleep 10 && pip install --no-cache-dir -r requirements.txt)
+
+# Copier le code source du backend
+COPY . .
+
+# Copier les utilitaires audio depuis la racine du projet
+COPY audio_utils_scipy.py .
+
+# Créer les répertoires nécessaires
+RUN mkdir -p /app/data/audio /app/data/feedback /app/data/models /app/logs
+
+# Copier le script de démarrage de l'agent
+COPY start-agent.sh start.sh
+RUN chmod +x start.sh
+
+# Pas d'exposition de port pour l'agent
+# Pas de health check pour l'agent
+
+CMD ["./start.sh"]
