@@ -23,11 +23,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ELOQUENCE_AGENT")
 
 # URLs des services
-LIVEKIT_URL = os.getenv("LIVEKIT_URL", "ws://192.168.1.44:7888")
+LIVEKIT_URL = os.getenv("LIVEKIT_URL", "ws://livekit:7880")
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "devkey")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "secret")
-WHISPER_URL = os.getenv("WHISPER_STT_URL", "http://192.168.1.44:8001")
-PIPER_URL = "http://192.168.1.44:8020"  # Force la bonne URL
+WHISPER_URL = os.getenv("WHISPER_STT_URL", "http://whisper-stt:8001")
+PIPER_URL = os.getenv("PIPER_TTS_URL", "http://piper-tts:5002")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 MISTRAL_BASE_URL = os.getenv("MISTRAL_BASE_URL")
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-nemo-instruct-2407")
@@ -427,36 +427,49 @@ async def main():
     
     # Connexion
     room = rtc.Room()
-    try:
-        await room.connect(
-            LIVEKIT_URL,
-            token.to_jwt(),
-            options=rtc.RoomOptions(
-                auto_subscribe=True,
-                dynacast=True
+    retry_attempts = 10
+    for i in range(retry_attempts):
+        try:
+            await room.connect(
+                LIVEKIT_URL,
+                token.to_jwt(),
+                options=rtc.RoomOptions(
+                    auto_subscribe=True
+                    # dynacast=True # Temporarily disabled for debugging "period must be non-zero"
+                )
             )
-        )
-        logger.info(f"✅ Connecté à la room: {room.name}")
-        
-        # Démarrer l'agent
-        agent = EloquenceCoachAgent(room)
-        await agent.start()
-        
-        # Boucle principale
-        while True:
-            await asyncio.sleep(30)
-            participants = [p.identity for p in room.remote_participants.values()]
-            agent_status["participants"] = len(participants)
-            logger.info(f"[STATUS] Room: {room.name}, Participants: {participants}")
+            logger.info(f"✅ Connecté à la room: {room.name}")
+            break # Sortir de la boucle si la connexion réussit
+        except Exception as e:
+            logger.warning(f"⚠️ Échec de connexion à LiveKit (tentative {i+1}/{retry_attempts}): {e}")
+            if i < retry_attempts - 1:
+                await asyncio.sleep(min(30, 2 ** i)) # Délai exponentiel avec cap
+            else:
+                logger.error("❌ Toutes les tentatives de connexion à LiveKit ont échoué.")
+                raise # Re-lancer l'exception après la dernière tentative
+
+    # Si la connexion LiveKit a réussi, démarrer l'agent et la boucle principale
+    if 'room' in locals() and room: # Vérifier que 'room' a été assigné
+        try:
+            # Démarrer l'agent
+            agent = EloquenceCoachAgent(room)
+            await agent.start()
             
-    except KeyboardInterrupt:
-        logger.info("⏹️ Arrêt demandé")
-    except Exception as e:
-        logger.error(f"❌ Erreur: {e}")
-        agent_status["connected"] = False
-    finally:
-        await room.disconnect()
-        logger.info("👋 Agent déconnecté")
+            # Boucle principale
+            while True:
+                await asyncio.sleep(30)
+                participants = [p.identity for p in room.remote_participants.values()]
+                agent_status["participants"] = len(participants)
+                logger.info(f"[STATUS] Room: {room.name}, Participants: {participants}")
+                
+        except KeyboardInterrupt:
+            logger.info("⏹️ Arrêt demandé")
+        except Exception as e:
+            logger.error(f"❌ Erreur: {e}")
+            agent_status["connected"] = False
+        finally:
+            await room.disconnect()
+            logger.info("👋 Agent déconnecté")
 
 if __name__ == "__main__":
     asyncio.run(main())

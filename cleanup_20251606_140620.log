@@ -1,0 +1,56 @@
+[16/06/2025 14:06:20,60] ["INFO"] "Verification des prerequis Docker et Docker-Compose." 
+[16/06/2025 14:06:20,98] ["SUCCESS"] "Tous les prerequis sont satisfaits" 
+[16/06/2025 14:06:20,99] ["INFO"] "=== PHASE 1: DIAGNOSTIC ===" 
+[16/06/2025 14:06:20,99] ["INFO"] "Liste de tous les conteneurs:" 
+NAMES     STATUS    PORTS
+[16/06/2025 14:06:21,05] ["INFO"] "Usage des ressources systeme:" 
+CONTAINER   CPU %     MEM USAGE / LIMIT   MEM %
+[16/06/2025 14:06:21,61] ["INFO"] "Recuperation des logs des services cles..." 
+[16/06/2025 14:06:21,70] ["DEBUG"] "Logs pour le service: livekit" 
+=== LOGS livekit === 
+=== FIN LOGS livekit === 
+[16/06/2025 14:06:22,03] ["DEBUG"] "Logs pour le service: whisper-stt" 
+=== LOGS whisper-stt === 
+=== FIN LOGS whisper-stt === 
+[16/06/2025 14:06:22,29] ["DEBUG"] "Logs pour le service: piper-tts" 
+=== LOGS piper-tts === 
+=== FIN LOGS piper-tts === 
+[16/06/2025 14:06:22,53] ["DEBUG"] "Logs pour le service: eloquence-agent" 
+=== LOGS eloquence-agent === 
+=== FIN LOGS eloquence-agent === 
+[16/06/2025 14:06:22,76] ["DEBUG"] "Logs pour le service: api-backend" 
+=== LOGS api-backend === 
+=== FIN LOGS api-backend === 
+[16/06/2025 14:06:22,92] ["SUCCESS"] "Diagnostic termine" 
+[16/06/2025 14:06:22,93] ["INFO"] "=== PHASE 2: NETTOYAGE DOCKER ===" 
+[16/06/2025 14:06:22,93] ["INFO"] "Arret des services en cours..." 
+[16/06/2025 14:06:23,02] ["INFO"] "Nettoyage des conteneurs arretes..." 
+[16/06/2025 14:06:23,12] ["INFO"] "Nettoyage des conteneurs arretes: Total reclaimed space: 0B" 
+[16/06/2025 14:06:23,12] ["INFO"] "Nettoyage de toutes les images non utilisees..." 
+[16/06/2025 14:06:25,63] ["INFO"] "Nettoyage des images: Total reclaimed space: 50.84kB" 
+[16/06/2025 14:06:25,64] ["INFO"] "Nettoyage des volumes non utilises..." 
+[16/06/2025 14:06:25,72] ["INFO"] "Nettoyage des volumes: Total reclaimed space: 0B" 
+[16/06/2025 14:06:25,73] ["INFO"] "Nettoyage des reseaux non utilises..." 
+[16/06/2025 14:06:25,81] ["INFO"] "Nettoyage des reseaux: " 
+[16/06/2025 14:06:25,82] ["SUCCESS"] "Nettoyage Docker termine" 
+[16/06/2025 14:06:25,82] ["INFO"] "=== PHASE 3: RECONSTRUCTION DES IMAGES ===" 
+[16/06/2025 14:06:25,83] ["INFO"] "Reconstruction des images sans cache..." 
+[16/06/2025 14:11:14,14] ["SUCCESS"] "Reconstruction des images terminee avec succes" 
+[16/06/2025 14:11:14,15] ["INFO"] "=== PHASE 4: REDEMARRAGE DES SERVICES ===" 
+[16/06/2025 14:11:14,15] ["INFO"] "Verification que chaque service a 'restart: on-failure:5'..." 
+[16/06/2025 14:11:14,22] ["WARNING"] "Service ' on-failure:5'. Veuillez l'ajouter." 
+[16/06/2025 14:11:14,23] ["WARNING"] "Certains services n'ont pas 'restart: on-failure:5'. La robustesse du redemarrage est reduite." 
+[16/06/2025 14:11:14,23] ["INFO"] "Demarrage des services en mode detache..." 
+[16/06/2025 14:11:20,33] ["SUCCESS"] "Services demarres avec succes" 
+[16/06/2025 14:11:20,34] ["INFO"] "Attente de 10 secondes pour la stabilisation des services..." 
+[16/06/2025 14:11:30,12] ["INFO"] "=== PHASE 5: VERIFICATION DE LA SANTE DES SERVICES ===" 
+[16/06/2025 14:11:30,29] ["SUCCESS"] "Tous les services sont sains." 
+[16/06/2025 14:11:30,30] ["INFO"] "=== RAPPORT FINAL ===" 
+[16/06/2025 14:11:30,82] ["SUCCESS"] "Maintenance Docker terminee avec succes" 
+[16/06/2025 14:11:30,82] ["INFO"] "Services disponibles:" 
+[16/06/2025 14:11:30,83] ["INFO"] "  • LiveKit Server: http://localhost:7880" 
+[16/06/2025 14:11:30,83] ["INFO"] "  • Whisper STT: http://localhost:8001" 
+[16/06/2025 14:11:30,84] ["INFO"] "  • Piper TTS: http://localhost:5002" 
+[16/06/2025 14:11:30,84] ["INFO"] "  • API Backend: http://localhost:8000" 
+[16/06/2025 14:11:30,88] ["WARNING"] "Service ' on-failure:5'. Veuillez l'ajouter." 
+[16/06/2025 14:11:30,88] ["WARNING"] "Certains services n'ont pas 'restart: on-failure:5'. La robustesse du redemarrage est reduite." 

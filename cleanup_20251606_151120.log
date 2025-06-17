@@ -1,0 +1,64 @@
+[16/06/2025 15:11:20,01] ["INFO"] "Verification des prerequis Docker et Docker-Compose." 
+[16/06/2025 15:11:20,45] ["SUCCESS"] "Tous les prerequis sont satisfaits" 
+[16/06/2025 15:11:20,46] ["INFO"] "=== PHASE 1: DIAGNOSTIC ===" 
+[16/06/2025 15:11:20,46] ["INFO"] "Liste de tous les conteneurs:" 
+NAMES     STATUS    PORTS
+[16/06/2025 15:11:20,53] ["INFO"] "Usage des ressources systeme:" 
+CONTAINER   CPU %     MEM USAGE / LIMIT   MEM %
+[16/06/2025 15:11:21,09] ["INFO"] "Recuperation des logs des services cles..." 
+[16/06/2025 15:11:21,23] ["DEBUG"] "Logs pour le service: livekit" 
+=== LOGS livekit === 
+=== FIN LOGS livekit === 
+[16/06/2025 15:11:21,49] ["DEBUG"] "Logs pour le service: whisper-stt" 
+=== LOGS whisper-stt === 
+=== FIN LOGS whisper-stt === 
+[16/06/2025 15:11:21,74] ["DEBUG"] "Logs pour le service: piper-tts" 
+=== LOGS piper-tts === 
+=== FIN LOGS piper-tts === 
+[16/06/2025 15:11:21,99] ["DEBUG"] "Logs pour le service: eloquence-agent" 
+=== LOGS eloquence-agent === 
+=== FIN LOGS eloquence-agent === 
+[16/06/2025 15:11:22,24] ["DEBUG"] "Logs pour le service: api-backend" 
+=== LOGS api-backend === 
+=== FIN LOGS api-backend === 
+[16/06/2025 15:11:22,41] ["SUCCESS"] "Diagnostic termine" 
+[16/06/2025 15:11:22,41] ["INFO"] "=== PHASE 2: NETTOYAGE DOCKER ===" 
+[16/06/2025 15:11:22,41] ["INFO"] "Arret des services en cours..." 
+[16/06/2025 15:11:22,50] ["INFO"] "Nettoyage des conteneurs arretes..." 
+[16/06/2025 15:11:22,60] ["INFO"] "Nettoyage des conteneurs arretes: Total reclaimed space: 0B" 
+[16/06/2025 15:11:22,61] ["INFO"] "Nettoyage de toutes les images non utilisees..." 
+[16/06/2025 15:11:24,44] ["INFO"] "Nettoyage des images: Total reclaimed space: 50.84kB" 
+[16/06/2025 15:11:24,44] ["INFO"] "Nettoyage des volumes non utilises..." 
+[16/06/2025 15:11:24,53] ["INFO"] "Nettoyage des volumes: Total reclaimed space: 0B" 
+[16/06/2025 15:11:24,54] ["INFO"] "Nettoyage des reseaux non utilises..." 
+[16/06/2025 15:11:24,62] ["INFO"] "Nettoyage des reseaux: " 
+[16/06/2025 15:11:24,63] ["SUCCESS"] "Nettoyage Docker termine" 
+[16/06/2025 15:11:24,63] ["INFO"] "=== PHASE 3: RECONSTRUCTION DES IMAGES ===" 
+[16/06/2025 15:11:24,63] ["INFO"] "Reconstruction des images sans cache..." 
+[16/06/2025 15:16:29,20] ["SUCCESS"] "Reconstruction des images terminee avec succes" 
+[16/06/2025 15:16:29,20] ["INFO"] "=== PHASE 4: REDEMARRAGE DES SERVICES ===" 
+[16/06/2025 15:16:29,21] ["INFO"] "Verification que chaque service a 'restart: on-failure:5'..." 
+[16/06/2025 15:16:33,18] ["WARNING"] "Service 'livekit' n'a PAS 'restart: on-failure:5'. Veuillez l'ajouter." 
+[16/06/2025 15:16:37,05] ["WARNING"] "Service 'whisper-stt' n'a PAS 'restart: on-failure:5'. Veuillez l'ajouter." 
+[16/06/2025 15:16:41,05] ["WARNING"] "Service 'piper-tts' n'a PAS 'restart: on-failure:5'. Veuillez l'ajouter." 
+[16/06/2025 15:16:45,26] ["WARNING"] "Service 'eloquence-agent' n'a PAS 'restart: on-failure:5'. Veuillez l'ajouter." 
+[16/06/2025 15:16:49,18] ["WARNING"] "Service 'api-backend' n'a PAS 'restart: on-failure:5'. Veuillez l'ajouter." 
+[16/06/2025 15:16:49,18] ["WARNING"] "Certains services n'ont pas 'restart: on-failure:5'. La robustesse du redemarrage est reduite." 
+[16/06/2025 15:16:49,19] ["INFO"] "Demarrage des services en mode detache..." 
+[16/06/2025 15:16:57,69] ["SUCCESS"] "Services demarres avec succes" 
+[16/06/2025 15:16:57,70] ["INFO"] "Attente de 10 secondes pour la stabilisation des services..." 
+[16/06/2025 15:17:07,19] ["INFO"] "=== PHASE 5: VERIFICATION DE LA SANTE DES SERVICES ===" 
+[16/06/2025 15:17:07,34] ["SUCCESS"] "Tous les services sont sains." 
+[16/06/2025 15:17:07,35] ["INFO"] "=== RAPPORT FINAL ===" 
+[16/06/2025 15:17:07,85] ["SUCCESS"] "Maintenance Docker terminee avec succes" 
+[16/06/2025 15:17:07,86] ["INFO"] "Services disponibles:" 
+[16/06/2025 15:17:07,86] ["INFO"] "  • LiveKit Server: http://localhost:7880" 
+[16/06/2025 15:17:07,87] ["INFO"] "  • Whisper STT: http://localhost:8001" 
+[16/06/2025 15:17:07,87] ["INFO"] "  • Piper TTS: http://localhost:5002" 
+[16/06/2025 15:17:07,87] ["INFO"] "  • API Backend: http://localhost:8000" 
+[16/06/2025 15:17:11,95] ["WARNING"] "Service 'livekit' n'a PAS 'restart: on-failure:5'. Veuillez l'ajouter." 
+[16/06/2025 15:17:16,00] ["WARNING"] "Service 'whisper-stt' n'a PAS 'restart: on-failure:5'. Veuillez l'ajouter." 
+[16/06/2025 15:17:20,25] ["WARNING"] "Service 'piper-tts' n'a PAS 'restart: on-failure:5'. Veuillez l'ajouter." 
+[16/06/2025 15:17:24,25] ["WARNING"] "Service 'eloquence-agent' n'a PAS 'restart: on-failure:5'. Veuillez l'ajouter." 
+[16/06/2025 15:17:28,26] ["WARNING"] "Service 'api-backend' n'a PAS 'restart: on-failure:5'. Veuillez l'ajouter." 
+[16/06/2025 15:17:28,27] ["WARNING"] "Certains services n'ont pas 'restart: on-failure:5'. La robustesse du redemarrage est reduite." 

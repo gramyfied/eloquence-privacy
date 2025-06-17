@@ -1,0 +1,40 @@
+[16/06/2025 15:40:19,46] ["INFO"] "Verification des prerequis Docker et Docker-Compose." 
+[16/06/2025 15:40:19,89] ["SUCCESS"] "Tous les prerequis sont satisfaits" 
+[16/06/2025 15:40:19,90] ["INFO"] "=== PHASE 1: DIAGNOSTIC ===" 
+[16/06/2025 15:40:19,90] ["INFO"] "Liste de tous les conteneurs:" 
+NAMES     STATUS    PORTS
+[16/06/2025 15:40:19,96] ["INFO"] "Usage des ressources systeme:" 
+CONTAINER   CPU %     MEM USAGE / LIMIT   MEM %
+[16/06/2025 15:40:20,52] ["INFO"] "Recuperation des logs des services cles..." 
+[16/06/2025 15:40:20,65] ["DEBUG"] "Logs pour le service: livekit" 
+=== LOGS livekit === 
+=== FIN LOGS livekit === 
+[16/06/2025 15:40:20,91] ["DEBUG"] "Logs pour le service: whisper-stt" 
+=== LOGS whisper-stt === 
+=== FIN LOGS whisper-stt === 
+[16/06/2025 15:40:21,16] ["DEBUG"] "Logs pour le service: piper-tts" 
+=== LOGS piper-tts === 
+=== FIN LOGS piper-tts === 
+[16/06/2025 15:40:21,41] ["DEBUG"] "Logs pour le service: eloquence-agent" 
+=== LOGS eloquence-agent === 
+=== FIN LOGS eloquence-agent === 
+[16/06/2025 15:40:21,67] ["DEBUG"] "Logs pour le service: api-backend" 
+=== LOGS api-backend === 
+=== FIN LOGS api-backend === 
+[16/06/2025 15:40:21,84] ["SUCCESS"] "Diagnostic termine" 
+[16/06/2025 15:40:21,84] ["INFO"] "=== PHASE 2: NETTOYAGE DOCKER ===" 
+[16/06/2025 15:40:21,85] ["INFO"] "Arret des services en cours..." 
+[16/06/2025 15:40:21,94] ["INFO"] "Nettoyage des conteneurs arretes..." 
+[16/06/2025 15:40:22,03] ["INFO"] "Nettoyage des conteneurs arretes: Total reclaimed space: 0B" 
+[16/06/2025 15:40:22,03] ["INFO"] "Nettoyage de toutes les images non utilisees..." 
+[16/06/2025 15:40:24,21] ["INFO"] "Nettoyage des images: Total reclaimed space: 50.83kB" 
+[16/06/2025 15:40:24,22] ["INFO"] "Nettoyage des volumes non utilises..." 
+[16/06/2025 15:40:24,31] ["INFO"] "Nettoyage des volumes: Total reclaimed space: 0B" 
+[16/06/2025 15:40:24,31] ["INFO"] "Nettoyage des reseaux non utilises..." 
+[16/06/2025 15:40:24,40] ["INFO"] "Nettoyage des reseaux: " 
+[16/06/2025 15:40:24,40] ["SUCCESS"] "Nettoyage Docker termine" 
+[16/06/2025 15:40:24,41] ["INFO"] "=== PHASE 3: RECONSTRUCTION DES IMAGES ===" 
+[16/06/2025 15:40:24,41] ["INFO"] "Reconstruction des images sans cache..." 
+[16/06/2025 15:45:35,55] ["SUCCESS"] "Reconstruction des images terminee avec succes" 
+[16/06/2025 15:45:35,55] ["INFO"] "=== PHASE 4: REDEMARRAGE DES SERVICES ===" 
+[16/06/2025 15:45:35,56] ["INFO"] "Verification que chaque service a 'restart: on-failure:5'..." 

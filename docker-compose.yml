@@ -1,9 +1,9 @@
 services:
   # LiveKit Server
   livekit:
-    image: livekit/livekit-server:latest
+    image: livekit/livekit-server:latest # Updated to latest for better SDK compatibility
     command: --config /etc/livekit.yaml
-    restart: unless-stopped
+    restart: on-failure:5
     ports:
       - "7880:7880"
       - "7881:7881" 
@@ -11,21 +11,26 @@ services:
       - "7888:7888"
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml
-    environment:
-      - LIVEKIT_KEYS=devkey:devsecret123456789abcdef0123456789abcdef0123456789abcdef
+    environment: {}
     networks:
       - eloquence-network
+    #healthcheck:
+    #  test: ["CMD", "curl", "-f", "http://localhost:7880"]
+    #  interval: 10s
+    #  timeout: 20s
+    #  retries: 5
+    #  start_period: 60s
 
   # Whisper STT Service
   whisper-stt:
     build:
       context: .
       dockerfile: Dockerfile.asr
-    restart: unless-stopped
+    restart: on-failure:5
     ports:
       - "8001:8001"
     environment:
-      - MODEL_SIZE=base
+      - WHISPER_MODEL_SIZE=medium
       - LANGUAGE=fr
     networks:
       - eloquence-network
@@ -35,12 +40,12 @@ services:
       timeout: 10s
       retries: 3
 
-  # Piper TTS Service  
+  # Piper TTS Service
   piper-tts:
     build:
       context: .
       dockerfile: Dockerfile.tts
-    restart: unless-stopped
+    restart: on-failure:5
     ports:
       - "5002:5002"
     environment:
@@ -58,13 +63,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.agent
-    restart: unless-stopped
+      args:
+        CACHE_BREAKER: ${CACHE_BREAKER}
+    restart: on-failure:5
     depends_on:
       - livekit
       - whisper-stt
       - piper-tts
     environment:
-      - LIVEKIT_URL=ws://livekit:7888
+      - LIVEKIT_URL=ws://livekit:7880
       - LIVEKIT_API_KEY=devkey
       - LIVEKIT_API_SECRET=devsecret123456789abcdef0123456789abcdef0123456789abcdef
       - WHISPER_STT_URL=http://whisper-stt:8001
@@ -76,23 +83,17 @@ services:
       - AGENT_LANGUAGE=fr
     networks:
       - eloquence-network
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health', timeout=5)"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
   # API Backend (optionnel)
   api-backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    restart: unless-stopped
+    restart: on-failure:5
     ports:
       - "8000:8000"
     environment:
-      - LIVEKIT_URL=ws://livekit:7888
+      - LIVEKIT_URL=ws://livekit:7880
       - LIVEKIT_API_KEY=devkey
       - LIVEKIT_API_SECRET=devsecret123456789abcdef0123456789abcdef0123456789abcdef
     networks:

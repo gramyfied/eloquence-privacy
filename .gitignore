@@ -1,67 +1,7 @@
-# Logs et fichiers temporaires
-*.log
-*.tmp
-*.temp
-.DS_Store
-Thumbs.db
-
-# Variables d'environnement sensibles
-.env.local
-.env.production
-*.key
-*.pem
-
-# Dossiers de build et cache
-build/
-dist/
-.cache/
-node_modules/
-
-# Flutter
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.packages
-.pub-cache/
-.pub/
-build/
-flutter_*.png
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Docker
-.dockerignore
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Fichiers de développement temporaires
-test_*
-debug_*
-fix_*
-*_backup
-*_old
-*_temp
+"*.log"  
+"temp_clone_dir/"  
+"CACHED/"  
+".vscode/"  
+"__pycache__/"  
+"*.pyc"  
+".env" 

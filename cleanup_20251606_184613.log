@@ -1,0 +1,111 @@
+[16/06/2025 18:46:13,56] ["INFO"] "Verification des prerequis Docker et Docker-Compose." 
+[16/06/2025 18:46:13,94] ["SUCCESS"] "Tous les prerequis sont satisfaits" 
+[16/06/2025 18:46:13,95] ["INFO"] "=== PHASE 1: DIAGNOSTIC ===" 
+[16/06/2025 18:46:13,95] ["INFO"] "Liste de tous les conteneurs:" 
+NAMES                                        STATUS                     PORTS
+25eloquence-finalisation-eloquence-agent-1   Created                    
+25eloquence-finalisation-api-backend-1       Created                    
+25eloquence-finalisation-piper-tts-1         Up 3 minutes (unhealthy)   0.0.0.0:5002->5002/tcp
+25eloquence-finalisation-livekit-1           Up 3 minutes (unhealthy)   0.0.0.0:7880-7881->7880-7881/tcp, 0.0.0.0:7888->7888/tcp, 0.0.0.0:7882->7882/udp
+25eloquence-finalisation-whisper-stt-1       Up 3 minutes (healthy)     0.0.0.0:8001->8001/tcp
+[16/06/2025 18:46:14,03] ["INFO"] "Usage des ressources systeme:" 
+CONTAINER      CPU %     MEM USAGE / LIMIT   MEM %
+da8531d545dd   0.12%     48.23MiB / 7.7GiB   0.61%
+b1b386489f87   0.11%     29.24MiB / 7.7GiB   0.37%
+be4665bd6b99   0.02%     1.301GiB / 7.7GiB   16.90%
+[16/06/2025 18:46:16,64] ["INFO"] "Recuperation des logs des services cles..." 
+[16/06/2025 18:46:16,75] ["DEBUG"] "Logs pour le service: livekit" 
+=== LOGS livekit === 
+livekit-1  | 2025-06-16T16:42:54.606Z	INFO	livekit	hwstats/cpu_linux.go:77	failed reading cgroup specific cpu stats, falling back to system wide implementation
+livekit-1  | 2025-06-16T16:42:54.606Z	INFO	livekit	routing/interfaces.go:175	using single-node routing
+livekit-1  | 2025-06-16T16:42:54.660Z	INFO	livekit	service/server.go:265	starting LiveKit server	{"portHttp": 7880, "nodeID": "ND_QBT78cydE3kA", "nodeIP": "172.18.0.4", "version": "1.9.0", "rtc.portTCP": 7881, "rtc.portICERange": [50000, 60000]}
+=== FIN LOGS livekit === 
+[16/06/2025 18:46:17,09] ["DEBUG"] "Logs pour le service: whisper-stt" 
+=== LOGS whisper-stt === 
+whisper-stt-1  | INFO:__main__:Initialisation du modèle Whisper: medium sur cpu
+whisper-stt-1  | INFO:__main__:✅ Modèle Whisper initialisé avec succès
+whisper-stt-1  |  * Serving Flask app 'whisper_asr_service'
+whisper-stt-1  |  * Debug mode: off
+whisper-stt-1  | INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+whisper-stt-1  |  * Running on all addresses (0.0.0.0)
+whisper-stt-1  |  * Running on http://127.0.0.1:8001
+whisper-stt-1  |  * Running on http://172.18.0.3:8001
+whisper-stt-1  | INFO:werkzeug:[33mPress CTRL+C to quit[0m
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 16:43:24] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 16:43:54] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 16:44:24] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 16:44:54] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 16:45:24] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 16:45:54] "GET /health HTTP/1.1" 200 -
+=== FIN LOGS whisper-stt === 
+[16/06/2025 18:46:17,44] ["DEBUG"] "Logs pour le service: piper-tts" 
+=== LOGS piper-tts === 
+piper-tts-1  | /app/tts_service_piper.py:172: DeprecationWarning: 
+piper-tts-1  |         on_event is deprecated, use lifespan event handlers instead.
+piper-tts-1  | 
+piper-tts-1  |         Read more about it in the
+piper-tts-1  |         [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+piper-tts-1  |         
+piper-tts-1  |   @app.on_event("startup")
+piper-tts-1  | INFO:__main__:🚀 Démarrage du service TTS Piper...
+piper-tts-1  | INFO:     Started server process [1]
+piper-tts-1  | INFO:     Waiting for application startup.
+piper-tts-1  | INFO:__main__:🚀 Démarrage du service TTS Piper...
+piper-tts-1  | INFO:__main__:   URL Piper: http://0.0.0.0:5002/v1/audio/speech
+piper-tts-1  | INFO:__main__:   Voix par défaut: alloy
+piper-tts-1  | ERROR:__main__:❌ Test connexion Piper: HTTPConnectionPool(host='0.0.0.0', port=5002): Max retries exceeded with url: /v1/audio/speech (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f5ee773fcd0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+piper-tts-1  | WARNING:__main__:⚠️ Piper TTS non disponible, mode fallback activé
+piper-tts-1  | INFO:     Application startup complete.
+piper-tts-1  | INFO:     Uvicorn running on http://0.0.0.0:5002 (Press CTRL+C to quit)
+piper-tts-1  | ERROR:__main__:❌ Test connexion Piper: HTTPConnectionPool(host='0.0.0.0', port=5002): Read timed out. (read timeout=10)
+piper-tts-1  | INFO:     127.0.0.1:60238 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:60242 - "POST /v1/audio/speech HTTP/1.1" 404 Not Found
+piper-tts-1  | ERROR:__main__:❌ Test connexion Piper: HTTPConnectionPool(host='0.0.0.0', port=5002): Read timed out. (read timeout=10)
+piper-tts-1  | INFO:     127.0.0.1:49980 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:49994 - "POST /v1/audio/speech HTTP/1.1" 404 Not Found
+piper-tts-1  | ERROR:__main__:❌ Test connexion Piper: HTTPConnectionPool(host='0.0.0.0', port=5002): Read timed out. (read timeout=10)
+piper-tts-1  | INFO:     127.0.0.1:57568 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:57576 - "POST /v1/audio/speech HTTP/1.1" 404 Not Found
+piper-tts-1  | ERROR:__main__:❌ Test connexion Piper: HTTPConnectionPool(host='0.0.0.0', port=5002): Read timed out. (read timeout=10)
+piper-tts-1  | INFO:     127.0.0.1:52956 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:52970 - "POST /v1/audio/speech HTTP/1.1" 404 Not Found
+piper-tts-1  | ERROR:__main__:❌ Test connexion Piper: HTTPConnectionPool(host='0.0.0.0', port=5002): Read timed out. (read timeout=10)
+piper-tts-1  | INFO:     127.0.0.1:58410 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:58424 - "POST /v1/audio/speech HTTP/1.1" 404 Not Found
+=== FIN LOGS piper-tts === 
+[16/06/2025 18:46:17,76] ["DEBUG"] "Logs pour le service: eloquence-agent" 
+=== LOGS eloquence-agent === 
+=== FIN LOGS eloquence-agent === 
+[16/06/2025 18:46:18,04] ["DEBUG"] "Logs pour le service: api-backend" 
+=== LOGS api-backend === 
+=== FIN LOGS api-backend === 
+[16/06/2025 18:46:18,23] ["SUCCESS"] "Diagnostic termine" 
+[16/06/2025 18:46:18,23] ["INFO"] "=== PHASE 2: NETTOYAGE DOCKER ===" 
+[16/06/2025 18:46:18,24] ["INFO"] "Arret des services en cours..." 
+[16/06/2025 18:46:29,76] ["INFO"] "Nettoyage des conteneurs arretes..." 
+[16/06/2025 18:46:29,85] ["INFO"] "Nettoyage des conteneurs arretes: Total reclaimed space: 0B" 
+[16/06/2025 18:46:29,86] ["INFO"] "Nettoyage de toutes les images non utilisees..." 
+[16/06/2025 18:46:31,32] ["INFO"] "Nettoyage des images: Total reclaimed space: 32.21MB" 
+[16/06/2025 18:46:31,32] ["INFO"] "Nettoyage des volumes non utilises..." 
+[16/06/2025 18:46:31,40] ["INFO"] "Nettoyage des volumes: Total reclaimed space: 0B" 
+[16/06/2025 18:46:31,41] ["INFO"] "Nettoyage des reseaux non utilises..." 
+[16/06/2025 18:46:31,49] ["INFO"] "Nettoyage des reseaux: " 
+[16/06/2025 18:46:31,49] ["SUCCESS"] "Nettoyage Docker termine" 
+[16/06/2025 18:46:31,50] ["INFO"] "=== PHASE 3: RECONSTRUCTION DES IMAGES ===" 
+[16/06/2025 18:46:31,50] ["INFO"] "Reconstruction des images sans cache..." 
+[16/06/2025 18:51:32,15] ["SUCCESS"] "Reconstruction des images terminee avec succes" 
+[16/06/2025 18:51:32,16] ["INFO"] "=== PHASE 4: REDEMARRAGE DES SERVICES ===" 
+[16/06/2025 18:51:32,16] ["INFO"] "Verification que chaque service a 'restart: on-failure:5'..." 
+[16/06/2025 18:51:32,17] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'livekit'." 
+[16/06/2025 18:51:32,20] ["INFO"] "Service 'livekit' a 'restart: on-failure:5'." 
+[16/06/2025 18:51:32,21] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'whisper-stt'." 
+[16/06/2025 18:51:32,24] ["INFO"] "Service 'whisper-stt' a 'restart: on-failure:5'." 
+[16/06/2025 18:51:32,24] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'piper-tts'." 
+[16/06/2025 18:51:32,27] ["INFO"] "Service 'piper-tts' a 'restart: on-failure:5'." 
+[16/06/2025 18:51:32,28] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'eloquence-agent'." 
+[16/06/2025 18:51:32,31] ["INFO"] "Service 'eloquence-agent' a 'restart: on-failure:5'." 
+[16/06/2025 18:51:32,31] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'api-backend'." 
+[16/06/2025 18:51:32,35] ["INFO"] "Service 'api-backend' a 'restart: on-failure:5'." 
+[16/06/2025 18:51:32,35] ["SUCCESS"] "Tous les services ont 'restart: on-failure:5'." 
+[16/06/2025 18:51:32,35] ["INFO"] "Demarrage des services en mode detache..." 
+[16/06/2025 18:53:40,15] ["ERROR"] "Echec du demarrage des services" 

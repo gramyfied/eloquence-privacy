@@ -1,0 +1,29 @@
+[16/06/2025 18:30:12,95] ["INFO"] "Verification des prerequis Docker et Docker-Compose." 
+[16/06/2025 18:30:13,29] ["SUCCESS"] "Tous les prerequis sont satisfaits" 
+[16/06/2025 18:30:13,29] ["INFO"] "=== PHASE 1: DIAGNOSTIC ===" 
+[16/06/2025 18:30:13,30] ["INFO"] "Liste de tous les conteneurs:" 
+NAMES                                    STATUS                    PORTS
+25eloquence-finalisation-api-backend-1   Up 27 minutes             0.0.0.0:8000->8000/tcp
+25eloquence-finalisation-whisper-stt-1   Up 27 minutes (healthy)   0.0.0.0:8001->8001/tcp
+25eloquence-finalisation-piper-tts-1     Up 27 minutes (healthy)   0.0.0.0:5002->5002/tcp
+[16/06/2025 18:30:13,38] ["INFO"] "Usage des ressources systeme:" 
+CONTAINER      CPU %     MEM USAGE / LIMIT   MEM %
+ddc62e9053aa   0.12%     35.87MiB / 7.7GiB   0.45%
+848fa6676cfc   0.01%     887.1MiB / 7.7GiB   11.25%
+6781bde25a04   0.13%     46.79MiB / 7.7GiB   0.59%
+[16/06/2025 18:30:15,97] ["INFO"] "Recuperation des logs des services cles..." 
+[16/06/2025 18:30:16,35] ["SUCCESS"] "Diagnostic termine" 
+[16/06/2025 18:30:16,35] ["INFO"] "=== PHASE 2: NETTOYAGE DOCKER ===" 
+[16/06/2025 18:30:16,36] ["INFO"] "Arret des services en cours..." 
+[16/06/2025 18:30:16,44] ["INFO"] "Nettoyage des conteneurs arretes..." 
+[16/06/2025 18:30:16,52] ["INFO"] "Nettoyage des conteneurs arretes: Total reclaimed space: 0B" 
+[16/06/2025 18:30:16,52] ["INFO"] "Nettoyage de toutes les images non utilisees..." 
+[16/06/2025 18:30:16,62] ["INFO"] "Nettoyage des images: Total reclaimed space: 0B" 
+[16/06/2025 18:30:16,62] ["INFO"] "Nettoyage des volumes non utilises..." 
+[16/06/2025 18:30:16,71] ["INFO"] "Nettoyage des volumes: Total reclaimed space: 0B" 
+[16/06/2025 18:30:16,71] ["INFO"] "Nettoyage des reseaux non utilises..." 
+[16/06/2025 18:30:16,79] ["INFO"] "Nettoyage des reseaux: " 
+[16/06/2025 18:30:16,79] ["SUCCESS"] "Nettoyage Docker termine" 
+[16/06/2025 18:30:16,80] ["INFO"] "=== PHASE 3: RECONSTRUCTION DES IMAGES ===" 
+[16/06/2025 18:30:16,80] ["INFO"] "Reconstruction des images sans cache..." 
+[16/06/2025 18:30:16,88] ["ERROR"] "Echec de la reconstruction des images. Veuillez consulter les logs ci-dessus pour le detail." 

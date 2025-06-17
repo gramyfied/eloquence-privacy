@@ -1,6 +1,8 @@
 # Dockerfile pour l'agent IA LiveKit Eloquence
 FROM python:3.11-slim
 
+ARG CACHE_BREAKER=
+
 # Variables d'environnement
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -23,6 +25,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copie du code de l'agent
 COPY livekit_agent/coach_agent_eloquence_docker.py .
+# FORCE_REBUILD_20240617_2
 COPY livekit_agent/.env .
 
 # Exposition du port (pour monitoring)

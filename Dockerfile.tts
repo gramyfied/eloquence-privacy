@@ -22,7 +22,8 @@ RUN pip install --no-cache-dir \
     uvicorn \
     python-multipart \
     aiofiles \
-    numpy
+    numpy \
+    requests
 
 # Téléchargement du modèle de voix française
 RUN mkdir -p /app/voices && \
@@ -32,10 +33,10 @@ RUN mkdir -p /app/voices && \
     "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/fr/fr_FR/upmc/medium/fr_FR-upmc-medium.onnx.json"
 
 # Copie du service Piper
-COPY piper_service.py .
+COPY backend/services/tts_service_piper.py .
 
 # Exposition du port
 EXPOSE 5002
 
 # Commande de démarrage
-CMD ["python", "piper_service.py"]
+CMD ["python", "tts_service_piper.py"]

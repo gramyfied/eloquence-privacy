@@ -1,0 +1,249 @@
+[16/06/2025 20:55:04,78] ["INFO"] "Verification des prerequis Docker et Docker-Compose." 
+[16/06/2025 20:55:05,20] ["SUCCESS"] "Tous les prerequis sont satisfaits" 
+[16/06/2025 20:55:05,20] ["INFO"] "=== PHASE 1: DIAGNOSTIC ===" 
+[16/06/2025 20:55:05,20] ["INFO"] "Liste de tous les conteneurs:" 
+NAMES                                        STATUS                                 PORTS
+25eloquence-finalisation-eloquence-agent-1   Up About a minute (health: starting)   8080/tcp
+25eloquence-finalisation-api-backend-1       Up 8 minutes                           0.0.0.0:8000->8000/tcp
+25eloquence-finalisation-piper-tts-1         Up 8 minutes (healthy)                 0.0.0.0:5002->5002/tcp
+25eloquence-finalisation-whisper-stt-1       Up 8 minutes (healthy)                 0.0.0.0:8001->8001/tcp
+25eloquence-finalisation-livekit-1           Up 8 minutes                           0.0.0.0:7880-7881->7880-7881/tcp, 0.0.0.0:7888->7888/tcp, 0.0.0.0:7882->7882/udp
+[16/06/2025 20:55:05,29] ["INFO"] "Usage des ressources systeme:" 
+CONTAINER      CPU %     MEM USAGE / LIMIT   MEM %
+18a6f0e3a8c7   0.01%     50.26MiB / 7.7GiB   0.64%
+a88bcaa88420   0.12%     33.68MiB / 7.7GiB   0.43%
+43d56d583907   0.13%     46.11MiB / 7.7GiB   0.58%
+6dbe7edaeadb   0.01%     1.283GiB / 7.7GiB   16.67%
+11fdbca7465e   0.00%     23.82MiB / 7.7GiB   0.30%
+[16/06/2025 20:55:07,89] ["INFO"] "Recuperation des logs des services cles..." 
+[16/06/2025 20:55:08,01] ["DEBUG"] "Logs pour le service: livekit" 
+=== LOGS livekit === 
+livekit-1  | 2025-06-16T18:46:10.279Z	INFO	livekit	routing/interfaces.go:101	using single-node routing
+livekit-1  | 2025-06-16T18:46:10.343Z	INFO	livekit	service/server.go:195	starting LiveKit server	{"addr": ":7880", "nodeID": "ND_L9QHQyXr", "nodeIP": "172.18.0.4", "version": "1.0.0", "rtc.portTCP": 7881, "rtc.portICERange": [50000, 60000]}
+=== FIN LOGS livekit === 
+[16/06/2025 20:55:08,34] ["DEBUG"] "Logs pour le service: whisper-stt" 
+=== LOGS whisper-stt === 
+whisper-stt-1  | INFO:__main__:Initialisation du modèle Whisper: medium sur cpu
+whisper-stt-1  | INFO:__main__:✅ Modèle Whisper initialisé avec succès
+whisper-stt-1  |  * Serving Flask app 'whisper_asr_service'
+whisper-stt-1  |  * Debug mode: off
+whisper-stt-1  | INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+whisper-stt-1  |  * Running on all addresses (0.0.0.0)
+whisper-stt-1  |  * Running on http://127.0.0.1:8001
+whisper-stt-1  |  * Running on http://172.18.0.2:8001
+whisper-stt-1  | INFO:werkzeug:[33mPress CTRL+C to quit[0m
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:46:40] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:47:10] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:47:40] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:48:10] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:48:40] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:49:10] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:49:40] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:50:10] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:50:40] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:51:10] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:51:40] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:52:10] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:52:40] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:53:10] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:53:40] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:54:10] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 18:54:40] "GET /health HTTP/1.1" 200 -
+=== FIN LOGS whisper-stt === 
+[16/06/2025 20:55:08,67] ["DEBUG"] "Logs pour le service: piper-tts" 
+=== LOGS piper-tts === 
+piper-tts-1  | /app/tts_service_piper.py:149: DeprecationWarning: 
+piper-tts-1  |         on_event is deprecated, use lifespan event handlers instead.
+piper-tts-1  | 
+piper-tts-1  |         Read more about it in the
+piper-tts-1  |         [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+piper-tts-1  |         
+piper-tts-1  |   @app.on_event("startup")
+piper-tts-1  | INFO:__main__:🚀 Démarrage du service TTS Piper...
+piper-tts-1  | INFO:     Started server process [1]
+piper-tts-1  | INFO:     Waiting for application startup.
+piper-tts-1  | INFO:__main__:🚀 Démarrage du service TTS Piper...
+piper-tts-1  | INFO:__main__:   URL Piper: http://0.0.0.0:5002/v1/audio/speech
+piper-tts-1  | INFO:__main__:   Voix par défaut: alloy
+piper-tts-1  | INFO:__main__:✅ Service TTS Piper prêt à écouter les requêtes!
+piper-tts-1  | INFO:     Application startup complete.
+piper-tts-1  | INFO:     Uvicorn running on http://0.0.0.0:5002 (Press CTRL+C to quit)
+piper-tts-1  | INFO:     127.0.0.1:54646 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:42392 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:38088 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:54110 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:35960 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:45240 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:50708 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:52606 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:59516 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:58202 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:41520 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:42982 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:53844 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:42648 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:50804 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:38850 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:60480 - "GET /health HTTP/1.1" 200 OK
+=== FIN LOGS piper-tts === 
+[16/06/2025 20:55:09,00] ["DEBUG"] "Logs pour le service: eloquence-agent" 
+=== LOGS eloquence-agent === 
+eloquence-agent-1  | ERROR:livekit:livekit_ffi::server::room:283:livekit_ffi::server::room - error while connecting to a room: engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (1/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (2/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (3/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:ELOQUENCE_AGENT:⚠️ Échec de connexion à LiveKit (tentative 10/10): engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | ERROR:livekit:livekit_ffi::server::room:283:livekit_ffi::server::room - error while connecting to a room: engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | ERROR:ELOQUENCE_AGENT:❌ Toutes les tentatives de connexion à LiveKit ont échoué.
+eloquence-agent-1  | Traceback (most recent call last):
+eloquence-agent-1  |   File "/app/coach_agent_eloquence_docker.py", line 475, in <module>
+eloquence-agent-1  |     asyncio.run(main())
+eloquence-agent-1  |   File "/usr/local/lib/python3.11/asyncio/runners.py", line 190, in run
+eloquence-agent-1  |     return runner.run(main)
+eloquence-agent-1  |            ^^^^^^^^^^^^^^^^
+eloquence-agent-1  |   File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+eloquence-agent-1  |     return self._loop.run_until_complete(task)
+eloquence-agent-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+eloquence-agent-1  |   File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+eloquence-agent-1  |     return future.result()
+eloquence-agent-1  |            ^^^^^^^^^^^^^^^
+eloquence-agent-1  |   File "/app/coach_agent_eloquence_docker.py", line 433, in main
+eloquence-agent-1  |     await room.connect(
+eloquence-agent-1  |   File "/usr/local/lib/python3.11/site-packages/livekit/rtc/room.py", line 394, in connect
+eloquence-agent-1  |     raise ConnectError(cb.connect.error)
+eloquence-agent-1  | livekit.rtc.room.ConnectError: engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:🚀 Démarrage de l'agent Eloquence 2.0 (Docker)
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:📍 Services configurés:
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:   - LiveKit: ws://livekit:7888
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:   - Whisper STT: http://whisper-stt:8001
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:   - Piper TTS: http://piper-tts:5002
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:   - Mistral LLM: mistral-nemo-instruct-2407
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:🏥 Serveur de santé démarré sur le port 8080
+eloquence-agent-1  | INFO:livekit:livekit_ffi::server:139:livekit_ffi::server - initializing ffi server v0.12.26
+eloquence-agent-1  | INFO:livekit:livekit_ffi::cabi:36:livekit_ffi::cabi - initializing ffi server v0.12.26
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (1/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (2/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (3/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:ELOQUENCE_AGENT:⚠️ Échec de connexion à LiveKit (tentative 1/10): engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | ERROR:livekit:livekit_ffi::server::room:283:livekit_ffi::server::room - error while connecting to a room: engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (1/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (2/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (3/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:ELOQUENCE_AGENT:⚠️ Échec de connexion à LiveKit (tentative 2/10): engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | ERROR:livekit:livekit_ffi::server::room:283:livekit_ffi::server::room - error while connecting to a room: engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (1/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (2/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (3/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:ELOQUENCE_AGENT:⚠️ Échec de connexion à LiveKit (tentative 3/10): engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | ERROR:livekit:livekit_ffi::server::room:283:livekit_ffi::server::room - error while connecting to a room: engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (1/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (2/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (3/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:ELOQUENCE_AGENT:⚠️ Échec de connexion à LiveKit (tentative 4/10): engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | ERROR:livekit:livekit_ffi::server::room:283:livekit_ffi::server::room - error while connecting to a room: engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (1/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (2/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (3/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:ELOQUENCE_AGENT:⚠️ Échec de connexion à LiveKit (tentative 5/10): engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | ERROR:livekit:livekit_ffi::server::room:283:livekit_ffi::server::room - error while connecting to a room: engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (1/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (2/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (3/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:ELOQUENCE_AGENT:⚠️ Échec de connexion à LiveKit (tentative 6/10): engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | ERROR:livekit:livekit_ffi::server::room:283:livekit_ffi::server::room - error while connecting to a room: engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (1/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (2/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Os { code: 111, kind: ConnectionRefused, message: "Connection refused" }))), retrying... (3/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:ELOQUENCE_AGENT:⚠️ Échec de connexion à LiveKit (tentative 7/10): engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+eloquence-agent-1  | ERROR:livekit:livekit_ffi::server::room:283:livekit_ffi::server::room - error while connecting to a room: engine: signal failure: ws failure: IO error: Connection refused (os error 111)
+=== FIN LOGS eloquence-agent === 
+[16/06/2025 20:55:09,33] ["DEBUG"] "Logs pour le service: api-backend" 
+=== LOGS api-backend === 
+api-backend-1  | INFO:     Started server process [1]
+api-backend-1  | INFO:     Waiting for application startup.
+api-backend-1  | INFO:     Application startup complete.
+api-backend-1  | INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+=== FIN LOGS api-backend === 
+[16/06/2025 20:55:09,59] ["SUCCESS"] "Diagnostic termine" 
+[16/06/2025 20:55:09,59] ["INFO"] "=== PHASE 2: NETTOYAGE DOCKER ===" 
+[16/06/2025 20:55:09,60] ["INFO"] "Arret des services en cours..." 
+[16/06/2025 20:55:31,49] ["INFO"] "Nettoyage des conteneurs arretes..." 
+[16/06/2025 20:55:31,58] ["INFO"] "Nettoyage des conteneurs arretes: Total reclaimed space: 0B" 
+[16/06/2025 20:55:31,58] ["INFO"] "Nettoyage de toutes les images non utilisees..." 
+[16/06/2025 20:55:33,55] ["INFO"] "Nettoyage des images: Total reclaimed space: 16.6MB" 
+[16/06/2025 20:55:33,55] ["INFO"] "Nettoyage des volumes non utilises..." 
+[16/06/2025 20:55:33,64] ["INFO"] "Nettoyage des volumes: Total reclaimed space: 0B" 
+[16/06/2025 20:55:33,64] ["INFO"] "Nettoyage des reseaux non utilises..." 
+[16/06/2025 20:55:33,74] ["INFO"] "Nettoyage des reseaux: " 
+[16/06/2025 20:55:33,74] ["SUCCESS"] "Nettoyage Docker termine" 
+[16/06/2025 20:55:33,74] ["INFO"] "=== PHASE 3: RECONSTRUCTION DES IMAGES ===" 
+[16/06/2025 20:55:33,75] ["INFO"] "Reconstruction des images sans cache..." 
+[16/06/2025 21:00:20,52] ["SUCCESS"] "Reconstruction des images terminee avec succes" 
+[16/06/2025 21:00:20,52] ["INFO"] "=== PHASE 4: REDEMARRAGE DES SERVICES ===" 
+[16/06/2025 21:00:20,53] ["INFO"] "Verification que chaque service a 'restart: on-failure:5'..." 
+[16/06/2025 21:00:20,53] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'livekit'." 
+[16/06/2025 21:00:20,57] ["INFO"] "Service 'livekit' a 'restart: on-failure:5'." 
+[16/06/2025 21:00:20,57] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'whisper-stt'." 
+[16/06/2025 21:00:20,60] ["INFO"] "Service 'whisper-stt' a 'restart: on-failure:5'." 
+[16/06/2025 21:00:20,60] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'piper-tts'." 
+[16/06/2025 21:00:20,63] ["INFO"] "Service 'piper-tts' a 'restart: on-failure:5'." 
+[16/06/2025 21:00:20,63] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'eloquence-agent'." 
+[16/06/2025 21:00:20,66] ["INFO"] "Service 'eloquence-agent' a 'restart: on-failure:5'." 
+[16/06/2025 21:00:20,66] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'api-backend'." 
+[16/06/2025 21:00:20,69] ["INFO"] "Service 'api-backend' a 'restart: on-failure:5'." 
+[16/06/2025 21:00:20,70] ["SUCCESS"] "Tous les services ont 'restart: on-failure:5'." 
+[16/06/2025 21:00:20,70] ["INFO"] "Demarrage des services en mode detache..." 
+[16/06/2025 21:00:24,59] ["SUCCESS"] "Services demarres avec succes" 
+[16/06/2025 21:00:24,60] ["INFO"] "Attente de 10 secondes pour la stabilisation des services..." 
+[16/06/2025 21:00:34,12] ["INFO"] "=== PHASE 5: VERIFICATION DE LA SANTE DES SERVICES ===" 
+[16/06/2025 21:00:34,28] ["SUCCESS"] "Tous les services sont sains." 
+[16/06/2025 21:00:34,28] ["INFO"] "=== RAPPORT FINAL ===" 
+[16/06/2025 21:00:34,87] ["SUCCESS"] "Maintenance Docker terminee avec succes" 
+[16/06/2025 21:00:34,88] ["INFO"] "Services disponibles:" 
+[16/06/2025 21:00:34,88] ["INFO"] "  • LiveKit Server: http://localhost:7880" 
+[16/06/2025 21:00:34,89] ["INFO"] "  • Whisper STT: http://localhost:8001" 
+[16/06/2025 21:00:34,89] ["INFO"] "  • Piper TTS: http://localhost:5002" 
+[16/06/2025 21:00:34,89] ["INFO"] "  • API Backend: http://localhost:8000" 
+[16/06/2025 21:00:34,90] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'livekit'." 
+[16/06/2025 21:00:34,93] ["INFO"] "Service 'livekit' a 'restart: on-failure:5'." 
+[16/06/2025 21:00:34,94] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'whisper-stt'." 
+[16/06/2025 21:00:34,97] ["INFO"] "Service 'whisper-stt' a 'restart: on-failure:5'." 
+[16/06/2025 21:00:34,98] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'piper-tts'." 
+[16/06/2025 21:00:35,01] ["INFO"] "Service 'piper-tts' a 'restart: on-failure:5'." 
+[16/06/2025 21:00:35,01] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'eloquence-agent'." 
+[16/06/2025 21:00:35,04] ["INFO"] "Service 'eloquence-agent' a 'restart: on-failure:5'." 
+[16/06/2025 21:00:35,04] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'api-backend'." 
+[16/06/2025 21:00:35,08] ["INFO"] "Service 'api-backend' a 'restart: on-failure:5'." 
+[16/06/2025 21:00:35,08] ["SUCCESS"] "Tous les services ont 'restart: on-failure:5'." 

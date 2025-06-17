@@ -18,18 +18,7 @@ echo.
 
 :: Démarrer LiveKit
 echo - Demarrage de LiveKit...
-cd livekit
 docker-compose up -d
-cd ..
-
-:: Attendre que LiveKit soit prêt
-timeout /t 5 /nobreak >nul
-
-:: Démarrer les services backend
-echo - Demarrage des services backend (API, Whisper, Piper)...
-cd backend
-docker-compose -f docker-compose.api.yml up -d
-cd ..
 
 :: Attendre que les services soient prêts
 echo.

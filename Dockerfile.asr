@@ -14,22 +14,22 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Installation de Whisper et FastAPI
+# Installation des dépendances Python
 RUN pip install --no-cache-dir \
-    openai-whisper \
-    fastapi \
-    uvicorn \
-    python-multipart \
-    aiofiles
+    faster-whisper \
+    flask \
+    flask-cors \
+    soundfile \
+    numpy
 
-# Téléchargement du modèle Whisper
-RUN python -c "import whisper; whisper.load_model('base')"
+# Téléchargement du modèle Whisper medium
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('medium', device='cpu', compute_type='int8')"
 
 # Copie du service Whisper
-COPY whisper_service.py .
+COPY backend/api/whisper_asr_service.py ./whisper_asr_service.py
 
 # Exposition du port
 EXPOSE 8001
 
 # Commande de démarrage
-CMD ["python", "whisper_service.py"]
+CMD ["python", "whisper_asr_service.py"]

@@ -1,0 +1,138 @@
+[16/06/2025 19:13:25,43] ["INFO"] "Verification des prerequis Docker et Docker-Compose." 
+[16/06/2025 19:13:25,88] ["SUCCESS"] "Tous les prerequis sont satisfaits" 
+[16/06/2025 19:13:25,89] ["INFO"] "=== PHASE 1: DIAGNOSTIC ===" 
+[16/06/2025 19:13:25,90] ["INFO"] "Liste de tous les conteneurs:" 
+NAMES                                        STATUS                      PORTS
+25eloquence-finalisation-eloquence-agent-1   Created                     
+25eloquence-finalisation-api-backend-1       Created                     
+25eloquence-finalisation-whisper-stt-1       Up 12 minutes (healthy)     0.0.0.0:8001->8001/tcp
+25eloquence-finalisation-piper-tts-1         Up 12 minutes (healthy)     0.0.0.0:5002->5002/tcp
+25eloquence-finalisation-livekit-1           Up 12 minutes (unhealthy)   0.0.0.0:7880-7881->7880-7881/tcp, 0.0.0.0:7888->7888/tcp, 0.0.0.0:7882->7882/udp
+[16/06/2025 19:13:25,98] ["INFO"] "Usage des ressources systeme:" 
+CONTAINER      CPU %     MEM USAGE / LIMIT   MEM %
+e5eb7ea20920   0.01%     881.5MiB / 7.7GiB   11.18%
+8bd83815844a   0.12%     46.18MiB / 7.7GiB   0.59%
+b5025735e7af   0.09%     29.66MiB / 7.7GiB   0.38%
+[16/06/2025 19:13:28,56] ["INFO"] "Recuperation des logs des services cles..." 
+[16/06/2025 19:13:28,70] ["DEBUG"] "Logs pour le service: livekit" 
+=== LOGS livekit === 
+livekit-1  | 2025-06-16T17:00:58.887Z	INFO	livekit	hwstats/cpu_linux.go:77	failed reading cgroup specific cpu stats, falling back to system wide implementation
+livekit-1  | 2025-06-16T17:00:58.888Z	INFO	livekit	routing/interfaces.go:175	using single-node routing
+livekit-1  | 2025-06-16T17:00:58.935Z	INFO	livekit	service/server.go:265	starting LiveKit server	{"portHttp": 7880, "nodeID": "ND_yJTsWogbV2QJ", "nodeIP": "172.18.0.4", "version": "1.9.0", "rtc.portTCP": 7881, "rtc.portICERange": [50000, 60000]}
+=== FIN LOGS livekit === 
+[16/06/2025 19:13:29,04] ["DEBUG"] "Logs pour le service: whisper-stt" 
+=== LOGS whisper-stt === 
+whisper-stt-1  | INFO:__main__:Initialisation du modèle Whisper: medium sur cpu
+whisper-stt-1  | INFO:__main__:✅ Modèle Whisper initialisé avec succès
+whisper-stt-1  |  * Serving Flask app 'whisper_asr_service'
+whisper-stt-1  |  * Debug mode: off
+whisper-stt-1  | INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+whisper-stt-1  |  * Running on all addresses (0.0.0.0)
+whisper-stt-1  |  * Running on http://127.0.0.1:8001
+whisper-stt-1  |  * Running on http://172.18.0.2:8001
+whisper-stt-1  | INFO:werkzeug:[33mPress CTRL+C to quit[0m
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:01:28] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:01:58] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:02:28] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:02:58] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:03:28] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:03:58] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:04:28] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:04:58] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:05:28] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:05:58] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:06:28] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:06:59] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:07:29] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:07:59] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:08:29] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:08:59] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:09:29] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:09:59] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:10:29] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:10:59] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:11:29] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:11:59] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:12:29] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 17:12:59] "GET /health HTTP/1.1" 200 -
+=== FIN LOGS whisper-stt === 
+[16/06/2025 19:13:29,37] ["DEBUG"] "Logs pour le service: piper-tts" 
+=== LOGS piper-tts === 
+piper-tts-1  | /app/tts_service_piper.py:149: DeprecationWarning: 
+piper-tts-1  |         on_event is deprecated, use lifespan event handlers instead.
+piper-tts-1  | 
+piper-tts-1  |         Read more about it in the
+piper-tts-1  |         [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+piper-tts-1  |         
+piper-tts-1  |   @app.on_event("startup")
+piper-tts-1  | INFO:__main__:🚀 Démarrage du service TTS Piper...
+piper-tts-1  | INFO:     Started server process [1]
+piper-tts-1  | INFO:     Waiting for application startup.
+piper-tts-1  | INFO:__main__:🚀 Démarrage du service TTS Piper...
+piper-tts-1  | INFO:__main__:   URL Piper: http://0.0.0.0:5002/v1/audio/speech
+piper-tts-1  | INFO:__main__:   Voix par défaut: alloy
+piper-tts-1  | INFO:__main__:✅ Service TTS Piper prêt à écouter les requêtes!
+piper-tts-1  | INFO:     Application startup complete.
+piper-tts-1  | INFO:     Uvicorn running on http://0.0.0.0:5002 (Press CTRL+C to quit)
+piper-tts-1  | INFO:     127.0.0.1:43528 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:47280 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:60222 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:46618 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:56488 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:35298 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:33072 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:54560 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:60934 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:49622 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:52454 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:42102 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:51396 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:48304 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:49090 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:60866 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:48766 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:59148 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:41804 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:49358 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:49114 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:53734 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:57250 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:34136 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | INFO:     127.0.0.1:34466 - "GET /health HTTP/1.1" 200 OK
+=== FIN LOGS piper-tts === 
+[16/06/2025 19:13:29,71] ["DEBUG"] "Logs pour le service: eloquence-agent" 
+=== LOGS eloquence-agent === 
+=== FIN LOGS eloquence-agent === 
+[16/06/2025 19:13:29,98] ["DEBUG"] "Logs pour le service: api-backend" 
+=== LOGS api-backend === 
+=== FIN LOGS api-backend === 
+[16/06/2025 19:13:30,17] ["SUCCESS"] "Diagnostic termine" 
+[16/06/2025 19:13:30,17] ["INFO"] "=== PHASE 2: NETTOYAGE DOCKER ===" 
+[16/06/2025 19:13:30,18] ["INFO"] "Arret des services en cours..." 
+[16/06/2025 19:13:41,72] ["INFO"] "Nettoyage des conteneurs arretes..." 
+[16/06/2025 19:13:41,82] ["INFO"] "Nettoyage des conteneurs arretes: Total reclaimed space: 0B" 
+[16/06/2025 19:13:41,82] ["INFO"] "Nettoyage de toutes les images non utilisees..." 
+[16/06/2025 19:13:43,61] ["INFO"] "Nettoyage des images: Total reclaimed space: 32.21MB" 
+[16/06/2025 19:13:43,61] ["INFO"] "Nettoyage des volumes non utilises..." 
+[16/06/2025 19:13:43,69] ["INFO"] "Nettoyage des volumes: Total reclaimed space: 0B" 
+[16/06/2025 19:13:43,69] ["INFO"] "Nettoyage des reseaux non utilises..." 
+[16/06/2025 19:13:43,77] ["INFO"] "Nettoyage des reseaux: " 
+[16/06/2025 19:13:43,78] ["SUCCESS"] "Nettoyage Docker termine" 
+[16/06/2025 19:13:43,78] ["INFO"] "=== PHASE 3: RECONSTRUCTION DES IMAGES ===" 
+[16/06/2025 19:13:43,79] ["INFO"] "Reconstruction des images sans cache..." 
+[16/06/2025 19:18:15,24] ["SUCCESS"] "Reconstruction des images terminee avec succes" 
+[16/06/2025 19:18:15,25] ["INFO"] "=== PHASE 4: REDEMARRAGE DES SERVICES ===" 
+[16/06/2025 19:18:15,25] ["INFO"] "Verification que chaque service a 'restart: on-failure:5'..." 
+[16/06/2025 19:18:15,26] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'livekit'." 
+[16/06/2025 19:18:15,30] ["INFO"] "Service 'livekit' a 'restart: on-failure:5'." 
+[16/06/2025 19:18:15,30] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'whisper-stt'." 
+[16/06/2025 19:18:15,33] ["INFO"] "Service 'whisper-stt' a 'restart: on-failure:5'." 
+[16/06/2025 19:18:15,33] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'piper-tts'." 
+[16/06/2025 19:18:15,36] ["INFO"] "Service 'piper-tts' a 'restart: on-failure:5'." 
+[16/06/2025 19:18:15,37] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'eloquence-agent'." 
+[16/06/2025 19:18:15,40] ["INFO"] "Service 'eloquence-agent' a 'restart: on-failure:5'." 
+[16/06/2025 19:18:15,40] ["DEBUG"] "Verification de 'restart: on-failure:5' pour service 'api-backend'." 
+[16/06/2025 19:18:15,44] ["INFO"] "Service 'api-backend' a 'restart: on-failure:5'." 
+[16/06/2025 19:18:15,44] ["SUCCESS"] "Tous les services ont 'restart: on-failure:5'." 
+[16/06/2025 19:18:15,45] ["INFO"] "Demarrage des services en mode detache..." 
+[16/06/2025 19:19:06,57] ["ERROR"] "Echec du demarrage des services" 

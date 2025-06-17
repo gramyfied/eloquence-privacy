@@ -1,0 +1,131 @@
+[16/06/2025 14:44:58,26] ["INFO"] "Verification des prerequis Docker et Docker-Compose." 
+[16/06/2025 14:44:58,63] ["SUCCESS"] "Tous les prerequis sont satisfaits" 
+[16/06/2025 14:44:58,64] ["INFO"] "=== PHASE 1: DIAGNOSTIC ===" 
+[16/06/2025 14:44:58,64] ["INFO"] "Liste de tous les conteneurs:" 
+NAMES                                        STATUS                     PORTS
+25eloquence-finalisation-eloquence-agent-1   Exited (0) 2 minutes ago   
+25eloquence-finalisation-api-backend-1       Up 2 minutes               0.0.0.0:8000->8000/tcp
+25eloquence-finalisation-whisper-stt-1       Up 2 minutes (healthy)     0.0.0.0:8001->8001/tcp
+25eloquence-finalisation-piper-tts-1         Up 2 minutes (healthy)     0.0.0.0:5002->5002/tcp
+25eloquence-finalisation-livekit-1           Exited (0) 2 minutes ago   
+[16/06/2025 14:44:58,72] ["INFO"] "Usage des ressources systeme:" 
+CONTAINER      CPU %     MEM USAGE / LIMIT   MEM %
+79c066be2bc0   0.13%     33.8MiB / 7.7GiB    0.43%
+b2c0772b067f   0.01%     1.516GiB / 7.7GiB   19.69%
+4b13146c22c8   0.11%     51.64MiB / 7.7GiB   0.65%
+[16/06/2025 14:45:01,31] ["INFO"] "Recuperation des logs des services cles..." 
+[16/06/2025 14:45:01,40] ["DEBUG"] "Logs pour le service: livekit" 
+=== LOGS livekit === 
+livekit-1  | Could not parse keys, it needs to be exactly, "key: secret", including the space
+=== FIN LOGS livekit === 
+[16/06/2025 14:45:01,73] ["DEBUG"] "Logs pour le service: whisper-stt" 
+=== LOGS whisper-stt === 
+whisper-stt-1  | INFO:__main__:Initialisation du modèle Whisper: medium sur cpu
+whisper-stt-1  | INFO:__main__:✅ Modèle Whisper initialisé avec succès
+whisper-stt-1  |  * Serving Flask app 'whisper_asr_service'
+whisper-stt-1  |  * Debug mode: off
+whisper-stt-1  | INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+whisper-stt-1  |  * Running on all addresses (0.0.0.0)
+whisper-stt-1  |  * Running on http://127.0.0.1:8001
+whisper-stt-1  |  * Running on http://172.18.0.3:8001
+whisper-stt-1  | INFO:werkzeug:[33mPress CTRL+C to quit[0m
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 12:42:53] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 12:43:23] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 12:43:53] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 12:44:23] "GET /health HTTP/1.1" 200 -
+whisper-stt-1  | INFO:werkzeug:127.0.0.1 - - [16/Jun/2025 12:44:53] "GET /health HTTP/1.1" 200 -
+=== FIN LOGS whisper-stt === 
+[16/06/2025 14:45:02,06] ["DEBUG"] "Logs pour le service: piper-tts" 
+=== LOGS piper-tts === 
+piper-tts-1  | /app/tts_service_piper.py:172: DeprecationWarning: 
+piper-tts-1  |         on_event is deprecated, use lifespan event handlers instead.
+piper-tts-1  | 
+piper-tts-1  |         Read more about it in the
+piper-tts-1  |         [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+piper-tts-1  |         
+piper-tts-1  |   @app.on_event("startup")
+piper-tts-1  | INFO:__main__:🚀 Démarrage du service TTS Piper...
+piper-tts-1  | INFO:     Started server process [1]
+piper-tts-1  | INFO:     Waiting for application startup.
+piper-tts-1  | INFO:__main__:🚀 Démarrage du service TTS Piper...
+piper-tts-1  | INFO:__main__:   URL Piper: http://localhost:8020/v1/audio/speech
+piper-tts-1  | INFO:__main__:   Voix par défaut: alloy
+piper-tts-1  | ERROR:__main__:❌ Test connexion Piper: HTTPConnectionPool(host='localhost', port=8020): Max retries exceeded with url: /v1/audio/speech (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f35c434ff10>: Failed to establish a new connection: [Errno 111] Connection refused'))
+piper-tts-1  | WARNING:__main__:⚠️ Piper TTS non disponible, mode fallback activé
+piper-tts-1  | INFO:     Application startup complete.
+piper-tts-1  | INFO:     Uvicorn running on http://0.0.0.0:5002 (Press CTRL+C to quit)
+piper-tts-1  | ERROR:__main__:❌ Test connexion Piper: HTTPConnectionPool(host='localhost', port=8020): Max retries exceeded with url: /v1/audio/speech (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f35c435f790>: Failed to establish a new connection: [Errno 111] Connection refused'))
+piper-tts-1  | INFO:     127.0.0.1:39746 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | ERROR:__main__:❌ Test connexion Piper: HTTPConnectionPool(host='localhost', port=8020): Max retries exceeded with url: /v1/audio/speech (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f35c4303d10>: Failed to establish a new connection: [Errno 111] Connection refused'))
+piper-tts-1  | INFO:     127.0.0.1:60102 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | ERROR:__main__:❌ Test connexion Piper: HTTPConnectionPool(host='localhost', port=8020): Max retries exceeded with url: /v1/audio/speech (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f35c4373f90>: Failed to establish a new connection: [Errno 111] Connection refused'))
+piper-tts-1  | INFO:     127.0.0.1:54596 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | ERROR:__main__:❌ Test connexion Piper: HTTPConnectionPool(host='localhost', port=8020): Max retries exceeded with url: /v1/audio/speech (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f35c4385ed0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+piper-tts-1  | INFO:     127.0.0.1:36888 - "GET /health HTTP/1.1" 200 OK
+piper-tts-1  | ERROR:__main__:❌ Test connexion Piper: HTTPConnectionPool(host='localhost', port=8020): Max retries exceeded with url: /v1/audio/speech (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f35c4372450>: Failed to establish a new connection: [Errno 111] Connection refused'))
+piper-tts-1  | INFO:     127.0.0.1:34992 - "GET /health HTTP/1.1" 200 OK
+=== FIN LOGS piper-tts === 
+[16/06/2025 14:45:02,37] ["DEBUG"] "Logs pour le service: eloquence-agent" 
+=== LOGS eloquence-agent === 
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:🚀 Démarrage de l'agent Eloquence 2.0 (Docker)
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:📍 Services configurés:
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:   - LiveKit: ws://livekit:7888
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:   - Whisper STT: http://whisper-stt:8001
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:   - Piper TTS: http://192.168.1.44:8020
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:   - Mistral LLM: mistral-nemo-instruct-2407
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:🏥 Serveur de santé démarré sur le port 8080
+eloquence-agent-1  | INFO:livekit:livekit_ffi::server:139:livekit_ffi::server - initializing ffi server v0.12.26
+eloquence-agent-1  | INFO:livekit:livekit_ffi::cabi:36:livekit_ffi::cabi - initializing ffi server v0.12.26
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Custom { kind: Uncategorized, error: "failed to lookup address information: Name or service not known" }))), retrying... (1/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Custom { kind: Uncategorized, error: "failed to lookup address information: Name or service not known" }))), retrying... (2/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | WARNING:livekit:livekit::rtc_engine:392:livekit::rtc_engine - failed to connect: Signal(WsError(Io(Custom { kind: Uncategorized, error: "failed to lookup address information: Name or service not known" }))), retrying... (3/3)
+eloquence-agent-1  | INFO:livekit:livekit_api::signal_client::signal_stream:106:livekit_api::signal_client::signal_stream - connecting to ws://livekit:7888/rtc?sdk=python&protocol=15&auto_subscribe=1&adaptive_stream=0&version=1.0.9&access_token=...
+eloquence-agent-1  | ERROR:ELOQUENCE_AGENT:❌ Erreur: engine: signal failure: ws failure: IO error: failed to lookup address information: Name or service not known
+eloquence-agent-1  | INFO:ELOQUENCE_AGENT:👋 Agent déconnecté
+eloquence-agent-1  | ERROR:livekit:livekit_ffi::server::room:283:livekit_ffi::server::room - error while connecting to a room: engine: signal failure: ws failure: IO error: failed to lookup address information: Name or service not known
+=== FIN LOGS eloquence-agent === 
+[16/06/2025 14:45:02,70] ["DEBUG"] "Logs pour le service: api-backend" 
+=== LOGS api-backend === 
+api-backend-1  | INFO:     Started server process [1]
+api-backend-1  | INFO:     Waiting for application startup.
+api-backend-1  | INFO:     Application startup complete.
+api-backend-1  | INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+=== FIN LOGS api-backend === 
+[16/06/2025 14:45:02,97] ["SUCCESS"] "Diagnostic termine" 
+[16/06/2025 14:45:02,97] ["INFO"] "=== PHASE 2: NETTOYAGE DOCKER ===" 
+[16/06/2025 14:45:02,98] ["INFO"] "Arret des services en cours..." 
+[16/06/2025 14:45:14,36] ["INFO"] "Nettoyage des conteneurs arretes..." 
+[16/06/2025 14:45:14,44] ["INFO"] "Nettoyage des conteneurs arretes: Total reclaimed space: 0B" 
+[16/06/2025 14:45:14,45] ["INFO"] "Nettoyage de toutes les images non utilisees..." 
+[16/06/2025 14:45:16,05] ["INFO"] "Nettoyage des images: Total reclaimed space: 32.21MB" 
+[16/06/2025 14:45:16,05] ["INFO"] "Nettoyage des volumes non utilises..." 
+[16/06/2025 14:45:16,14] ["INFO"] "Nettoyage des volumes: Total reclaimed space: 0B" 
+[16/06/2025 14:45:16,14] ["INFO"] "Nettoyage des reseaux non utilises..." 
+[16/06/2025 14:45:16,22] ["INFO"] "Nettoyage des reseaux: " 
+[16/06/2025 14:45:16,22] ["SUCCESS"] "Nettoyage Docker termine" 
+[16/06/2025 14:45:16,23] ["INFO"] "=== PHASE 3: RECONSTRUCTION DES IMAGES ===" 
+[16/06/2025 14:45:16,23] ["INFO"] "Reconstruction des images sans cache..." 
+[16/06/2025 14:49:57,05] ["SUCCESS"] "Reconstruction des images terminee avec succes" 
+[16/06/2025 14:49:57,05] ["INFO"] "=== PHASE 4: REDEMARRAGE DES SERVICES ===" 
+[16/06/2025 14:49:57,06] ["INFO"] "Verification que chaque service a 'restart: on-failure:5'..." 
+[16/06/2025 14:49:57,10] ["WARNING"] "Service 'livekit' non trouve dans docker-compose.yml. Impossible de verifier 'restart: on-failure:5'." 
+[16/06/2025 14:49:57,11] ["INFO"] "Service ' on-failure:5'." 
+[16/06/2025 14:49:57,11] ["SUCCESS"] "Tous les services ont 'restart: on-failure:5'." 
+[16/06/2025 14:49:57,12] ["INFO"] "Demarrage des services en mode detache..." 
+[16/06/2025 14:50:06,71] ["SUCCESS"] "Services demarres avec succes" 
+[16/06/2025 14:50:06,71] ["INFO"] "Attente de 10 secondes pour la stabilisation des services..." 
+[16/06/2025 14:50:16,19] ["INFO"] "=== PHASE 5: VERIFICATION DE LA SANTE DES SERVICES ===" 
+[16/06/2025 14:50:16,33] ["SUCCESS"] "Tous les services sont sains." 
+[16/06/2025 14:50:16,34] ["INFO"] "=== RAPPORT FINAL ===" 
+[16/06/2025 14:50:16,83] ["SUCCESS"] "Maintenance Docker terminee avec succes" 
+[16/06/2025 14:50:16,84] ["INFO"] "Services disponibles:" 
+[16/06/2025 14:50:16,84] ["INFO"] "  • LiveKit Server: http://localhost:7880" 
+[16/06/2025 14:50:16,84] ["INFO"] "  • Whisper STT: http://localhost:8001" 
+[16/06/2025 14:50:16,85] ["INFO"] "  • Piper TTS: http://localhost:5002" 
+[16/06/2025 14:50:16,85] ["INFO"] "  • API Backend: http://localhost:8000" 
+[16/06/2025 14:50:16,89] ["WARNING"] "Service 'livekit' non trouve dans docker-compose.yml. Impossible de verifier 'restart: on-failure:5'." 
+[16/06/2025 14:50:16,89] ["INFO"] "Service ' on-failure:5'." 
+[16/06/2025 14:50:16,90] ["SUCCESS"] "Tous les services ont 'restart: on-failure:5'." 
