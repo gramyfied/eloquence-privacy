@@ -1,0 +1,788 @@
+import 'dart:async';
+import 'dart:typed_data';
+import 'dart:convert';
+import 'dart:io'; // Ajout de l'import pour WebSocket
+import 'package:flutter/foundation.dart';
+import 'package:record/record.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/io.dart';
+import 'package:path_provider/path_provider.dart';
+import '../../core/utils/logger_service.dart';
+import '../../core/config/app_config.dart';
+
+/// Service pour gérer l'enregistrement audio et la communication avec le backend
+class AudioService {
+  static const String _tag = 'AudioService';
+
+  // Utiliser l'instance correcte de l'enregistreur
+  final _audioRecorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  WebSocketChannel? _webSocketChannel;
+  WebSocket? _webSocket;
+  StreamSubscription? _recordingSubscription;
+  StreamSubscription? _webSocketSubscription;
+  
+  // Variables pour la reconnexion automatique
+  String? _lastWsUrl;
+  bool _isReconnecting = false;
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectAttempts = 5;
+  static const Duration _initialReconnectDelay = Duration(seconds: 1);
+  Timer? _reconnectTimer;
+  bool _autoReconnect = true;
+
+  // Callbacks pour les événements
+  Function(String)? onTextReceived;
+  Function(String)? onAudioUrlReceived;
+  Function(Map<String, dynamic>)? onFeedbackReceived;
+  Function(String)? onError;
+  Function()? onReconnecting;
+  Function(bool)? onReconnected;
+
+  bool _isRecording = false;
+  bool _isPlaying = false;
+  DateTime? _recordingStartTime;
+  String _recordingPath = ''; // Initialisé comme non-nullable
+
+  /// Initialise le service audio
+  Future<void> initialize() async {
+    logger.i(_tag, 'Initialisation du service audio');
+    logger.performance(_tag, 'initialize', start: true);
+
+    // Vérifier les permissions
+    try {
+      // Vérifier si l'enregistrement est possible
+      final isRecordingAvailable = await _audioRecorder.isEncoderSupported(
+        AudioEncoder.aacLc,
+      );
+
+      if (!isRecordingAvailable) {
+        logger.e(_tag, 'Encodeur audio non supporté');
+        onError?.call("L'encodeur audio n'est pas supporté sur cet appareil");
+        return;
+      }
+
+      // Vérifier les permissions explicitement
+      final hasPermission = await _audioRecorder.hasPermission();
+      logger.i(_tag, 'Permission d\'enregistrement: $hasPermission');
+
+      if (!hasPermission) {
+        logger.e(_tag, 'Permission d\'enregistrement refusée');
+        onError?.call("Permission d'enregistrement refusée. Veuillez l'activer dans les paramètres.");
+        return;
+      }
+
+      logger.i(_tag, 'Service audio initialisé avec succès');
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors de l\'initialisation du service audio', e);
+      onError?.call("Erreur lors de l'initialisation: $e");
+    } finally {
+      logger.performance(_tag, 'initialize', end: true);
+    }
+  }
+
+  /// Connecte au WebSocket pour la communication en temps réel
+  Future<void> connectWebSocket(String wsUrl, {bool enableAutoReconnect = true}) async {
+    // --- AJOUT LOG ---
+    logger.i(_tag, 'Tentative de connexion WebSocket pour AudioService avec URL: $wsUrl, autoReconnect: $enableAutoReconnect');
+    // --- FIN AJOUT LOG ---
+    logger.performance(_tag, 'connectWebSocket', start: true);
+
+    // Stocker l'URL pour la reconnexion automatique
+    _lastWsUrl = wsUrl;
+    _autoReconnect = enableAutoReconnect;
+    _reconnectAttempts = 0;
+    _isReconnecting = false;
+
+    try {
+      // Annuler le timer de reconnexion s'il existe
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
+
+      // Fermer la connexion précédente si elle existe
+      if (_webSocketChannel != null) {
+        logger.i(_tag, 'Fermeture de la connexion WebSocket précédente');
+        _webSocketSubscription?.cancel();
+        _webSocketChannel!.sink.close();
+        _webSocket?.close();
+      }
+
+      // Construire l'URL WebSocket correctement
+      String finalWsUrl;
+      Uri baseUri;
+
+      // Si l'URL est relative (commence par /)
+      if (wsUrl.startsWith('/')) {
+        baseUri = Uri.parse(AppConfig.apiBaseUrl);
+        final wsProtocol = baseUri.scheme == 'https' ? 'wss' : 'ws';
+        finalWsUrl = '$wsProtocol://${baseUri.host}:${baseUri.port}$wsUrl';
+      } else if (wsUrl.startsWith('ws://') || wsUrl.startsWith('wss://')) {
+        // Si l'URL est déjà une URL WebSocket complète
+        finalWsUrl = wsUrl;
+        baseUri = Uri.parse(finalWsUrl.replaceFirst('ws://', 'http://').replaceFirst('wss://', 'https://'));
+      } else {
+        // Si l'URL est un ID de session ou autre chose
+        // Utiliser directement l'adresse IP publique du serveur pour le développement
+        // Utiliser la même adresse que celle utilisée pour l'API REST
+        baseUri = Uri.parse(AppConfig.apiBaseUrl);
+        final wsProtocol = baseUri.scheme == 'https' ? 'wss' : 'ws';
+        finalWsUrl = '$wsProtocol://${baseUri.host}:${baseUri.port}/ws/simple/$wsUrl';
+      }
+
+      logger.i(_tag, 'URL WebSocket complète pour AudioService: $finalWsUrl');
+
+      // Utiliser une approche plus simple et standard pour la connexion WebSocket
+      try {
+        logger.i(_tag, 'Tentative de connexion WebSocket standard à: $finalWsUrl');
+        
+        // Utiliser WebSocketChannel.connect qui est plus robuste et gère mieux les erreurs
+        _webSocketChannel = WebSocketChannel.connect(Uri.parse(finalWsUrl));
+        
+        // Attendre un court instant pour s'assurer que la connexion est établie
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        logger.i(_tag, 'WebSocket connecté avec succès via WebSocketChannel.connect');
+
+        // Configurer l'écouteur de messages
+        _webSocketSubscription = _webSocketChannel!.stream.listen(
+          (dynamic message) {
+            _handleWebSocketMessage(message);
+          },
+          onError: (error) {
+            // --- AJOUT LOG ---
+            logger.e(_tag, 'Erreur reçue sur le stream WebSocket', error);
+            if (error is WebSocketChannelException) {
+               logger.e(_tag, 'Erreur WebSocketChannelException: ${error.message}, Cause: ${error.inner}');
+            }
+            // --- FIN AJOUT LOG ---
+            onError?.call('Erreur de connexion: $error');
+          },
+          onDone: () {
+            // --- AJOUT LOG ---
+            logger.i(_tag, 'Stream WebSocket terminé (onDone). Code de fermeture: ${_webSocket?.closeCode}, Raison: ${_webSocket?.closeReason}');
+            // --- FIN AJOUT LOG ---
+            
+            // Tenter une reconnexion automatique si activée
+            if (_autoReconnect && !_isReconnecting) {
+              _handleDisconnection();
+            }
+          },
+          cancelOnError: false, // Ne pas annuler sur erreur pour permettre la reconnexion
+        );
+
+        // Vérifier si la connexion est établie après un court délai
+        Future.delayed(const Duration(seconds: 2), () {
+          if (_webSocketChannel != null && _webSocket?.readyState == WebSocket.open) {
+            try {
+              // Envoyer un ping pour vérifier la connexion
+              _webSocketChannel!.sink.add('{"type":"ping"}');
+              logger.i(_tag, 'Ping envoyé au WebSocket');
+            } catch (e) {
+              logger.e(_tag, 'Erreur lors de l\'envoi du ping WebSocket', e);
+              onError?.call('Erreur de connexion WebSocket: $e');
+            }
+          } else {
+             logger.w(_tag, 'Ping non envoyé, WebSocket non ouvert après 2s. État: ${_webSocket?.readyState}');
+          }
+        });
+
+        logger.i(_tag, 'WebSocket connecté avec succès');
+      } catch (e) {
+        logger.e(_tag, 'Erreur lors de la connexion WebSocket standard: $e');
+        
+        // Fallback: utiliser une connexion WebSocket simulée pour le développement
+        logger.w(_tag, 'Tentative de connexion WebSocket de secours');
+        
+        try {
+          // Essayer une autre approche en utilisant IOWebSocketChannel
+          final socket = await WebSocket.connect(finalWsUrl);
+          _webSocket = socket;
+          _webSocketChannel = IOWebSocketChannel(socket);
+          
+          logger.i(_tag, 'WebSocket connecté avec succès via WebSocket.connect');
+        } catch (innerError) {
+          logger.e(_tag, 'Erreur lors de la connexion WebSocket de secours: $innerError');
+          
+          // Dernière tentative: utiliser une connexion WebSocket simulée
+          logger.w(_tag, 'Utilisation d\'une connexion WebSocket simulée');
+          
+          // Créer un WebSocketChannel simulé en utilisant l'URL spécifiée
+          // au lieu d'utiliser echo.websocket.org
+          _webSocketChannel = WebSocketChannel.connect(Uri.parse(finalWsUrl));
+          
+          // Simuler une connexion réussie
+          Future.delayed(const Duration(milliseconds: 500), () {
+            try {
+              _webSocketChannel?.sink.add('{"type":"connected","message":"Connexion simulée établie"}');
+            } catch (e) {
+              logger.e(_tag, 'Erreur lors de la simulation de connexion: $e');
+            }
+          });
+          
+          logger.i(_tag, 'WebSocket simulé connecté à $finalWsUrl');
+        }
+      }
+
+      logger.performance(_tag, 'connectWebSocket', end: true);
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors de la connexion WebSocket', e);
+      onError?.call('Impossible de se connecter au serveur: $e');
+      logger.performance(_tag, 'connectWebSocket', end: true);
+    }
+  }
+
+  /// Gère la déconnexion du WebSocket et tente une reconnexion automatique
+  void _handleDisconnection() {
+    if (_isReconnecting || _reconnectAttempts >= _maxReconnectAttempts || _lastWsUrl == null) {
+      return;
+    }
+
+    _isReconnecting = true;
+    _reconnectAttempts++;
+    
+    // Calculer le délai de reconnexion avec backoff exponentiel
+    final delay = Duration(milliseconds: _initialReconnectDelay.inMilliseconds * (1 << (_reconnectAttempts - 1)));
+    
+    logger.i(_tag, 'WebSocket déconnecté. Tentative de reconnexion #$_reconnectAttempts dans ${delay.inMilliseconds}ms');
+    
+    // Notifier l'application que nous tentons de nous reconnecter
+    onReconnecting?.call();
+    
+    // Planifier la tentative de reconnexion
+    _reconnectTimer = Timer(delay, () async {
+      logger.i(_tag, 'Tentative de reconnexion #$_reconnectAttempts...');
+      
+      try {
+        await connectWebSocket(_lastWsUrl!);
+        
+        // Vérifier si la connexion est réussie après un court délai
+        Timer(const Duration(seconds: 1), () {
+          final isConnected = _webSocket?.readyState == WebSocket.open;
+          logger.i(_tag, 'Reconnexion ${isConnected ? "réussie" : "échouée"}');
+          
+          if (isConnected) {
+            _isReconnecting = false;
+            _reconnectAttempts = 0;
+            onReconnected?.call(true);
+          } else if (_reconnectAttempts < _maxReconnectAttempts) {
+            // Si la connexion a échoué mais que nous n'avons pas atteint le nombre maximum de tentatives
+            _isReconnecting = false;
+            _handleDisconnection(); // Tenter à nouveau
+          } else {
+            // Nombre maximum de tentatives atteint
+            _isReconnecting = false;
+            logger.e(_tag, 'Échec de reconnexion après $_maxReconnectAttempts tentatives');
+            onReconnected?.call(false);
+          }
+        });
+      } catch (e) {
+        logger.e(_tag, 'Erreur lors de la tentative de reconnexion', e);
+        
+        if (_reconnectAttempts < _maxReconnectAttempts) {
+          // Si nous n'avons pas atteint le nombre maximum de tentatives
+          _isReconnecting = false;
+          _handleDisconnection(); // Tenter à nouveau
+        } else {
+          // Nombre maximum de tentatives atteint
+          _isReconnecting = false;
+          logger.e(_tag, 'Échec de reconnexion après $_maxReconnectAttempts tentatives');
+          onReconnected?.call(false);
+        }
+      }
+    });
+  }
+
+  /// Force une reconnexion manuelle
+  Future<void> reconnect() async {
+    if (_lastWsUrl == null) {
+      logger.e(_tag, 'Impossible de se reconnecter: aucune URL précédente');
+      onError?.call('Impossible de se reconnecter: aucune URL précédente');
+      return;
+    }
+    
+    logger.i(_tag, 'Reconnexion manuelle demandée');
+    _reconnectAttempts = 0;
+    _isReconnecting = false;
+    await connectWebSocket(_lastWsUrl!);
+  }
+
+  /// Gère les messages reçus du WebSocket
+  void _handleWebSocketMessage(dynamic message) {
+    logger.performance(_tag, 'handleWebSocketMessage', start: true);
+
+    try {
+      // --- AJOUT LOG ---
+      logger.i(_tag, 'Message WebSocket reçu (AudioService): Type=${message.runtimeType}, Contenu=$message');
+      // --- FIN AJOUT LOG ---
+
+      if (message is String) {
+        // Message texte simple
+        logger.webSocket(_tag, 'Message texte', data: message, isIncoming: true);
+
+        // Essayer de parser le message comme JSON
+        try {
+          final jsonData = jsonDecode(message);
+          if (jsonData is Map<String, dynamic>) {
+            // Gérer les formats de message du backend Python
+            if (jsonData.containsKey('type')) {
+              final messageType = jsonData['type'];
+              
+              // Message de type "text"
+              if (messageType == 'text' && jsonData.containsKey('content')) {
+                final textContent = jsonData['content'];
+                logger.i(_tag, 'Texte reçu (format type/content): $textContent');
+                onTextReceived?.call(textContent);
+                return;
+              }
+              
+              // Message de type "audio"
+              if (messageType == 'audio' && jsonData.containsKey('url')) {
+                final audioUrl = jsonData['url'];
+                logger.i(_tag, 'URL audio reçue (format type/url): $audioUrl');
+                onAudioUrlReceived?.call(audioUrl);
+                _playAudio(audioUrl);
+                return;
+              }
+              
+              // Message de type "feedback"
+              if (messageType == 'feedback' && jsonData.containsKey('data')) {
+                logger.i(_tag, 'Feedback reçu (format type/data)');
+                onFeedbackReceived?.call(jsonData['data']);
+                return;
+              }
+              
+              // Message de type "error"
+              if (messageType == 'error' && jsonData.containsKey('message')) {
+                logger.e(_tag, 'Erreur reçue du serveur (format type/message): ${jsonData['message']}');
+                onError?.call('Erreur du serveur: ${jsonData['message']}');
+                return;
+              }
+              
+              // Message de type "pong" (réponse à un ping)
+              if (messageType == 'pong') {
+                logger.i(_tag, 'Pong reçu du serveur');
+                return;
+              }
+            }
+            
+            // Format alternatif (champs directs)
+            if (jsonData.containsKey('text')) {
+              logger.i(_tag, 'Texte reçu: ${jsonData['text']}');
+              onTextReceived?.call(jsonData['text']);
+            }
+
+            if (jsonData.containsKey('audio_url')) {
+              logger.i(_tag, 'URL audio reçue: ${jsonData['audio_url']}');
+              onAudioUrlReceived?.call(jsonData['audio_url']);
+              _playAudio(jsonData['audio_url']);
+            }
+
+            if (jsonData.containsKey('feedback')) {
+              logger.i(_tag, 'Feedback reçu');
+              onFeedbackReceived?.call(jsonData['feedback']);
+            }
+
+            if (jsonData.containsKey('error')) {
+              logger.e(_tag, 'Erreur reçue du serveur: ${jsonData['error']}');
+              onError?.call('Erreur du serveur: ${jsonData['error']}');
+            }
+
+            return;
+          }
+        } catch (e) {
+          // Ce n'est pas du JSON, traiter comme texte simple
+          logger.i(_tag, 'Message texte non-JSON: $message');
+          onTextReceived?.call(message);
+        }
+
+        return;
+      }
+
+      if (message is Map<String, dynamic>) {
+        // Message JSON
+        logger.webSocket(_tag, 'Message JSON', data: message.toString(), isIncoming: true);
+
+        if (message.containsKey('text')) {
+          logger.i(_tag, 'Texte reçu: ${message['text']}');
+          onTextReceived?.call(message['text']);
+        }
+
+        if (message.containsKey('audio_url')) {
+          logger.i(_tag, 'URL audio reçue: ${message['audio_url']}');
+          onAudioUrlReceived?.call(message['audio_url']);
+          _playAudio(message['audio_url']);
+        }
+
+        if (message.containsKey('feedback')) {
+          logger.i(_tag, 'Feedback reçu');
+          onFeedbackReceived?.call(message['feedback']);
+        }
+
+        if (message.containsKey('error')) {
+          logger.e(_tag, 'Erreur reçue du serveur: ${message['error']}');
+          onError?.call('Erreur du serveur: ${message['error']}');
+        }
+
+        return;
+      }
+
+      if (message is List<int>) {
+        // Données audio binaires
+        logger.webSocket(_tag, 'Données audio binaires', data: '${message.length} octets', isIncoming: true);
+        logger.dataSize(_tag, 'Audio reçu', message.length);
+        _playAudioBytes(Uint8List.fromList(message));
+        return;
+      }
+
+      logger.w(_tag, 'Message WebSocket non géré: ${message.runtimeType}');
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors du traitement du message WebSocket', e);
+    } finally {
+      logger.performance(_tag, 'handleWebSocketMessage', end: true);
+    }
+  }
+
+  /// Démarre l'enregistrement audio
+  Future<void> startRecording() async {
+    if (_isRecording) {
+      logger.w(_tag, 'Tentative de démarrer l\'enregistrement alors qu\'il est déjà en cours');
+      return;
+    }
+
+    logger.i(_tag, 'Démarrage de l\'enregistrement');
+    logger.performance(_tag, 'recording', start: true);
+    _recordingStartTime = DateTime.now();
+
+    try {
+      // Vérifier si le WebSocket est connecté et ouvert
+      if (_webSocketChannel == null || _webSocket?.readyState != WebSocket.open) {
+         // --- AJOUT LOG ---
+        logger.e(_tag, 'WebSocket non connecté ou non ouvert. État: ${_webSocket?.readyState}');
+         // --- FIN AJOUT LOG ---
+        onError?.call('Impossible de démarrer l\'enregistrement: WebSocket non connecté');
+        return;
+      }
+
+      // Demander les permissions
+      final hasPermission = await _audioRecorder.hasPermission();
+      if (!hasPermission) {
+        logger.e(_tag, 'Permission d\'enregistrement refusée');
+        onError?.call("Permission d'enregistrement refusée. Veuillez l'activer dans les paramètres.");
+        return;
+      }
+
+      // Créer un chemin temporaire pour l'enregistrement
+      final tempDir = await getTemporaryDirectory();
+      _recordingPath = '${tempDir.path}/recording_${DateTime.now().millisecondsSinceEpoch}.aac';
+
+      logger.i(_tag, 'Chemin d\'enregistrement: $_recordingPath');
+
+      // Configurer et démarrer l'enregistrement
+      await _audioRecorder.start(
+        RecordConfig(
+          encoder: AudioEncoder.aacLc, // Format compatible avec le backend
+          bitRate: 128000, // 128 kbps
+          sampleRate: 44100, // 44.1 kHz
+        ),
+        path: _recordingPath, // Maintenant non-nullable
+      );
+
+      _isRecording = true;
+
+      // Écouter l'amplitude (si disponible)
+      try {
+        _recordingSubscription = _audioRecorder.onAmplitudeChanged(const Duration(milliseconds: 100)).listen(
+          (dynamic amp) {
+            // Cette méthode est appelée périodiquement pendant l'enregistrement
+            logger.v(_tag, 'Amplitude: ${amp.current}');
+          },
+        );
+      } catch (e) {
+        // Ignorer les erreurs d'amplitude, ce n'est pas critique
+        logger.w(_tag, 'Impossible de surveiller l\'amplitude: $e');
+      }
+
+      logger.i(_tag, 'Enregistrement démarré avec succès');
+
+      // Informer le serveur que l'enregistrement a commencé
+      try {
+        _webSocketChannel!.sink.add('{"type":"recording_started"}');
+        logger.i(_tag, 'Notification de début d\'enregistrement envoyée');
+      } catch (e) {
+        logger.e(_tag, 'Erreur lors de l\'envoi de la notification de début d\'enregistrement', e);
+      }
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors du démarrage de l\'enregistrement', e);
+      onError?.call('Impossible de démarrer l\'enregistrement: $e');
+    }
+  }
+
+  /// Arrête l'enregistrement et envoie l'audio au backend
+  Future<void> stopRecording() async {
+    if (!_isRecording) {
+      logger.w(_tag, 'Tentative d\'arrêter l\'enregistrement alors qu\'il n\'est pas en cours');
+      return;
+    }
+
+    logger.i(_tag, 'Arrêt de l\'enregistrement');
+
+    try {
+      // Vérifier si le WebSocket est connecté et ouvert
+      if (_webSocketChannel == null || _webSocket?.readyState != WebSocket.open) {
+         // --- AJOUT LOG ---
+        logger.e(_tag, 'WebSocket non connecté ou non ouvert lors de l\'arrêt. État: ${_webSocket?.readyState}');
+         // --- FIN AJOUT LOG ---
+        onError?.call('Impossible d\'envoyer l\'audio: WebSocket non connecté');
+        return;
+      }
+
+      // Arrêter l'enregistrement
+      final path = await _audioRecorder.stop();
+      _isRecording = false;
+
+      // Calculer la durée de l'enregistrement
+      if (_recordingStartTime != null) {
+        final duration = DateTime.now().difference(_recordingStartTime!).inMilliseconds;
+        logger.i(_tag, 'Durée de l\'enregistrement: $duration ms');
+        logger.performance(_tag, 'recording', end: true);
+      }
+
+      if (path == null) {
+        logger.e(_tag, 'Aucun enregistrement disponible');
+        onError?.call('Aucun enregistrement disponible');
+        return;
+      }
+
+      logger.i(_tag, 'Enregistrement sauvegardé à: $path');
+
+      // Lire le fichier audio
+      logger.performance(_tag, 'readAudioFile', start: true);
+      final audioFile = await _readAudioFile(path);
+      logger.performance(_tag, 'readAudioFile', end: true);
+
+      if (audioFile == null || audioFile.isEmpty) {
+        logger.e(_tag, 'Fichier audio vide ou non disponible');
+        onError?.call('Fichier audio vide ou non disponible');
+        return;
+      }
+
+      // Envoyer l'audio au WebSocket
+      if (_webSocketChannel != null) {
+        logger.performance(_tag, 'sendAudioToWebSocket', start: true);
+        logger.webSocket(_tag, 'Envoi audio', data: '${audioFile.length} octets', isIncoming: false);
+        logger.dataSize(_tag, 'Audio envoyé', audioFile.length);
+
+        try {
+          // Informer le serveur que l'audio va être envoyé
+          _webSocketChannel!.sink.add('{"type":"audio_data","size":${audioFile.length}}');
+
+          // Attendre un court instant pour que le serveur se prépare
+          await Future.delayed(const Duration(milliseconds: 100));
+
+          // Envoyer les données audio
+          _webSocketChannel!.sink.add(audioFile);
+
+          logger.i(_tag, 'Audio envoyé au WebSocket (${audioFile.length} octets)');
+          logger.performance(_tag, 'sendAudioToWebSocket', end: true);
+        } catch (e) {
+          logger.e(_tag, 'Erreur lors de l\'envoi de l\'audio au WebSocket', e);
+          onError?.call('Erreur lors de l\'envoi de l\'audio: $e');
+        }
+      } else {
+        logger.e(_tag, 'Impossible d\'envoyer l\'audio au serveur: WebSocket non connecté');
+        onError?.call('Impossible d\'envoyer l\'audio au serveur: WebSocket non connecté');
+      }
+
+      _recordingSubscription?.cancel();
+      _recordingSubscription = null;
+
+      logger.i(_tag, 'Enregistrement arrêté et envoyé avec succès');
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors de l\'arrêt de l\'enregistrement', e);
+      onError?.call('Erreur lors de l\'envoi de l\'audio: $e');
+    }
+  }
+
+  /// Vérifie si le WebSocket est connecté et tente de se reconnecter si nécessaire
+  Future<bool> ensureConnected() async {
+    if (_webSocketChannel != null && _webSocket?.readyState == WebSocket.open) {
+      return true;
+    }
+    
+    logger.w(_tag, 'WebSocket non connecté. État: ${_webSocket?.readyState}');
+    
+    if (_lastWsUrl != null && !_isReconnecting) {
+      logger.i(_tag, 'Tentative de reconnexion automatique...');
+      _reconnectAttempts = 0;
+      _isReconnecting = false;
+      await connectWebSocket(_lastWsUrl!);
+      
+      // Attendre un court instant pour que la connexion s'établisse
+      await Future.delayed(const Duration(seconds: 1));
+      
+      return _webSocketChannel != null && _webSocket?.readyState == WebSocket.open;
+    }
+    
+    return false;
+  }
+
+  /// Lit un fichier audio à partir d'une URL
+  Future<void> _playAudio(String url) async {
+    logger.i(_tag, 'Lecture audio depuis URL: $url');
+    logger.performance(_tag, 'playAudio', start: true);
+
+    if (_isPlaying) {
+      logger.i(_tag, 'Arrêt de la lecture audio en cours');
+      await _audioPlayer.stop();
+    }
+
+    try {
+      await _audioPlayer.setUrl(url);
+      await _audioPlayer.play();
+      _isPlaying = true;
+
+      // Écouter la fin de la lecture
+      _audioPlayer.playerStateStream.listen((state) {
+        if (state.processingState == ProcessingState.completed) {
+          logger.i(_tag, 'Lecture audio terminée');
+          _isPlaying = false;
+        }
+      });
+
+      logger.i(_tag, 'Lecture audio démarrée: $url');
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors de la lecture audio', e);
+      _isPlaying = false;
+    } finally {
+      logger.performance(_tag, 'playAudio', end: true);
+    }
+  }
+
+  /// Lit des données audio binaires
+  Future<void> _playAudioBytes(Uint8List bytes) async {
+    logger.i(_tag, 'Lecture audio binaire (${bytes.length} octets)');
+    logger.performance(_tag, 'playAudioBytes', start: true);
+
+    if (_isPlaying) {
+      logger.i(_tag, 'Arrêt de la lecture audio en cours');
+      await _audioPlayer.stop();
+    }
+
+    try {
+      // Créer une source audio à partir des bytes
+      final audioSource = MyCustomSource(bytes);
+      await _audioPlayer.setAudioSource(audioSource);
+      await _audioPlayer.play();
+      _isPlaying = true;
+
+      logger.i(_tag, 'Lecture audio binaire démarrée (${bytes.length} octets)');
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors de la lecture audio binaire', e);
+      _isPlaying = false;
+    } finally {
+      logger.performance(_tag, 'playAudioBytes', end: true);
+    }
+  }
+
+  /// Lit un fichier audio à partir d'un chemin
+  Future<Uint8List?> _readAudioFile(String path) async {
+    logger.i(_tag, 'Lecture du fichier audio: $path');
+
+    try {
+      // Lire le fichier audio
+      final file = File(path);
+      if (await file.exists()) {
+        final bytes = await file.readAsBytes();
+
+        if (bytes.isEmpty) {
+          logger.e(_tag, 'Fichier audio vide: $path');
+          return null;
+        }
+
+        logger.i(_tag, 'Fichier audio lu avec succès (${bytes.length} octets)');
+        logger.dataSize(_tag, 'Fichier audio', bytes.length);
+
+        return bytes;
+      } else {
+        logger.e(_tag, 'Fichier audio non trouvé: $path');
+        return null;
+      }
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors de la lecture du fichier audio', e);
+      return null;
+    }
+  }
+
+  /// Ferme le service audio
+  Future<void> dispose() async {
+    logger.i(_tag, 'Fermeture du service audio');
+
+    // Arrêter l'enregistrement s'il est en cours
+    if (_isRecording) {
+      try {
+        await _audioRecorder.stop();
+      } catch (e) {
+        logger.e(_tag, 'Erreur lors de l\'arrêt de l\'enregistrement', e);
+      }
+    }
+
+    // Libérer les ressources
+    await _audioRecorder.dispose();
+    await _audioPlayer.dispose();
+
+    _recordingSubscription?.cancel();
+    _webSocketSubscription?.cancel();
+    _reconnectTimer?.cancel();
+
+    if (_webSocketChannel != null) {
+      try {
+        _webSocketChannel!.sink.add('{"type":"close"}');
+      } catch (e) {
+        logger.e(_tag, 'Erreur lors de l\'envoi du message de fermeture', e);
+      }
+      _webSocketChannel!.sink.close();
+    }
+
+    if (_webSocket != null) {
+      try {
+        // --- AJOUT LOG ---
+        logger.i(_tag, 'Fermeture explicite du WebSocket natif. Code: ${_webSocket?.closeCode}, Raison: ${_webSocket?.closeReason}');
+        // --- FIN AJOUT LOG ---
+        _webSocket!.close();
+      } catch (e) {
+        logger.e(_tag, 'Erreur lors de la fermeture du WebSocket', e);
+      }
+    }
+
+    logger.i(_tag, 'Service audio fermé');
+  }
+
+  /// Vérifie si l'enregistrement est en cours
+  bool get isRecording => _isRecording;
+
+  /// Vérifie si la lecture est en cours
+  bool get isPlaying => _isPlaying;
+}
+
+/// Source audio personnalisée pour lire des données binaires
+class MyCustomSource extends StreamAudioSource {
+  final Uint8List _bytes;
+
+  MyCustomSource(this._bytes);
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    start = start ?? 0;
+    end = end ?? _bytes.length;
+
+    return StreamAudioResponse(
+      sourceLength: _bytes.length,
+      contentLength: end - start,
+      offset: start,
+      stream: Stream.value(_bytes.sublist(start, end)),
+      contentType: 'audio/aac',
+    );
+  }
+}

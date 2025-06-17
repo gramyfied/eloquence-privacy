@@ -1,0 +1,513 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'dart:typed_data'; // Ajout pour Uint8List
+
+import 'package:eloquence_2_0/data/models/scenario_model.dart';
+import 'package:eloquence_2_0/data/models/session_model.dart';
+import 'package:eloquence_2_0/data/services/api_service.dart';
+import 'package:eloquence_2_0/core/utils/logger_service.dart';
+import 'package:eloquence_2_0/core/config/app_config.dart'; // Importez AppConfig
+// Importer les providers pour y accéder
+import 'package:eloquence_2_0/presentation/providers/audio_provider.dart';
+import 'package:eloquence_2_0/presentation/providers/livekit_provider.dart';
+import 'package:eloquence_2_0/presentation/providers/livekit_audio_provider.dart';
+
+// Provider pour le service API
+final apiServiceProvider = Provider<ApiService>((ref) {
+  // Pour le moment, nous n'avons pas d'authentification
+  // Dans une implémentation réelle, vous récupéreriez le token d'un service d'authentification
+  return ApiService(
+    baseUrl: AppConfig.apiBaseUrl, // Utiliser l'URL configurée dans AppConfig
+    authToken: null,
+    apiKey: AppConfig.apiKey ?? 'eloquence_secure_api_key_production_2025', // Utiliser la clé API de AppConfig
+  );
+});
+
+// Liste des scénarios de démonstration
+final List<ScenarioModel> _demoScenarios = [
+  ScenarioModel(
+    id: 'demo-1',
+    name: 'Entretien d\'embauche',
+    description: 'Préparez-vous à un entretien d\'embauche pour un poste de développeur.',
+    type: 'entretien',
+    difficulty: 'moyen',
+    language: 'fr',
+  ),
+  ScenarioModel(
+    id: 'demo-2',
+    name: 'Présentation de projet',
+    description: 'Entraînez-vous à présenter un projet devant une audience.',
+    type: 'présentation',
+    difficulty: 'facile',
+    language: 'fr',
+  ),
+  ScenarioModel(
+    id: 'demo-3',
+    name: 'Négociation commerciale',
+    description: 'Améliorez vos compétences en négociation commerciale.',
+    type: 'négociation',
+    difficulty: 'difficile',
+    language: 'fr',
+  ),
+];
+
+// Provider pour la liste des scénarios
+final scenariosProvider = FutureProvider<List<ScenarioModel>>((ref) async {
+  final apiService = ref.watch(apiServiceProvider);
+  
+  // Afficher l'URL de l'API utilisée
+  logger.i('ScenariosProvider', "URL de l'API: ${AppConfig.apiBaseUrl}");
+  
+  try {
+    logger.i('ScenariosProvider', 'Récupération des scénarios depuis l\'API');
+    
+    // Tentative de récupération des scénarios depuis l'API
+    final scenarios = await apiService.getScenarios();
+
+    // Si la liste est vide, utiliser des scénarios de démonstration
+    if (scenarios.isEmpty) {
+      logger.w('ScenariosProvider', 'Aucun scénario récupéré, utilisation des scénarios de démonstration');
+      return _demoScenarios;
+    }
+
+    logger.i('ScenariosProvider', '${scenarios.length} scénarios récupérés avec succès');
+    return scenarios;
+  } catch (e, stackTrace) {
+    // En cas d'erreur, afficher des informations détaillées et utiliser des scénarios de démonstration
+    logger.e('ScenariosProvider', 'Erreur lors de la récupération des scénarios: $e');
+    logger.e('ScenariosProvider', 'StackTrace: $stackTrace');
+    
+    // Afficher des informations sur la configuration réseau
+    logger.i('ScenariosProvider', 'Configuration réseau:');
+    logger.i('ScenariosProvider', '- URL API: ${AppConfig.apiBaseUrl}');
+    logger.i('ScenariosProvider', '- Mode production: ${AppConfig.isProduction}');
+    
+    // Construire l'URL WebSocket complète pour la session fictive
+    final baseUri = Uri.parse(AppConfig.apiBaseUrl);
+    final wsProtocol = baseUri.scheme == 'https' ? 'wss' : 'ws';
+    final mockWsUrl = Uri(
+      scheme: wsProtocol,
+      host: baseUri.host,
+      port: baseUri.port,
+      path: '/ws/session-mock',
+    ).toString();
+
+    logger.w('ScenariosProvider', 'Création d\'une session fictive avec URL: $mockWsUrl');
+    logger.w('ScenariosProvider', 'Utilisation des scénarios de démonstration en mode hors ligne');
+
+    return _demoScenarios;
+  }
+});
+
+// Provider pour le scénario sélectionné
+final selectedScenarioProvider = StateProvider<ScenarioModel?>((ref) => null);
+
+// Provider pour la session en cours
+final sessionProvider = StateNotifierProvider<SessionNotifier, AsyncValue<SessionModel?>>((ref) {
+  final apiService = ref.watch(apiServiceProvider);
+  // Passer la ref au SessionNotifier
+  return SessionNotifier(apiService, ref);
+});
+
+// Notifier pour gérer l'état de la session
+class SessionNotifier extends StateNotifier<AsyncValue<SessionModel?>> {
+  static const String _tag = 'SessionNotifier';
+  final ApiService _apiService;
+  final Ref _ref; // Stocker la ref
+  WebSocketChannel? _webSocketChannel;
+  StreamSubscription? _webSocketSubscription;
+
+  // Modifier le constructeur pour accepter et stocker la ref
+  SessionNotifier(this._apiService, this._ref) : super(const AsyncValue.data(null));
+
+  // Démarrer une session avec LiveKit
+  Future<void> startSession(
+    String scenarioId, {
+    String? goal,
+    String? agentProfileId,
+    bool isMultiAgent = false,
+  }) async {
+    logger.i(_tag, 'Démarrage d\'une session LiveKit pour scenarioId: "$scenarioId"');
+    
+    try {
+      // Vérifier si l'ID du scénario est valide
+      if (scenarioId.isEmpty) {
+        logger.w(_tag, 'ID de scénario vide');
+        state = AsyncValue.error('ID de scénario invalide', StackTrace.current);
+        return;
+      }
+      
+      // Mettre à jour l'état pour indiquer le chargement
+      state = const AsyncValue.loading();
+
+      // Générer un ID utilisateur unique
+      final userId = 'user-${DateTime.now().millisecondsSinceEpoch}';
+      
+      try {
+        // Appeler l'API pour démarrer une session avec les nouveaux paramètres LiveKit
+        final session = await _apiService.startSession(
+          scenarioId,
+          userId,
+          language: 'fr',
+          goal: goal,
+          agentProfileId: agentProfileId,
+          isMultiAgent: isMultiAgent,
+        );
+        
+        // Vérifier si la session a été créée avec succès
+        if (session != null) {
+          logger.i(_tag, 'Session LiveKit créée avec succès: ${session.sessionId}');
+          logger.i(_tag, 'Room LiveKit: ${session.roomName}');
+          logger.i(_tag, 'URL LiveKit: ${session.livekitUrl}');
+          
+          // Mettre à jour l'état avec la session
+          state = AsyncValue.data(session);
+          
+          // CORRECTION : Ne plus connecter à LiveKit ici, c'est maintenant géré par ScenarioScreen
+          logger.i(_tag, '✅ Session créée, connexion LiveKit sera gérée par ScenarioScreen');
+        } else {
+          // Cela ne devrait plus se produire car _apiService.startSession lance maintenant une exception
+          // en cas d'erreur, mais nous gardons ce code par sécurité
+          logger.e(_tag, 'Échec de la création de session LiveKit (null retourné)');
+          state = AsyncValue.error(
+            'Impossible de créer une session LiveKit. Veuillez réessayer.',
+            StackTrace.current
+          );
+        }
+      } catch (apiError) {
+        logger.e(_tag, 'Erreur API lors du démarrage de la session LiveKit: $apiError');
+
+        // Vérifier si l'erreur est liée à l'authentification API
+        if (_apiService.isApiAuthError(apiError)) {
+          logger.w(_tag, 'Erreur d\'authentification API détectée, utilisation du mode démo/hors ligne');
+          
+          // Créer une session de démonstration
+          createDemoSession();
+          
+          // Afficher un message à l'utilisateur
+          // Note: Dans une application réelle, vous pourriez vouloir afficher une notification à l'utilisateur
+          logger.i(_tag, 'Mode démo/hors ligne activé en raison d\'une erreur d\'authentification API');
+          
+          return;
+        }
+
+        // Mettre à jour l'état avec l'erreur
+        state = AsyncValue.error(apiError.toString(), StackTrace.current);
+
+        // Rethrow pour permettre à l'appelant de gérer l'erreur
+        rethrow;
+      }
+    } catch (e, stackTrace) {
+      logger.e(_tag, 'Exception non gérée lors du démarrage de la session LiveKit: $e');
+      logger.e(_tag, 'StackTrace: $stackTrace');
+      
+      // Mettre à jour l'état avec l'erreur
+      state = AsyncValue.error(e.toString(), stackTrace);
+      
+      // Rethrow pour permettre à l'appelant de gérer l'erreur
+      rethrow;
+    }
+  }
+
+  // Méthode pour créer une session de démonstration en mode hors ligne
+  void createDemoSession() {
+    logger.i(_tag, 'Création d\'une session de démonstration LiveKit (mode hors ligne)');
+    
+    // Générer un ID de session unique
+    final demoSessionId = 'demo-${DateTime.now().millisecondsSinceEpoch}';
+    final demoRoomName = 'eloquence-$demoSessionId';
+    
+    // Utiliser l'URL LiveKit configurée
+    final livekitUrl = AppConfig.livekitWsUrl;
+    
+    logger.i(_tag, 'URL LiveKit pour la session de démonstration: $livekitUrl');
+    logger.i(_tag, 'Room LiveKit pour la session de démonstration: $demoRoomName');
+
+    // Créer un token fictif pour la démonstration
+    final demoToken = 'demo-token-${DateTime.now().millisecondsSinceEpoch}';
+
+    // Créer une session de démonstration avec les nouveaux champs LiveKit
+    final demoSession = SessionModel(
+      sessionId: demoSessionId,
+      roomName: demoRoomName,
+      token: demoToken,
+      livekitUrl: livekitUrl,
+      initialMessage: {
+        'text': 'Mode démonstration hors ligne activé. Vous pouvez tester l\'application sans connexion au serveur. Note: Cette session est en mode démo car le serveur a renvoyé une erreur d\'authentification API.',
+        'type': 'system',
+        'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+      },
+    );
+    
+    // Mettre à jour l'état avec la session de démonstration
+    state = AsyncValue.data(demoSession);
+    
+    // Notifier que nous sommes en mode démonstration
+    logger.i(_tag, 'Session de démonstration LiveKit créée: $demoSessionId');
+  }
+
+  // Connecter à LiveKit
+  Future<void> _connectToLiveKit(SessionModel session) async {
+    try {
+      logger.i(_tag, 'Connexion à LiveKit pour la session: ${session.sessionId}');
+      logger.i(_tag, 'Room LiveKit: ${session.roomName}, URL: ${session.livekitUrl}');
+
+      // Récupérer le provider LiveKit audio
+      final liveKitAudioNotifier = _ref.read(liveKitConversationProvider.notifier);
+      
+      // Vérifier si nous avons un token valide
+      if (session.token.isEmpty) {
+        logger.i(_tag, 'Pas de token LiveKit fourni, utilisation de l\'ancien flux de travail');
+        
+        // Utiliser l'ancienne méthode de connexion WebSocket
+        if (session.sessionId.isNotEmpty) {
+          // Extraire l'URL WebSocket à partir de l'ID de session
+          final baseUri = Uri.parse(AppConfig.apiBaseUrl);
+          final wsProtocol = baseUri.scheme == 'https' ? 'wss' : 'ws';
+          final wsUrl = '$wsProtocol://${baseUri.host}:${baseUri.port}/ws/simple/${session.sessionId}';
+          
+          logger.i(_tag, 'URL WebSocket générée: $wsUrl');
+          
+          // Déconnecter toute connexion existante avant d'en établir une nouvelle
+          await _disconnectExistingConnections();
+          
+          // Attendre un court délai pour s'assurer que la déconnexion est complète
+          await Future.delayed(const Duration(milliseconds: 500));
+          
+          // Connecter au WebSocket
+          await liveKitAudioNotifier.connectWebSocket(wsUrl);
+          logger.i(_tag, 'Connexion WebSocket établie avec succès pour la session: ${session.sessionId}');
+        } else {
+          throw Exception('ID de session invalide');
+        }
+      } else {
+        // Déconnecter toute connexion existante avant d'en établir une nouvelle
+        await _disconnectExistingConnections();
+        
+        // Attendre un court délai pour s'assurer que la déconnexion est complète
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        // Connecter à LiveKit avec les informations de la session et délai de synchronisation
+        // Utiliser un délai de synchronisation de 1000ms pour permettre à l'agent de se connecter
+        await liveKitAudioNotifier.connectWithSession(session, syncDelayMs: 1000);
+        logger.i(_tag, 'Connexion LiveKit établie avec succès pour la session: ${session.sessionId}');
+      }
+    } catch (e) {
+      logger.e(_tag, 'Exception lors de la connexion LiveKit/WebSocket: $e');
+      throw Exception('Erreur de connexion: $e');
+    }
+  }
+  
+  // Déconnecter les connexions existantes
+  Future<void> _disconnectExistingConnections() async {
+    logger.i(_tag, 'Déconnexion des connexions existantes avant nouvelle connexion');
+    
+    try {
+      // Déconnecter LiveKit
+      final liveKitNotifier = _ref.read(liveKitConnectionProvider.notifier);
+      await liveKitNotifier.disconnect();
+      logger.i(_tag, 'Déconnexion LiveKit réussie');
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors de la déconnexion LiveKit: $e');
+      // Continuer malgré l'erreur
+    }
+  }
+  
+  // Méthode de compatibilité pour l'ancienne API WebSocket
+  // Cette méthode est maintenue pour la rétrocompatibilité
+  @Deprecated('Utilisez _connectToLiveKit à la place')
+  Future<void> _connectWebSocket(String sessionId) async {
+    logger.w(_tag, 'La méthode _connectWebSocket est obsolète. Utilisez _connectToLiveKit à la place.');
+    
+    try {
+      // Récupérer la session actuelle
+      final session = state.value;
+      if (session == null) {
+        throw Exception('Aucune session active pour la connexion WebSocket');
+      }
+      
+      // Déconnecter toute connexion existante avant d'en établir une nouvelle
+      await _disconnectExistingConnections();
+      
+      // Attendre un court délai pour s'assurer que la déconnexion est complète
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Utiliser la nouvelle méthode de connexion LiveKit
+      await _connectToLiveKit(session);
+    } catch (e) {
+      logger.e(_tag, 'Exception lors de la connexion WebSocket (compatibilité): $e');
+      throw Exception('Erreur de connexion WebSocket: $e');
+    }
+  }
+  
+  // Traiter les messages WebSocket
+  void _processWebSocketMessage(dynamic message) {
+    try {
+      // Si le message est une chaîne, essayer de le parser comme JSON
+      if (message is String) {
+        try {
+          final jsonData = jsonDecode(message);
+          logger.i(_tag, 'Message JSON reçu: ${jsonData.keys.join(', ')}');
+          
+          // Traiter les différents types de messages
+          if (jsonData.containsKey('error')) {
+            logger.e(_tag, 'Erreur reçue du serveur: ${jsonData['error']}');
+            // Mettre à jour l'état avec l'erreur
+            state = AsyncValue.error('Erreur du serveur: ${jsonData['error']}', StackTrace.current);
+          }
+        } catch (e) {
+          // Ce n'est pas du JSON valide, traiter comme texte simple
+          logger.i(_tag, 'Message texte reçu: $message');
+        }
+      } else if (message is Uint8List) {
+        logger.i(_tag, 'Message binaire (Uint8List) reçu dans SessionNotifier. Taille: ${message.length}');
+        // Transmettre à AudioService
+        try {
+          final audioService = _ref.read(audioServiceProvider);
+          audioService.pipeAudioChunkToTtsPlayer(message);
+          logger.i(_tag, 'Message Uint8List transmis à AudioService.pipeAudioChunkToTtsPlayer');
+        } catch (e, s) {
+          logger.e(_tag, 'Erreur lors de la transmission du chunk Uint8List à AudioService: $e', null, s);
+        }
+      } else if (message is List<int>) {
+        logger.i(_tag, 'Message binaire (List<int>) reçu dans SessionNotifier. Taille: ${message.length}');
+        // Transmettre à AudioService
+        try {
+          final audioService = _ref.read(audioServiceProvider);
+          audioService.pipeAudioChunkToTtsPlayer(Uint8List.fromList(message));
+          logger.i(_tag, 'Message List<int> converti et transmis à AudioService.pipeAudioChunkToTtsPlayer');
+        } catch (e, s) {
+          logger.e(_tag, 'Erreur lors de la transmission du chunk List<int> à AudioService: $e', null, s);
+        }
+      } else {
+        logger.w(_tag, 'Type de message WebSocket non géré dans SessionNotifier: ${message.runtimeType}');
+      }
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors du traitement du message WebSocket: $e');
+    }
+  }
+  
+  // Gérer la fermeture du WebSocket
+  void _handleWebSocketClosure() {
+    // Si nous avons une session active, tenter une reconnexion
+    if (state.value != null) {
+      logger.i(_tag, 'Tentative de reconnexion WebSocket pour la session: ${state.value!.sessionId}');
+      
+      // Attendre un court instant avant de tenter la reconnexion
+      Future.delayed(const Duration(seconds: 2), () async {
+        if (state.value != null) {
+          try {
+            // Déconnecter toute connexion existante avant d'en établir une nouvelle
+            await _disconnectExistingConnections();
+            
+            // Attendre un court délai pour s'assurer que la déconnexion est complète
+            await Future.delayed(const Duration(milliseconds: 500));
+            
+            // Tenter la reconnexion
+            await _connectToLiveKit(state.value!);
+          } catch (error) {
+            logger.e(_tag, 'Échec de la reconnexion WebSocket: $error');
+          }
+        }
+      });
+    }
+  }
+
+  // Envoyer un message audio au WebSocket
+  void sendAudioMessage(List<int> audioData) {
+    if (_webSocketChannel != null) {
+      try {
+        logger.i(_tag, 'Envoi d\'un message audio (${audioData.length} octets) via WebSocket de session API');
+        _webSocketChannel!.sink.add(audioData);
+      } catch (e) {
+        logger.e(_tag, 'Erreur lors de l\'envoi du message audio via WebSocket de session API: $e');
+      }
+    } else {
+      logger.e(_tag, 'Impossible d\'envoyer le message audio: WebSocket de session API non connecté');
+    }
+  }
+
+  // Terminer la session LiveKit
+  Future<void> endSession() async {
+    if (state.value != null) {
+      try {
+        logger.i(_tag, 'Fin de la session LiveKit: ${state.value!.sessionId}');
+        
+        // Stocker l'ID de session pour les logs
+        final sessionId = state.value!.sessionId;
+        
+        // Récupérer le provider LiveKit audio pour déconnecter
+        final liveKitAudioNotifier = _ref.read(liveKitConversationProvider.notifier);
+        
+        // Appeler l'API pour terminer la session si ce n'est pas une session de démonstration
+        if (!sessionId.startsWith('demo-') && !sessionId.startsWith('mock-')) {
+          try {
+            await _apiService.endSession(sessionId);
+            logger.i(_tag, 'Session LiveKit terminée avec succès via API: $sessionId');
+          } catch (apiError) {
+            logger.e(_tag, 'Erreur lors de la fin de session LiveKit via API: $apiError');
+            // Continuer malgré l'erreur pour nettoyer les ressources
+          }
+        } else {
+          logger.i(_tag, 'Session de démonstration LiveKit, pas d\'appel API pour endSession: $sessionId');
+        }
+      } catch (e) {
+        logger.e(_tag, 'Erreur lors de la fin de la session LiveKit: $e');
+      } finally {
+        // Fermer la connexion LiveKit
+        try {
+          // Récupérer le provider LiveKit pour déconnecter
+          final liveKitNotifier = _ref.read(liveKitConnectionProvider.notifier);
+          await liveKitNotifier.disconnect();
+          logger.i(_tag, 'Connexion LiveKit fermée avec succès lors de la fin de session');
+        } catch (lkError) {
+          logger.e(_tag, 'Erreur lors de la fermeture de la connexion LiveKit: $lkError');
+        }
+        
+        // Réinitialiser l'état
+        state = const AsyncValue.data(null);
+        logger.i(_tag, 'État de session réinitialisé');
+      }
+    } else {
+      logger.i(_tag, 'Aucune session LiveKit active à terminer');
+    }
+  }
+
+  // Méthode de compatibilité pour fermer le WebSocket
+  // Cette méthode est maintenue pour la rétrocompatibilité
+  @Deprecated('Utilisez _disconnectExistingConnections à la place')
+  Future<void> _closeWebSocket() async {
+    logger.w(_tag, 'La méthode _closeWebSocket est obsolète. LiveKit gère maintenant la connexion.');
+    
+    await _disconnectExistingConnections();
+    
+    // Nettoyer les anciennes références WebSocket pour la compatibilité
+    _webSocketSubscription = null;
+    _webSocketChannel = null;
+  }
+
+  @override
+  void dispose() {
+    logger.i(_tag, 'Destruction du notifier de session');
+    
+    // Fermer le WebSocket de manière asynchrone
+    // Nous ne pouvons pas attendre dans dispose(), mais nous pouvons lancer la fermeture
+    _closeWebSocket().catchError((error) {
+      logger.e(_tag, 'Erreur lors de la fermeture du WebSocket pendant dispose(): $error');
+    });
+    
+    super.dispose();
+  }
+}
+
+// Provider pour l'état d'enregistrement
+final recordingStateProvider = StateProvider<RecordingState>((ref) => RecordingState.idle);
+
+// Enum pour l'état d'enregistrement
+enum RecordingState {
+  idle,
+  recording,
+  processing,
+}

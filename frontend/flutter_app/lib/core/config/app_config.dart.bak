@@ -1,0 +1,53 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+class AppConfig {
+  static late final bool isProduction;
+  static late final String apiBaseUrl;
+  static late final String livekitWsUrl;
+  static late final String appVersion;
+  static late final String? apiKey;
+  
+  static Future<void> initialize() async {
+    // Charger les variables d'environnement depuis le fichier .env
+    try {
+      await dotenv.load(fileName: '.env');
+    } catch (e) {
+      if (kDebugMode) {
+        print('Erreur lors du chargement du fichier .env: $e');
+        print('Utilisation des valeurs par défaut');
+      }
+    }
+    
+    // Définir l'environnement
+    isProduction = const bool.fromEnvironment('dart.vm.product');
+    
+    // Configurer l'URL de l'API en fonction de l'environnement et de la plateforme
+    if (isProduction) {
+      apiBaseUrl = 'https://api.eloquence.com/v1';
+      livekitWsUrl = 'wss://livekit.xn--loquence-90a.com';
+      // En production, la clé API devrait être obtenue de manière sécurisée
+      // Par exemple, à partir d'un service de configuration sécurisé ou d'une variable d'environnement
+      apiKey = const String.fromEnvironment('API_KEY');
+    } else {
+      // En développement, utiliser l'adresse du serveur distant qui est accessible
+      // Utiliser l'adresse IP 51.159.110.4 qui est accessible depuis tous les appareils
+      apiBaseUrl = 'http://10.0.2.2:8000'; // URL de l'API backend sur le serveur distant
+      livekitWsUrl = 'wss://livekit.xn--loquence-90a.com';
+      
+      // Essayer de récupérer la clé API depuis le fichier .env
+      apiKey = dotenv.env['ELOQUENCE_API_KEY'] ?? '2b7e4e7e7c6e4e2e8e6e4e7e7c6e4e2e8e6e4e7e7c6e4e2e';
+      
+      // Afficher la clé API utilisée pour le débogage
+      if (kDebugMode) {
+        print('🔑 Clé API utilisée: $apiKey');
+        if (apiKey == '2b7e4e7e7c6e4e2e8e6e4e7e7c6e4e2e8e6e4e7e7c6e4e2e') {
+          print('⚠️ Utilisation de la clé API par défaut. Pour une meilleure sécurité, définissez ELOQUENCE_API_KEY dans le fichier .env');
+        }
+      }
+    }
+    
+    // Obtenir la version de l'application (à implémenter avec package_info_plus)
+    appVersion = '1.0.0';
+  }
+}

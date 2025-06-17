@@ -1,0 +1,347 @@
+import 'dart:typed_data';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/utils/logger_service.dart';
+import '../../data/services/audio_adapter_v7_buffered.dart';
+import '../../data/models/session_model.dart';
+import 'livekit_provider.dart';
+import 'audio_provider.dart';
+
+/// Provider pour l'adaptateur audio LiveKit avec solution V6 Simple
+final liveKitAudioAdapterProvider = Provider<AudioAdapterV7Buffered>((ref) {
+  final liveKitService = ref.watch(liveKitServiceProvider);
+  final adapter = AudioAdapterV7Buffered(liveKitService);
+  
+  // Nettoyer les ressources lorsque le provider est détruit
+  ref.onDispose(() {
+    adapter.dispose();
+  });
+  
+  return adapter;
+});
+
+/// Provider pour l'état de la conversation avec LiveKit
+final liveKitConversationProvider = StateNotifierProvider<LiveKitConversationNotifier, ConversationState>((ref) {
+  final adapter = ref.watch(liveKitAudioAdapterProvider);
+  return LiveKitConversationNotifier(adapter);
+});
+
+/// Notifier pour gérer l'état de la conversation avec LiveKit
+class LiveKitConversationNotifier extends StateNotifier<ConversationState> {
+  static const String _tag = 'LiveKitConversationNotifier';
+  
+  final AudioAdapterV7Buffered _adapter;
+  bool _adapterInitialized = false;
+  
+  LiveKitConversationNotifier(this._adapter) : super(const ConversationState()) {
+    // Initialiser l'adaptateur V6 de manière asynchrone
+    _initializeAdapter();
+    
+    // Configurer les callbacks de l'adaptateur
+    _adapter.onTextReceived = _onTextReceived;
+    _adapter.onError = _onError;
+    // Note: V6 gère onAudioUrlReceived et onFeedbackReceived via handleJsonData
+  }
+  
+  /// Initialise l'adaptateur V6
+  Future<void> _initializeAdapter() async {
+    try {
+      final success = await _adapter.initialize();
+      if (success) {
+        _adapterInitialized = true;
+        logger.i(_tag, '✅ Adaptateur V6 initialisé avec succès');
+      } else {
+        logger.e(_tag, '❌ Échec de l\'initialisation de l\'adaptateur V6');
+        state = state.copyWith(
+          error: 'Impossible d\'initialiser l\'adaptateur audio',
+        );
+      }
+    } catch (e) {
+      logger.e(_tag, '❌ Erreur lors de l\'initialisation de l\'adaptateur V6: $e');
+      state = state.copyWith(
+        error: 'Erreur d\'initialisation: $e',
+      );
+    }
+  }
+  
+  /// Connecte à LiveKit avec les informations de session
+  Future<void> connectWithSession(SessionModel session) async {
+    logger.i(_tag, '🚀 [DIAGNOSTIC_COMPLET] ===== DÉBUT CONNEXION LIVEKIT =====');
+    logger.i(_tag, '🚀 [DIAGNOSTIC_COMPLET] Session ID: ${session.sessionId}');
+    logger.i(_tag, '🚀 [DIAGNOSTIC_COMPLET] Room Name: ${session.roomName}');
+    logger.i(_tag, '🚀 [DIAGNOSTIC_COMPLET] LiveKit URL: ${session.livekitUrl}');
+    logger.i(_tag, '🚀 [DIAGNOSTIC_COMPLET] Token présent: ${session.token.isNotEmpty}');
+    logger.i(_tag, '🚀 [DIAGNOSTIC_COMPLET] Token longueur: ${session.token.length}');
+    logger.i(_tag, '🚀 [DIAGNOSTIC_COMPLET] État initial - isConnecting: ${state.isConnecting}, isConnected: ${state.isConnected}');
+    logger.i(_tag, '🚀 [DIAGNOSTIC_COMPLET] AudioAdapter isConnected: ${_adapter.isConnected}');
+    logger.i(_tag, '🚀 [DIAGNOSTIC_COMPLET] AudioAdapter isInitialized: ${_adapter.isInitialized}');
+    
+    // Vérifier si nous sommes déjà en train de nous connecter
+    if (state.isConnecting) {
+      logger.w(_tag, '⚠️ [DIAGNOSTIC_COMPLET] Connexion déjà en cours, attente avant nouvelle tentative');
+      
+      // Attendre un court délai avant de réessayer
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Vérifier à nouveau si nous sommes toujours en train de nous connecter
+      if (state.isConnecting) {
+        logger.w(_tag, '⚠️ [DIAGNOSTIC_COMPLET] Connexion toujours en cours après délai, annulation de la nouvelle tentative');
+        return;
+      }
+    }
+    
+    // Si nous sommes déjà connectés, déconnecter d'abord
+    if (state.isConnected) {
+      logger.i(_tag, '🔄 [DIAGNOSTIC_COMPLET] Déjà connecté, déconnexion avant nouvelle connexion');
+      await _disconnectSafely();
+    }
+    
+    // Mettre à jour l'état pour indiquer que la connexion est en cours
+    logger.i(_tag, '🔄 [DIAGNOSTIC_COMPLET] Mise à jour état: isConnecting=true, isConnected=false');
+    state = state.copyWith(
+      isConnecting: true,
+      isConnected: false,
+      connectionError: null,
+    );
+    
+    try {
+      // Vérifier que l'adaptateur est initialisé
+      if (!_adapterInitialized) {
+        logger.i(_tag, '🔧 [DIAGNOSTIC_COMPLET] Attente de l\'initialisation de l\'adaptateur V6...');
+        await _initializeAdapter();
+        
+        if (!_adapterInitialized) {
+          throw Exception('Impossible d\'initialiser l\'adaptateur audio V6');
+        }
+      }
+      
+      // CORRECTION : Déclencher la connexion réelle à LiveKit via AudioAdapterV6
+      logger.i(_tag, '🔧 [DIAGNOSTIC_COMPLET] Déclenchement de la connexion LiveKit réelle...');
+      logger.i(_tag, '🔧 [DIAGNOSTIC_COMPLET] Appel de _adapter.connectToLiveKit()...');
+      
+      // Appeler la méthode connectToLiveKit de l'adaptateur V6
+      final success = await _adapter.connectToLiveKit(session);
+      
+      logger.i(_tag, '🔧 [DIAGNOSTIC_COMPLET] Résultat connectToLiveKit: $success');
+      logger.i(_tag, '🔧 [DIAGNOSTIC_COMPLET] AudioAdapter isConnected après connexion: ${_adapter.isConnected}');
+      
+      if (success) {
+        // Mettre à jour l'état pour indiquer que la connexion est établie
+        state = state.copyWith(
+          isConnecting: false,
+          isConnected: true,
+          connectionError: null,
+        );
+        
+        logger.i(_tag, '✅ [DIAGNOSTIC_COMPLET] Connexion LiveKit établie avec succès via AudioAdapterV6');
+        logger.i(_tag, '✅ [DIAGNOSTIC_COMPLET] État final - isConnecting: ${state.isConnecting}, isConnected: ${state.isConnected}');
+      } else {
+        // Mettre à jour l'état pour indiquer que la connexion a échoué
+        state = state.copyWith(
+          isConnecting: false,
+          isConnected: false,
+          connectionError: 'Échec de la connexion LiveKit',
+        );
+        
+        logger.e(_tag, '❌ [DIAGNOSTIC_COMPLET] Échec de la connexion LiveKit');
+        logger.e(_tag, '❌ [DIAGNOSTIC_COMPLET] État final - isConnecting: ${state.isConnecting}, isConnected: ${state.isConnected}');
+      }
+    } catch (e, stackTrace) {
+      // Mettre à jour l'état pour indiquer que la connexion a échoué
+      state = state.copyWith(
+        isConnecting: false,
+        isConnected: false,
+        connectionError: 'Erreur de connexion LiveKit: $e',
+      );
+      
+      logger.e(_tag, '❌ [DIAGNOSTIC_COMPLET] Exception lors de la connexion LiveKit: $e');
+      logger.e(_tag, '❌ [DIAGNOSTIC_COMPLET] StackTrace: $stackTrace');
+      logger.e(_tag, '❌ [DIAGNOSTIC_COMPLET] État final - isConnecting: ${state.isConnecting}, isConnected: ${state.isConnected}');
+    }
+    
+    logger.i(_tag, '🚀 [DIAGNOSTIC_COMPLET] ===== FIN CONNEXION LIVEKIT =====');
+  }
+  
+  /// Déconnecte en toute sécurité
+  Future<void> _disconnectSafely() async {
+    logger.i(_tag, 'Déconnexion sécurisée');
+    
+    try {
+      // Mettre à jour l'état pour indiquer que nous sommes en train de nous déconnecter
+      state = state.copyWith(
+        isConnecting: false,
+        isConnected: false,
+      );
+      
+      // Déconnecter l'adaptateur
+      await _adapter.dispose();
+      
+      // Attendre un court délai pour s'assurer que la déconnexion est complète
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      logger.i(_tag, 'Déconnexion réussie');
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors de la déconnexion', e);
+    }
+  }
+  
+  /// Connecte au WebSocket avec reconnexion automatique (méthode de compatibilité)
+  @Deprecated('Utilisez connectWithSession à la place')
+  Future<void> connectWebSocket(String wsUrl) async {
+    logger.i(_tag, 'Connexion au WebSocket via LiveKit: $wsUrl');
+    logger.w(_tag, 'Cette méthode est obsolète. Utilisez connectWithSession à la place.');
+    
+    // L'adaptateur continu ne supporte pas connectWebSocket
+    // On simule juste la connexion réussie
+    state = state.copyWith(
+      isConnecting: false,
+      isConnected: true,
+      connectionError: null,
+    );
+    
+    logger.i(_tag, 'Connexion WebSocket simulée avec succès via adaptateur continu');
+  }
+  
+  /// Force une reconnexion manuelle
+  Future<void> reconnect() async {
+    logger.i(_tag, 'Reconnexion manuelle demandée');
+    
+    // L'adaptateur continu gère automatiquement la reconnexion
+    // On simule juste une reconnexion réussie
+    state = state.copyWith(
+      isConnecting: false,
+      isConnected: true,
+      connectionError: null,
+    );
+    
+    logger.i(_tag, 'Reconnexion simulée avec succès (adaptateur continu)');
+  }
+  
+  /// Démarre l'enregistrement avec AudioAdapterFix
+  Future<void> startRecording() async {
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER] ===== DÉBUT DÉMARRAGE ENREGISTREMENT PROVIDER =====');
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER] État initial provider:');
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER]   - isRecording: ${state.isRecording}');
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER]   - isConnected: ${state.isConnected}');
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER]   - isProcessing: ${state.isProcessing}');
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER]   - error: ${state.error}');
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER] État AudioAdapter:');
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER]   - _adapter.isConnected: ${_adapter.isConnected}');
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER]   - _adapter.isRecording: ${_adapter.isRecording}');
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER]   - _adapter.isInitialized: ${_adapter.isInitialized}');
+    
+    logger.performance(_tag, 'userInteraction', start: true);
+    
+    // Vérifier que l'adaptateur est initialisé
+    if (!_adapterInitialized) {
+      logger.e(_tag, '❌ [DIAGNOSTIC_PROVIDER] Adaptateur V6 non initialisé');
+      state = state.copyWith(
+        isRecording: false,
+        error: 'Adaptateur audio non initialisé',
+      );
+      return;
+    }
+    
+    // Utiliser la méthode startRecording d'AudioAdapterV6
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER] Appel de _adapter.startRecording()...');
+    final success = await _adapter.startRecording();
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER] Résultat _adapter.startRecording(): $success');
+    
+    if (success) {
+      state = state.copyWith(isRecording: true, isProcessing: false);
+      logger.i(_tag, '✅ [DIAGNOSTIC_PROVIDER] Enregistrement démarré avec succès via AudioAdapterV6');
+      logger.i(_tag, '✅ [DIAGNOSTIC_PROVIDER] État final provider - isRecording: ${state.isRecording}');
+    } else {
+      logger.e(_tag, '❌ [DIAGNOSTIC_PROVIDER] Échec du démarrage de l\'enregistrement');
+      state = state.copyWith(
+        isRecording: false,
+        error: 'Impossible de démarrer l\'enregistrement',
+      );
+      logger.e(_tag, '❌ [DIAGNOSTIC_PROVIDER] État final provider - isRecording: ${state.isRecording}, error: ${state.error}');
+    }
+    
+    logger.i(_tag, '🎙️ [DIAGNOSTIC_PROVIDER] ===== FIN DÉMARRAGE ENREGISTREMENT PROVIDER =====');
+  }
+  
+  /// Arrête l'enregistrement avec AudioAdapterV6
+  Future<void> stopRecording() async {
+    logger.i(_tag, 'Arrêt de l\'enregistrement avec AudioAdapterV6');
+    
+    // Utiliser la méthode stopRecording d'AudioAdapterV6
+    final success = await _adapter.stopRecording();
+    
+    if (success) {
+      state = state.copyWith(isRecording: false, isProcessing: true);
+      logger.i(_tag, '[DEBUG] Enregistrement arrêté avec succès via AudioAdapterV6');
+    } else {
+      logger.e(_tag, 'Échec de l\'arrêt de l\'enregistrement');
+      state = state.copyWith(
+        isRecording: false,
+        error: 'Impossible d\'arrêter l\'enregistrement',
+      );
+    }
+    
+    logger.performance(_tag, 'userInteraction', end: true);
+  }
+  
+  /// Envoie un chunk audio au serveur (mode continu - automatique)
+  void sendAudioChunk(Uint8List audioData) {
+    if (state.isConnected && audioData.isNotEmpty) {
+      logger.v(_tag, 'Chunk audio de ${audioData.length} octets (traité automatiquement en mode continu)');
+      // L'adaptateur continu traite automatiquement l'audio
+      // Pas besoin d'envoyer manuellement les chunks
+    }
+  }
+  
+  /// Gère la réception de texte
+  void _onTextReceived(String text) {
+    logger.i(_tag, 'Texte reçu: $text');
+    
+    state = state.copyWith(
+      lastMessage: text,
+      isProcessing: false,
+      messages: [...state.messages, Message(text: text, isUser: false)],
+    );
+    
+    // Mesurer le temps de réponse total
+    logger.networkLatency(_tag, 'Temps de réponse total', 
+      DateTime.now().difference(state.lastUserInteractionTime ?? DateTime.now()).inMilliseconds);
+  }
+  
+  // Note: AudioAdapterV6 gère les URL audio et le feedback via handleJsonData
+  // Ces méthodes ne sont plus nécessaires car elles sont intégrées dans V6
+  
+  /// Gère les erreurs
+  void _onError(String error) {
+    logger.e(_tag, 'Erreur: $error');
+    
+    state = state.copyWith(
+      error: error,
+      isRecording: false,
+      isProcessing: false,
+    );
+  }
+  
+  
+  /// Efface l'erreur
+  void clearError() {
+    logger.i(_tag, 'Effacement de l\'erreur');
+    
+    state = state.copyWith(error: null);
+  }
+  
+  /// Ajoute un message utilisateur
+  void addUserMessage(String text) {
+    logger.i(_tag, 'Ajout d\'un message utilisateur: $text');
+    
+    state = state.copyWith(
+      messages: [...state.messages, Message(text: text, isUser: true)],
+      lastUserInteractionTime: DateTime.now(),
+    );
+  }
+  
+  @override
+  void dispose() {
+    // L'adaptateur V6 gère son propre lecteur audio
+    super.dispose();
+  }
+}

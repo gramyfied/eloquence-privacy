@@ -1,0 +1,654 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/foundation.dart'; // Pour ChangeNotifier ou ValueNotifier si besoin
+import 'package:http/http.dart' as http;
+import 'package:livekit_client/livekit_client.dart';
+import 'package:logger/logger.dart'; // Vous avez logger dans pubspec
+import 'package:permission_handler/permission_handler.dart';
+import '../../core/config/app_config.dart';
+
+/// Enum pour représenter les états de connexion
+enum ConnectionState {
+  connecting,
+  connected,
+  reconnecting,
+  disconnected,
+}
+
+class LiveKitService extends ChangeNotifier { // Ou utilisez Riverpod StateNotifier, etc.
+  Room? _room;
+  EventsListener? _listener;
+  Room? get room => _room;
+  LocalParticipant? get localParticipant => _room?.localParticipant;
+  List<RemoteParticipant> get remoteParticipants => _room?.remoteParticipants.values.toList() ?? [];
+
+  bool _isConnecting = false;
+  bool get isConnecting => _isConnecting;
+
+  bool _isConnected = false;
+  bool get isConnected => _isConnected;
+  
+  // Verrou pour empêcher les connexions parallèles
+  Completer<void> _connectionLock = Completer<void>();
+  bool _lockInitialized = false;
+  
+  // Initialiser le verrou comme "déverrouillé"
+  void _initLockIfNeeded() {
+    if (!_lockInitialized) {
+      _connectionLock.complete();
+      _lockInitialized = true;
+    }
+  }
+  
+  // Verrouiller pour une opération de connexion
+  Future<void> _acquireLock() async {
+    _initLockIfNeeded();
+    await _connectionLock.future;
+    // Créer un nouveau verrou pour la prochaine opération
+    _connectionLock = Completer<void>();
+  }
+  
+  // Déverrouiller après une opération de connexion
+  void _releaseLock() {
+    _connectionLock.complete();
+  }
+
+  // Pour exposer les pistes audio distantes à l'UI
+  // Vous pourriez vouloir une structure plus complexe pour gérer plusieurs pistes/participants
+  RemoteAudioTrack? remoteAudioTrack;
+
+  // Callbacks pour les événements
+  Function(Uint8List)? onDataReceived;
+  Function(ConnectionState)? onConnectionStateChanged;
+
+  final Logger _logger = Logger();
+  
+  // Nombre maximal de tentatives pour la publication audio
+  static const int _maxRetries = 3;
+  
+  // Délai entre les tentatives de publication audio (en millisecondes)
+  static const int _retryDelay = 1000;
+
+  // Cette méthode est désormais obsolète car le token est fourni directement par l'API /api/sessions
+  @Deprecated('Utilisez le token fourni par l\'API /api/sessions')
+  Future<String?> _getLiveKitToken(String roomName, String participantIdentity, String participantName) async {
+    _logger.e('Cette méthode est obsolète. Utilisez le token fourni par l\'API /api/sessions');
+    throw Exception('Cette méthode est obsolète. Utilisez le token fourni par l\'API /api/sessions');
+  }
+
+  // Nouvelle méthode de connexion qui prend directement le token et l'URL LiveKit
+  Future<bool> connectWithToken(String livekitUrl, String token, {String? roomName}) async {
+    try {
+      // Acquérir le verrou pour empêcher les connexions parallèles
+      await _acquireLock();
+      
+      // Vérifier si nous sommes déjà connectés ou en cours de connexion
+      if (_isConnected || _isConnecting) {
+        _logger.w('Already connected or connecting to a room. Disconnecting first...');
+        // Déconnecter proprement avant de tenter une nouvelle connexion
+        await disconnect();
+        
+        // Attendre un court délai pour s'assurer que la déconnexion est complète
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
+      _isConnecting = true;
+      notifyListeners();
+
+      _room = Room();
+      _listener = _room!.createListener();
+
+      _setupListeners();
+
+      try {
+        _logger.i('Connecting to LiveKit with provided token at URL: $livekitUrl');
+        await _room!.connect(
+          livekitUrl,
+          token,
+          roomOptions: const RoomOptions(
+            adaptiveStream: true,
+            dynacast: true,
+            defaultAudioPublishOptions: AudioPublishOptions(
+              audioBitrate: 128000, // Augmenté pour une meilleure qualité
+              dtx: false, // Désactivé pour une transmission continue
+              // Note: LiveKit utilise Opus par défaut, qui est ensuite converti en PCM par le backend
+            ),
+            // autoSubscribe: true, // Par défaut à true
+          ),
+          fastConnectOptions: FastConnectOptions(
+            microphone: const TrackOption(enabled: false), // Désactivé au démarrage pour contrôle manuel
+          ),
+        );
+        
+        _logger.i('Configuration audio optimisée pour la compatibilité avec le backend');
+        _logger.i('Successfully connected to LiveKit room: ${_room?.name}');
+        _isConnected = true;
+      } catch (e) {
+        _logger.e('Error connecting to LiveKit room: $e');
+        _isConnected = false;
+      } finally {
+        _isConnecting = false;
+        notifyListeners();
+      }
+      return _isConnected;
+    } finally {
+      // Toujours libérer le verrou, même en cas d'erreur
+      _releaseLock();
+    }
+  }
+  
+  // Méthode de compatibilité pour l'ancienne API
+  Future<bool> connect(String roomName, String participantIdentity, {String? participantName}) async {
+    _logger.w('Using deprecated connect method. Consider using connectWithToken instead.');
+    
+    try {
+      // Acquérir le verrou pour empêcher les connexions parallèles
+      await _acquireLock();
+      
+      // Vérifier si nous sommes déjà connectés ou en cours de connexion
+      if (_isConnected || _isConnecting) {
+        _logger.w('Already connected or connecting to a room. Disconnecting first...');
+        // Déconnecter proprement avant de tenter une nouvelle connexion
+        await disconnect();
+        
+        // Attendre un court délai pour s'assurer que la déconnexion est complète
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
+      _isConnecting = true;
+      notifyListeners();
+
+      // Utiliser l'URL LiveKit configurée dans AppConfig
+      final livekitUrl = AppConfig.livekitWsUrl;
+      
+      // Tenter d'obtenir un token via l'ancienne méthode (pour la rétrocompatibilité)
+      String? token;
+      try {
+        // Créer une requête pour obtenir un token
+        final String tokenEndpoint = '${AppConfig.apiBaseUrl}/livekit/token';
+        final response = await http.post(
+          Uri.parse(tokenEndpoint),
+          headers: <String, String>{
+            'Content-Type': 'application/json; charset=UTF-8',
+            if (AppConfig.apiKey != null) 'X-API-Key': AppConfig.apiKey!,
+          },
+          body: jsonEncode(<String, String>{
+            'room_name': roomName,
+            'participant_identity': participantIdentity,
+            'participant_name': participantName ?? participantIdentity,
+          }),
+        );
+
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> data = jsonDecode(response.body);
+          token = data['access_token'];
+          _logger.i('LiveKit token received successfully via legacy endpoint.');
+        } else {
+          _logger.e('Failed to get LiveKit token: ${response.statusCode} ${response.body}');
+        }
+      } catch (e) {
+        _logger.e('Error getting LiveKit token: $e');
+      }
+      
+      if (token == null) {
+        _logger.e('Failed to obtain token, cannot connect.');
+        _isConnecting = false;
+        notifyListeners();
+        _releaseLock(); // Libérer le verrou en cas d'échec
+        return false;
+      }
+
+      // Utiliser la nouvelle méthode connectWithToken avec le token obtenu
+      return connectWithToken(livekitUrl, token, roomName: roomName);
+    } finally {
+      // Le verrou sera libéré par connectWithToken
+    }
+  }
+
+  void _setupListeners() {
+    _listener!
+      ..on<RoomDisconnectedEvent>((event) {
+        _logger.i('Room disconnected: ${event.reason}');
+        _isConnected = false;
+        _room = null;
+        _listener = null;
+        remoteAudioTrack = null;
+        notifyListeners();
+        onConnectionStateChanged?.call(ConnectionState.disconnected);
+      })
+      ..on<RoomConnectedEvent>((event) {
+        _logger.i('Room connected: ${event.room.name}');
+        onConnectionStateChanged?.call(ConnectionState.connected);
+        notifyListeners();
+      })
+      ..on<RoomReconnectingEvent>((event) {
+        _logger.i('Room reconnecting...');
+        onConnectionStateChanged?.call(ConnectionState.reconnecting);
+        notifyListeners();
+      })
+      ..on<LocalTrackPublishedEvent>((event) {
+        _logger.i('Local track published: ${event.publication.source} (${event.publication.kind})');
+        notifyListeners();
+      })
+      ..on<TrackSubscribedEvent>((event) {
+        _logger.i('Track subscribed: ${event.track.sid} from ${event.participant.identity} - kind: ${event.track.kind}');
+        if (event.track is RemoteAudioTrack && event.participant.identity.contains('-ia')) { // Supposons que l'IA a "-ia" dans son identité
+          remoteAudioTrack = event.track as RemoteAudioTrack;
+          _logger.i('RemoteAudioTrack from IA stored.');
+          // La lecture de la piste audio distante est généralement gérée automatiquement par le SDK
+          // ou vous pouvez avoir besoin de l'attacher à un widget audio si nécessaire.
+          notifyListeners();
+        }
+      })
+      ..on<TrackUnsubscribedEvent>((event) {
+        _logger.i('Track unsubscribed: ${event.track.sid} from ${event.participant.identity}');
+        if (remoteAudioTrack?.sid == event.track.sid) {
+          remoteAudioTrack = null;
+          notifyListeners();
+        }
+      })
+      ..on<ParticipantConnectedEvent>((event) {
+        _logger.i('Participant connected: ${event.participant.identity}');
+        notifyListeners();
+      })
+      ..on<ParticipantDisconnectedEvent>((event) {
+        _logger.i('Participant disconnected: ${event.participant.identity}');
+        notifyListeners();
+      })
+      ..on<DataReceivedEvent>((event) {
+        _logger.i('Data received: ${event.data.length} bytes from ${event.participant?.identity ?? "unknown"}');
+        onDataReceived?.call(Uint8List.fromList(event.data));
+      });
+  }
+
+  /// Vérifie si le microphone est disponible et utilisable
+  ///
+  /// Cette méthode vérifie :
+  /// 1. Si la permission du microphone est accordée
+  /// 2. Si le microphone n'est pas utilisé par une autre application
+  ///
+  /// Retourne true si le microphone est disponible, false sinon
+  Future<bool> checkMicrophoneAvailability() async {
+    _logger.i('Vérification de la disponibilité du microphone...');
+    
+    // Vérifier la permission du microphone
+    _logger.i('[DEBUG] Vérification du statut de la permission microphone');
+    final micPermissionStatus = await Permission.microphone.status;
+    _logger.i('[DEBUG] Statut actuel de la permission microphone: $micPermissionStatus');
+    
+    if (!micPermissionStatus.isGranted) {
+      _logger.w('Permission microphone non accordée: $micPermissionStatus');
+      
+      // Si la permission est refusée définitivement, informer l'utilisateur
+      if (micPermissionStatus.isPermanentlyDenied) {
+        _logger.e('[DEBUG] Permission microphone refusée définitivement');
+        return false;
+      }
+      
+      // Demander la permission
+      _logger.i('[DEBUG] Demande de permission microphone...');
+      final requestStatus = await Permission.microphone.request();
+      _logger.i('[DEBUG] Résultat de la demande de permission: $requestStatus');
+      
+      if (!requestStatus.isGranted) {
+        _logger.e('[DEBUG] Permission microphone refusée après demande: $requestStatus');
+        return false;
+      }
+    }
+    
+    _logger.i('Permission microphone accordée');
+    
+    // Vérifier si le microphone est utilisable
+    try {
+      // Tenter de créer une piste audio temporaire pour vérifier si le microphone est disponible
+      _logger.i('[DEBUG] Test de disponibilité du microphone avec LocalAudioTrack.create()...');
+      final tempTrack = await LocalAudioTrack.create();
+      
+      // Si on arrive ici, le microphone est disponible
+      _logger.i('[DEBUG] Microphone disponible et fonctionnel, piste temporaire créée');
+      
+      // Libérer les ressources
+      _logger.i('[DEBUG] Arrêt de la piste temporaire');
+      await tempTrack.stop();
+      
+      return true;
+    } catch (e) {
+      _logger.e('[DEBUG] Erreur détaillée lors du test de disponibilité du microphone: ${e.runtimeType}: $e');
+      _logger.e('Erreur lors du test de disponibilité du microphone: $e');
+      return false;
+    }
+  }
+
+  /// Publie la piste audio locale avec mécanisme de réessai
+  ///
+  /// Cette méthode tente de publier la piste audio locale avec plusieurs tentatives
+  /// en cas d'échec, avec un délai entre chaque tentative.
+  Future<void> publishMyAudio() async {
+    _logger.i('[DEBUG] ===== DÉBUT PUBLICATION AUDIO =====');
+    _logger.i('[DEBUG] ===== DÉBUT PUBLICATION AUDIO =====');
+    _logger.i('[DEBUG] ===== DÉBUT PUBLICATION AUDIO =====');
+    _logger.i('Tentative de publication de la piste audio locale...');
+    
+    if (!_isConnected || localParticipant == null) {
+      _logger.e('[DEBUG] Non connecté à une salle, impossible de publier l\'audio. isConnected=$_isConnected, localParticipant=${localParticipant != null}');
+      throw Exception('Non connecté à une salle, impossible de publier l\'audio');
+    }
+    
+    // Vérifier la disponibilité du microphone avant de tenter la publication
+    _logger.i('[DEBUG] Vérification de la disponibilité du microphone...');
+    final microphoneAvailable = await checkMicrophoneAvailability();
+    _logger.i('[DEBUG] Résultat de la vérification du microphone: $microphoneAvailable');
+    
+    if (!microphoneAvailable) {
+      _logger.e('[DEBUG] Microphone non disponible, impossible de publier l\'audio');
+      throw Exception('Microphone non disponible ou permission refusée');
+    }
+    
+    // Variables pour le mécanisme de réessai
+    int retryCount = 0;
+    Exception? lastError;
+    LocalAudioTrack? audioTrack;
+    
+    try {
+      LocalAudioTrack? audioTrack;
+    
+    try {
+      LocalAudioTrack? audioTrack;
+    
+    try {
+      while (retryCount < _maxRetries) {
+        try {
+          _logger.i('[DEBUG] Création de la piste audio locale (tentative ${retryCount + 1}/${_maxRetries})...');
+          
+          // Vérifier si une piste audio est déjà publiée
+          final existingAudioTrack = localParticipant?.audioTrackPublications.firstOrNull;
+          if (existingAudioTrack != null) {
+            _logger.w('[DEBUG] Piste audio déjà publiée: ${existingAudioTrack.sid}. Dépublication préalable...');
+            await localParticipant!.removePublishedTrack(existingAudioTrack.sid);
+            
+            // Attendre un court délai pour s'assurer que la dépublication est complète
+            await Future.delayed(const Duration(milliseconds: 500));
+          }
+          
+          // Créer la piste audio avec les paramètres optimisés configurés au niveau de la salle
+          _logger.i('[DEBUG] Appel de LocalAudioTrack.create() pour créer une piste audio optimisée...');
+          
+          // Note: Les options audio sont configurées au niveau de la connexion à la salle (RoomOptions)
+          // et non au niveau de la création de la piste audio dans cette version de LiveKit
+          try {
+            _logger.i('[DEBUG] Début de LocalAudioTrack.create()');
+            audioTrack = await LocalAudioTrack.create();
+            _logger.i('[DEBUG] LocalAudioTrack.create() réussi');
+            
+            _logger.i('[DEBUG] LocalAudioTrack créée avec succès, ID: ${audioTrack.sid}');
+
+            // Publier la piste audio
+            _logger.i('[DEBUG] Début de publishAudioTrack()');
+            await localParticipant!.publishAudioTrack(audioTrack);
+            _logger.i('[DEBUG] publishAudioTrack() réussi');
+            
+            _logger.i('[DEBUG] Piste audio locale publiée avec succès avec paramètres optimisés');
+            
+            // Si on arrive ici, la publication a réussi
+            _logger.i('[DEBUG] ===== FIN PUBLICATION AUDIO (SUCCÈS) =====');
+            
+            _logger.i('[DEBUG] ===== FIN PUBLICATION AUDIO (SUCCÈS) =====');
+            
+            _logger.i('[DEBUG] ===== FIN PUBLICATION AUDIO (SUCCÈS) =====');
+            return;
+          } catch (trackError) {
+            _logger.e('[DEBUG] Erreur spécifique lors de la création/publication de la piste: ${trackError.runtimeType}: $trackError');
+            
+            // Nettoyer la piste audio en cas d'échec de publication
+            if (audioTrack != null) {
+              _logger.i('[DEBUG] Nettoyage de la piste audio après échec');
+              try {
+                await audioTrack.stop();
+              } catch (cleanupError) {
+                _logger.e('[DEBUG] Erreur lors du nettoyage de la piste: $cleanupError');
+              }
+              audioTrack = null;
+            }
+            
+            
+            // Nettoyer la piste audio en cas d'échec de publication
+            if (audioTrack != null) {
+              _logger.i('[DEBUG] Nettoyage de la piste audio après échec');
+              try {
+                await audioTrack.stop();
+              } catch (cleanupError) {
+                _logger.e('[DEBUG] Erreur lors du nettoyage de la piste: $cleanupError');
+              }
+              audioTrack = null;
+            }
+            
+            
+            // Nettoyer la piste audio en cas d'échec de publication
+            if (audioTrack != null) {
+              _logger.i('[DEBUG] Nettoyage de la piste audio après échec');
+              try {
+                await audioTrack.stop();
+              } catch (cleanupError) {
+                _logger.e('[DEBUG] Erreur lors du nettoyage de la piste: $cleanupError');
+              }
+              audioTrack = null;
+            }
+            
+            throw trackError; // Propager cette erreur spécifique
+          }
+        } catch (e) {
+          lastError = e is Exception ? e : Exception('$e');
+          _logger.e('[DEBUG] Erreur détaillée: ${e.runtimeType}: $e');
+          _logger.e('[DEBUG] Erreur lors de la publication de la piste audio locale (tentative ${retryCount + 1}/${_maxRetries}): $e');
+          
+          retryCount++;
+          
+          if (retryCount < _maxRetries) {
+            _logger.i('[DEBUG] Nouvelle tentative dans ${_retryDelay / 1000} secondes...');
+            await Future.delayed(Duration(milliseconds: _retryDelay));
+          }
+        }
+      }
+      
+      // Si on arrive ici, toutes les tentatives ont échoué
+      _logger.e('[DEBUG] Échec de la publication audio après $_maxRetries tentatives');
+      throw lastError ?? Exception('Échec de la publication audio après plusieurs tentatives');
+    } catch (e) {
+      _logger.e('[DEBUG] Exception finale lors de la publication audio: ${e.runtimeType}: $e');
+      _logger.i('[DEBUG] ===== FIN PUBLICATION AUDIO (ÉCHEC) =====');
+      throw e; // Propager l'erreur pour que l'appelant puisse la gérer
+    }
+    } catch (e) {
+      _logger.e('[DEBUG] Exception finale lors de la publication audio: ${e.runtimeType}: $e');
+      _logger.i('[DEBUG] ===== FIN PUBLICATION AUDIO (ÉCHEC) =====');
+      throw e; // Propager l'erreur pour que l'appelant puisse la gérer
+    }
+    } catch (e) {
+      _logger.e('[DEBUG] Exception finale lors de la publication audio: ${e.runtimeType}: $e');
+      _logger.i('[DEBUG] ===== FIN PUBLICATION AUDIO (ÉCHEC) =====');
+      throw e; // Propager l'erreur pour que l'appelant puisse la gérer
+    }
+  }
+
+  /// Arrête la publication de la piste audio locale
+  Future<void> unpublishMyAudio() async {
+    _logger.i('[DEBUG] ===== DÉBUT DÉPUBLICATION AUDIO =====');
+    _logger.i('[DEBUG] ===== DÉBUT DÉPUBLICATION AUDIO =====');
+    _logger.i('[DEBUG] ===== DÉBUT DÉPUBLICATION AUDIO =====');
+    _logger.i('Arrêt de la publication de la piste audio locale...');
+    
+    if (!_isConnected || localParticipant == null) {
+      _logger.w('[DEBUG] Non connecté à une salle, aucune piste audio à dépublier');
+      return;
+    }
+    
+    try {
+      // Trouver la publication audio locale et la dépublier
+      final audioPublication = localParticipant?.audioTrackPublications.firstOrNull;
+      if (audioPublication != null) {
+        _logger.i('[DEBUG] Dépublication de la piste audio locale: ${audioPublication.sid}');
+        
+        try {
+          try {
+          try {
+          await localParticipant!.removePublishedTrack(audioPublication.sid);
+          _logger.i('[DEBUG] Piste audio dépubliée avec succès');
+          _logger.i('[DEBUG] Piste audio dépubliée avec succès');
+          _logger.i('[DEBUG] Piste audio dépubliée avec succès');
+          
+          // Arrêter la piste pour libérer les ressources du microphone
+          if (audioPublication.track != null) {
+            _logger.i('[DEBUG] Arrêt de la piste audio locale');
+            await audioPublication.track!.stop();
+            _logger.i('[DEBUG] Piste audio arrêtée avec succès');
+            _logger.i('[DEBUG] Piste audio arrêtée avec succès');
+            _logger.i('[DEBUG] Piste audio arrêtée avec succès');
+          }
+          
+          _logger.i('[DEBUG] Piste audio locale dépubliée avec succès');
+        } catch (trackError) {
+          _logger.e('[DEBUG] Erreur lors de la dépublication de la piste: ${trackError.runtimeType}: $trackError');
+          
+          // Tenter quand même d'arrêter la piste en cas d'erreur de dépublication
+          try {
+            if (audioPublication.track != null) {
+              _logger.i('[DEBUG] Tentative d\'arrêt de la piste après échec de dépublication');
+              await audioPublication.track!.stop();
+            _logger.i('[DEBUG] Piste audio arrêtée avec succès');
+            _logger.i('[DEBUG] Piste audio arrêtée avec succès');
+            }
+          } catch (stopError) {
+            _logger.e('[DEBUG] Erreur lors de l\'arrêt de la piste après échec: $stopError');
+          }
+          
+          throw trackError; // Propager l'erreur
+        }
+      } else {
+        _logger.i('[DEBUG] Aucune piste audio locale à dépublier');
+      }
+      
+      _logger.i('[DEBUG] ===== FIN DÉPUBLICATION AUDIO (SUCCÈS) =====');
+    } catch (e) {
+      _logger.e('[DEBUG] Erreur détaillée lors de la dépublication: ${e.runtimeType}: $e');
+      _logger.e('[DEBUG] Erreur lors de la dépublication de la piste audio locale: $e');
+      _logger.i('[DEBUG] ===== FIN DÉPUBLICATION AUDIO (ÉCHEC) =====');
+      throw Exception('Échec de la dépublication audio: $e');
+    }
+  }
+
+  Future<void> disconnect() async {
+    try {
+      // Acquérir le verrou pour empêcher les opérations parallèles
+      await _acquireLock();
+      
+      if (_room != null) {
+        _logger.i('Disconnecting from room...');
+        
+        // Marquer comme déconnecté avant l'opération pour éviter les tentatives parallèles
+        _isConnected = false;
+        _isConnecting = false;
+        notifyListeners();
+        
+        try {
+          await _room!.disconnect();
+          _logger.i('Successfully disconnected from room');
+        } catch (e) {
+          _logger.e('Error during room disconnect: $e');
+          // Continuer malgré l'erreur pour nettoyer les ressources
+        }
+        
+        // Nettoyer les ressources
+        _room = null;
+        _listener?.dispose();
+        _listener = null;
+      } else {
+        _logger.i('No active room to disconnect from');
+      }
+    } finally {
+      // Toujours libérer le verrou, même en cas d'erreur
+      _releaseLock();
+    }
+  }
+
+  @override
+  void dispose() {
+    _room?.dispose();
+    _listener?.dispose();
+    super.dispose();
+  }
+  
+  /// Envoie des données via le canal de données LiveKit
+  Future<void> sendData(Uint8List data) async {
+    if (!_isConnected || localParticipant == null) {
+      _logger.w('Not connected to a room, cannot send data.');
+      return;
+    }
+    
+    try {
+      await localParticipant!.publishData(data);
+      _logger.i('Data sent: ${data.length} bytes');
+    } catch (e) {
+      _logger.e('Error sending data: $e');
+      throw e;
+    }
+  }
+  
+  /// Vérifie la connexion au serveur LiveKit
+  ///
+  /// Cette méthode tente d'établir une connexion au serveur LiveKit
+  /// et retourne un résultat indiquant si la connexion a réussi ou échoué,
+  /// avec des informations de diagnostic supplémentaires en cas d'échec.
+  ///
+  /// Utile pour vérifier que le domaine pointe vers la bonne adresse IP
+  /// et que les DNS sont correctement propagés.
+  static Future<Map<String, dynamic>> checkLiveKitConnection() async {
+    final result = <String, dynamic>{
+      'success': false,
+      'url': AppConfig.livekitWsUrl,
+      'timestamp': DateTime.now().toIso8601String(),
+      'error': null,
+      'dns_resolved': false,
+      'connection_established': false,
+    };
+    
+    try {
+      // Vérifier si l'URL est valide
+      final uri = Uri.parse(AppConfig.livekitWsUrl);
+      if (uri.host.isEmpty) {
+        result['error'] = 'URL invalide: hôte manquant';
+        return result;
+      }
+      
+      // Tenter de résoudre le DNS
+      try {
+        // Utiliser une requête HTTP pour vérifier si le domaine est résolvable
+        // Note: Ceci est une approximation car nous ne pouvons pas directement
+        // tester une connexion WebSocket sans établir une connexion complète
+        final httpUri = Uri.https(uri.host, '/');
+        final httpResponse = await http.get(httpUri).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => http.Response('Timeout', 408),
+        );
+        
+        result['dns_resolved'] = true;
+        result['http_status'] = httpResponse.statusCode;
+        
+        // Si nous arrivons ici, le DNS a été résolu avec succès
+        // Note: Un code 404 est acceptable car nous vérifions juste
+        // que le domaine est résolvable, pas qu'un endpoint spécifique existe
+        if (httpResponse.statusCode != 408) {
+          result['connection_established'] = true;
+          result['success'] = true;
+        } else {
+          result['error'] = 'Timeout lors de la connexion au serveur';
+        }
+      } catch (e) {
+        result['error'] = 'Erreur de résolution DNS: $e';
+      }
+    } catch (e) {
+      result['error'] = 'Erreur lors de la vérification de connexion: $e';
+    }
+    
+    return result;
+  }
+}

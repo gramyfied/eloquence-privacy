@@ -1,0 +1,624 @@
+import 'dart:async';
+import 'dart:typed_data';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:livekit_client/livekit_client.dart' hide ConnectionState;
+import 'package:permission_handler/permission_handler.dart';
+import '../../core/utils/logger_service.dart' as app_logger;
+import '../../src/services/livekit_service.dart';
+
+/// Adaptateur pour utiliser LiveKit comme service audio
+/// 
+/// Cet adaptateur implémente les mêmes fonctionnalités que le service audio WebSocket
+/// actuel, mais en utilisant LiveKit (WebRTC) pour la communication audio.
+class LiveKitAudioAdapter {
+  static const String _tag = 'LiveKitAudioAdapter';
+  
+  final LiveKitService _livekitService;
+  
+  // Callbacks similaires à ceux de l'AudioService actuel
+  Function(String)? onTextReceived;
+  Function(String)? onAudioUrlReceived;
+  Function(Map<String, dynamic>)? onFeedbackReceived;
+  Function(String)? onError;
+  Function()? onReconnecting;
+  Function(bool)? onReconnected;
+  
+  bool _isRecording = false;
+  bool _isConnected = false;
+  bool _isConnecting = false;
+  
+  // Nombre maximal de tentatives pour l'initialisation du microphone
+  static const int _maxRetries = 3;
+  
+  /// Crée un nouvel adaptateur LiveKit
+  /// 
+  /// [livekitService] est le service LiveKit existant qui sera utilisé pour
+  /// la communication avec le serveur LiveKit.
+  LiveKitAudioAdapter(this._livekitService) {
+    _setupListeners();
+  }
+  
+  /// Configure les écouteurs d'événements LiveKit
+  void _setupListeners() {
+    // Écouter les événements de données reçues
+    _livekitService.onDataReceived = (data) {
+      try {
+        final jsonData = jsonDecode(utf8.decode(data));
+        app_logger.logger.i(_tag, 'Données reçues: $jsonData');
+        
+        // Traiter les différents types de messages
+        if (jsonData is Map<String, dynamic>) {
+          if (jsonData.containsKey('type')) {
+            final messageType = jsonData['type'];
+            
+            // Message de type "text"
+            if (messageType == 'text' && jsonData.containsKey('content')) {
+              final textContent = jsonData['content'];
+              app_logger.logger.i(_tag, 'Texte reçu: $textContent');
+              onTextReceived?.call(textContent);
+            }
+            
+            // Message de type "audio"
+            else if (messageType == 'audio' && jsonData.containsKey('url')) {
+              final audioUrl = jsonData['url'];
+              app_logger.logger.i(_tag, 'URL audio reçue: $audioUrl');
+              onAudioUrlReceived?.call(audioUrl);
+            }
+            
+            // Message de type "feedback"
+            else if (messageType == 'feedback' && jsonData.containsKey('data')) {
+              app_logger.logger.i(_tag, 'Feedback reçu');
+              onFeedbackReceived?.call(jsonData['data']);
+            }
+            
+            // Message de type "error"
+            else if (messageType == 'error' && jsonData.containsKey('message')) {
+              app_logger.logger.e(_tag, 'Erreur reçue du serveur: ${jsonData['message']}');
+              onError?.call(jsonData['message']);
+            }
+            
+            // Message de type "pong" (réponse à un ping)
+            else if (messageType == 'pong') {
+              app_logger.logger.i(_tag, 'Pong reçu du serveur');
+            }
+          } else {
+            // Format alternatif (champs directs)
+            if (jsonData.containsKey('text')) {
+              app_logger.logger.i(_tag, 'Texte reçu: ${jsonData['text']}');
+              onTextReceived?.call(jsonData['text']);
+            }
+
+            if (jsonData.containsKey('audio_url')) {
+              app_logger.logger.i(_tag, 'URL audio reçue: ${jsonData['audio_url']}');
+              onAudioUrlReceived?.call(jsonData['audio_url']);
+            }
+
+            if (jsonData.containsKey('feedback')) {
+              app_logger.logger.i(_tag, 'Feedback reçu');
+              onFeedbackReceived?.call(jsonData['feedback']);
+            }
+
+            if (jsonData.containsKey('error')) {
+              app_logger.logger.e(_tag, 'Erreur reçue du serveur: ${jsonData['error']}');
+              onError?.call('Erreur du serveur: ${jsonData['error']}');
+            }
+          }
+        }
+      } catch (e) {
+        app_logger.logger.e(_tag, 'Erreur lors du traitement des données reçues', e);
+      }
+    };
+    
+    // Écouter les événements de connexion/déconnexion
+    _livekitService.onConnectionStateChanged = (state) {
+      switch (state) {
+        case ConnectionState.connecting:
+          _isConnecting = true;
+          _isConnected = false;
+          app_logger.logger.i(_tag, 'Connexion en cours...');
+          break;
+        case ConnectionState.connected:
+          _isConnecting = false;
+          _isConnected = true;
+          app_logger.logger.i(_tag, 'Connexion établie');
+          break;
+        case ConnectionState.reconnecting:
+          _isConnecting = true;
+          _isConnected = false;
+          app_logger.logger.i(_tag, 'Reconnexion en cours...');
+          onReconnecting?.call();
+          break;
+        case ConnectionState.disconnected:
+          _isConnecting = false;
+          _isConnected = false;
+          app_logger.logger.i(_tag, 'Déconnecté');
+          break;
+      }
+    };
+  }
+  
+  /// Vérifie et demande les permissions du microphone
+  /// 
+  /// Retourne true si la permission est accordée, false sinon
+  Future<bool> _checkAndRequestMicrophonePermission() async {
+    app_logger.logger.i(_tag, 'Vérification des permissions du microphone...');
+    
+    // Vérifier si la permission est déjà accordée
+    var status = await Permission.microphone.status;
+    app_logger.logger.i(_tag, 'Statut actuel de la permission microphone: $status');
+    
+    if (status.isGranted) {
+      app_logger.logger.i(_tag, 'Permission microphone déjà accordée');
+      return true;
+    }
+    
+    // Si la permission est refusée définitivement, informer l'utilisateur
+    if (status.isPermanentlyDenied) {
+      app_logger.logger.e(_tag, 'Permission microphone refusée définitivement. L\'utilisateur doit l\'activer manuellement dans les paramètres');
+      onError?.call('Permission microphone refusée. Veuillez l\'activer dans les paramètres de l\'application.');
+      return false;
+    }
+    
+    // Demander la permission
+    app_logger.logger.i(_tag, 'Demande de permission microphone...');
+    status = await Permission.microphone.request();
+    app_logger.logger.i(_tag, 'Résultat de la demande de permission: $status');
+    
+    if (status.isGranted) {
+      app_logger.logger.i(_tag, 'Permission microphone accordée');
+      return true;
+    } else {
+      app_logger.logger.e(_tag, 'Permission microphone refusée: $status');
+      onError?.call('Permission microphone refusée. L\'enregistrement audio ne fonctionnera pas.');
+      return false;
+    }
+  }
+  
+  /// Initialise le service audio
+  Future<void> initialize() async {
+    app_logger.logger.i(_tag, 'Initialisation de l\'adaptateur LiveKit');
+    await _checkAndRequestMicrophonePermission();
+  }
+  
+  /// Connecte à LiveKit en utilisant les informations de session
+  Future<void> connectToLiveKit(String livekitUrl, String token, String roomName, {bool enableAutoReconnect = true}) async {
+    app_logger.logger.i(_tag, 'Connexion LiveKit: URL=$livekitUrl, Room=$roomName');
+    
+    // Vérifier si nous sommes déjà connectés ou en cours de connexion
+    if (_isConnected || _isConnecting) {
+      app_logger.logger.w(_tag, 'Déjà connecté ou en cours de connexion. Déconnexion préalable...');
+      
+      // Déconnecter proprement avant de tenter une nouvelle connexion
+      await dispose();
+      
+      // Attendre un court délai pour s'assurer que la déconnexion est complète
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    
+    _isConnecting = true;
+    _isConnected = false;
+    
+    try {
+      // Générer un ID unique pour l'utilisateur
+      final userId = 'user-${DateTime.now().millisecondsSinceEpoch}';
+      
+      // Se connecter à LiveKit en utilisant le token fourni
+      final success = await _livekitService.connectWithToken(
+        livekitUrl,
+        token,
+        roomName: roomName,
+      );
+      
+      if (!success) {
+        _isConnecting = false;
+        _isConnected = false;
+        throw Exception('Échec de la connexion LiveKit');
+      }
+      
+      _isConnecting = false;
+      _isConnected = true;
+      app_logger.logger.i(_tag, 'Connexion LiveKit établie avec succès');
+    } catch (e) {
+      _isConnecting = false;
+      _isConnected = false;
+      app_logger.logger.e(_tag, 'Erreur lors de la connexion LiveKit', e);
+      onError?.call('Erreur de connexion: $e');
+      // Réinitialiser l'état en cas d'erreur
+      _isRecording = false;
+      
+      // Même en cas d'erreur, on considère que l'enregistrement est arrêté
+      // pour éviter de rester bloqué dans un état incohérent
+      _isRecording = false;
+      // Réinitialiser l'état en cas d'erreur
+      _isRecording = false;
+      
+      // Même en cas d'erreur, on considère que l'enregistrement est arrêté
+      // pour éviter de rester bloqué dans un état incohérent
+      _isRecording = false;
+      throw e;
+    } finally {
+      app_logger.logger.i(_tag, '[DEBUG] ===== FIN ARRÊT ENREGISTREMENT =====');
+    }
+  }
+  
+  /// Méthode de compatibilité pour l'ancienne API WebSocket
+  /// Cette méthode est maintenue pour la rétrocompatibilité
+  @Deprecated('Utilisez connectToLiveKit à la place')
+  Future<void> connectWebSocket(String wsUrl, {bool enableAutoReconnect = true}) async {
+    app_logger.logger.i(_tag, 'Connexion LiveKit (simulant WebSocket): $wsUrl');
+    app_logger.logger.w(_tag, 'Cette méthode est obsolète. Utilisez connectToLiveKit à la place.');
+    
+    // Vérifier si nous sommes déjà connectés ou en cours de connexion
+    if (_isConnected || _isConnecting) {
+      app_logger.logger.w(_tag, 'Déjà connecté ou en cours de connexion. Déconnexion préalable...');
+      
+      // Déconnecter proprement avant de tenter une nouvelle connexion
+      await dispose();
+      
+      // Attendre un court délai pour s'assurer que la déconnexion est complète
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    
+    _isConnecting = true;
+    _isConnected = false;
+    
+    try {
+      // Extraire l'ID de session de l'URL WebSocket
+      final sessionId = _extractSessionId(wsUrl);
+      
+      // Générer un ID unique pour l'utilisateur
+      final userId = 'user-${DateTime.now().millisecondsSinceEpoch}';
+      
+      // Se connecter à LiveKit en utilisant l'ID de session comme nom de salle
+      final success = await _livekitService.connect(
+        sessionId,
+        userId,
+        participantName: 'Utilisateur Eloquence',
+      );
+      
+      if (!success) {
+        _isConnecting = false;
+        _isConnected = false;
+        throw Exception('Échec de la connexion LiveKit');
+      }
+      
+      _isConnecting = false;
+      _isConnected = true;
+      app_logger.logger.i(_tag, 'Connexion LiveKit (via WebSocket) établie avec succès');
+    } catch (e) {
+      _isConnecting = false;
+      _isConnected = false;
+      app_logger.logger.e(_tag, 'Erreur lors de la connexion LiveKit', e);
+      onError?.call('Erreur de connexion: $e');
+      // Réinitialiser l'état en cas d'erreur
+      _isRecording = false;
+      
+      // Même en cas d'erreur, on considère que l'enregistrement est arrêté
+      // pour éviter de rester bloqué dans un état incohérent
+      _isRecording = false;
+      // Réinitialiser l'état en cas d'erreur
+      _isRecording = false;
+      
+      // Même en cas d'erreur, on considère que l'enregistrement est arrêté
+      // pour éviter de rester bloqué dans un état incohérent
+      _isRecording = false;
+      throw e;
+    } finally {
+      app_logger.logger.i(_tag, '[DEBUG] ===== FIN ARRÊT ENREGISTREMENT =====');
+    }
+  }
+  
+  /// Extrait l'ID de session de l'URL WebSocket
+  String _extractSessionId(String wsUrl) {
+    // Exemple: "ws://server.com/ws/simple/session123" -> "session123"
+    final parts = wsUrl.split('/');
+    return parts.last;
+  }
+  
+  /// Force une reconnexion manuelle
+  Future<void> reconnect() async {
+    app_logger.logger.i(_tag, 'Reconnexion manuelle LiveKit');
+    
+    // S'assurer que nous ne sommes pas déjà en train de nous connecter
+    if (_isConnecting) {
+      app_logger.logger.w(_tag, 'Reconnexion déjà en cours, opération ignorée');
+      return;
+    }
+    
+    _isConnecting = true;
+    _isConnected = false;
+    
+    try {
+      // Déconnecter proprement
+      await _livekitService.disconnect();
+      
+      // Attendre un court instant avant de se reconnecter
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Utiliser les mêmes paramètres que la connexion précédente
+      final roomName = _livekitService.room?.name ?? 'default-room';
+      final userId = 'user-${DateTime.now().millisecondsSinceEpoch}';
+      
+      final success = await _livekitService.connect(
+        roomName,
+        userId,
+        participantName: 'Utilisateur Eloquence',
+      );
+      
+      _isConnecting = false;
+      _isConnected = success;
+      
+      app_logger.logger.i(_tag, success ? 'Reconnexion réussie' : 'Échec de la reconnexion');
+      onReconnected?.call(success);
+    } catch (e) {
+      _isConnecting = false;
+      _isConnected = false;
+      app_logger.logger.e(_tag, 'Erreur lors de la reconnexion LiveKit', e);
+      onReconnected?.call(false);
+      // Réinitialiser l'état en cas d'erreur
+      _isRecording = false;
+      
+      // Même en cas d'erreur, on considère que l'enregistrement est arrêté
+      // pour éviter de rester bloqué dans un état incohérent
+      _isRecording = false;
+      // Réinitialiser l'état en cas d'erreur
+      _isRecording = false;
+      
+      // Même en cas d'erreur, on considère que l'enregistrement est arrêté
+      // pour éviter de rester bloqué dans un état incohérent
+      _isRecording = false;
+      throw e;
+    } finally {
+      app_logger.logger.i(_tag, '[DEBUG] ===== FIN ARRÊT ENREGISTREMENT =====');
+    }
+  }
+  
+  /// Démarre l'enregistrement audio avec mécanisme de réessai
+  Future<void> startRecording() async {
+    app_logger.logger.i(_tag, '[DEBUG] ===== DÉBUT DÉMARRAGE ENREGISTREMENT =====');
+    app_logger.logger.i(_tag, 'Démarrage de l\'enregistrement LiveKit');
+    app_logger.logger.performance(_tag, 'startRecording', start: true);
+    
+    if (_isRecording) {
+      app_logger.logger.w(_tag, '[DEBUG] L\'enregistrement est déjà en cours, sortie immédiate');
+      return;
+    }
+    
+    if (!_isConnected) {
+      app_logger.logger.e(_tag, '[DEBUG] Non connecté, impossible de démarrer l\'enregistrement');
+      onError?.call('Impossible de démarrer l\'enregistrement: non connecté');
+      return;
+    }
+    
+    // Vérifier les permissions du microphone avant de démarrer l'enregistrement
+    app_logger.logger.i(_tag, '[DEBUG] Vérification des permissions du microphone...');
+    final hasPermission = await _checkAndRequestMicrophonePermission();
+    app_logger.logger.i(_tag, '[DEBUG] Résultat de la vérification des permissions: $hasPermission');
+    
+    if (!hasPermission) {
+      app_logger.logger.e(_tag, '[DEBUG] Permission microphone non accordée, sortie');
+      onError?.call('Impossible de démarrer l\'enregistrement: permission microphone non accordée');
+      return;
+    }
+    
+    // Tentatives multiples pour initialiser le microphone
+    int retryCount = 0;
+    bool success = false;
+    Exception? lastError;
+    
+    try {
+      app_logger.logger.i(_tag, '[DEBUG] Début des tentatives d\'initialisation du microphone');
+      while (retryCount < _maxRetries && !success) {
+        try {
+          // Vérifier l'état de la connexion
+          app_logger.logger.i(_tag, '[DEBUG] État de la connexion avant publication audio: connecté=${_isConnected}, enregistrement=${_isRecording}');
+          
+          // Publier l'audio local
+          app_logger.logger.i(_tag, '[DEBUG] Tentative de publication audio via LiveKitService (essai ${retryCount + 1}/${_maxRetries})');
+          
+          // Ajout d'un log avant l'appel à publishMyAudio
+          app_logger.logger.i(_tag, '[DEBUG] Appel de publishMyAudio()...');
+          await _livekitService.publishMyAudio();
+          app_logger.logger.i(_tag, '[DEBUG] Retour de publishMyAudio() réussi');
+          
+          app_logger.logger.i(_tag, '[DEBUG] Publication audio réussie, marquage de l\'enregistrement comme actif');
+          _isRecording = true;
+          success = true;
+          
+          // Informer le serveur que l'enregistrement a commencé
+          app_logger.logger.i(_tag, '[DEBUG] Envoi du message de contrôle recording_started');
+          _sendControlMessage('recording_started');
+          
+          app_logger.logger.i(_tag, '[DEBUG] Enregistrement démarré avec succès');
+        } catch (e) {
+          lastError = e is Exception ? e : Exception('$e');
+          app_logger.logger.e(_tag, '[DEBUG] Exception détaillée: ${e.runtimeType}: $e');
+          app_logger.logger.e(_tag, '[DEBUG] Erreur lors du démarrage de l\'enregistrement (essai ${retryCount + 1}/${_maxRetries})', e);
+          retryCount++;
+          
+          if (retryCount < _maxRetries) {
+            app_logger.logger.i(_tag, '[DEBUG] Nouvelle tentative dans 1 seconde...');
+            await Future.delayed(const Duration(seconds: 1));
+          }
+        }
+      }
+      
+      // Vérification explicite après les tentatives de réessai
+      if (!success) {
+        app_logger.logger.e(_tag, '[DEBUG] Toutes les tentatives ont échoué. Dernière erreur: $lastError');
+        throw lastError ?? Exception('Échec de l\'initialisation du microphone après plusieurs tentatives');
+      } else {
+        // Vérification supplémentaire que l'enregistrement est bien actif
+        app_logger.logger.i(_tag, '[DEBUG] Vérification finale de l\'état d\'enregistrement: $_isRecording');
+        if (!_isRecording) {
+          app_logger.logger.e(_tag, '[DEBUG] État incohérent: success=true mais _isRecording=false');
+          throw Exception('État incohérent après initialisation du microphone');
+        }
+      }
+    } catch (e) {
+      app_logger.logger.e(_tag, '[DEBUG] Erreur inattendue lors des tentatives d\'enregistrement: ${e.runtimeType}: $e');
+      // Réinitialiser l'état en cas d'erreur
+      _isRecording = false;
+      // Réinitialiser l'état en cas d'erreur
+      _isRecording = false;
+      
+      // Même en cas d'erreur, on considère que l'enregistrement est arrêté
+      // pour éviter de rester bloqué dans un état incohérent
+      _isRecording = false;
+      // Réinitialiser l'état en cas d'erreur
+      _isRecording = false;
+      
+      // Même en cas d'erreur, on considère que l'enregistrement est arrêté
+      // pour éviter de rester bloqué dans un état incohérent
+      _isRecording = false;
+      throw e;
+    } finally {
+      app_logger.logger.i(_tag, '[DEBUG] ===== FIN DÉMARRAGE ENREGISTREMENT (success=$success) =====');
+      app_logger.logger.i(_tag, '[DEBUG] ===== FIN DÉMARRAGE ENREGISTREMENT (success=$success) =====');
+      app_logger.logger.i(_tag, '[DEBUG] ===== FIN DÉMARRAGE ENREGISTREMENT (success=$success) =====');
+      app_logger.logger.performance(_tag, 'startRecording', end: true);
+    }
+  }
+  
+  /// Arrête l'enregistrement audio
+  Future<void> stopRecording() async {
+    app_logger.logger.i(_tag, '[DEBUG] ===== DÉBUT ARRÊT ENREGISTREMENT =====');
+    app_logger.logger.i(_tag, 'Arrêt de l\'enregistrement LiveKit');
+    
+    if (!_isRecording) {
+      app_logger.logger.w(_tag, '[DEBUG] L\'enregistrement n\'est pas en cours, sortie immédiate');
+      return;
+    }
+    
+    try {
+      // Arrêter la publication audio
+      app_logger.logger.i(_tag, '[DEBUG] Appel de unpublishMyAudio()...');
+      await _livekitService.unpublishMyAudio();
+      app_logger.logger.i(_tag, '[DEBUG] Retour de unpublishMyAudio() réussi');
+      
+      // Mettre à jour l'état avant d'envoyer le message
+      _isRecording = false;
+      
+      // Informer le serveur que l'enregistrement est terminé
+      app_logger.logger.i(_tag, '[DEBUG] Envoi du message de contrôle recording_stopped');
+      app_logger.logger.i(_tag, '[DEBUG] Envoi du message de contrôle recording_stopped');
+      app_logger.logger.i(_tag, '[DEBUG] Envoi du message de contrôle recording_stopped');
+      _sendControlMessage('recording_stopped');
+      
+      app_logger.logger.i(_tag, '[DEBUG] Enregistrement arrêté avec succès');
+    } catch (e) {
+      app_logger.logger.e(_tag, '[DEBUG] Erreur lors de l\'arrêt de l\'enregistrement: ${e.runtimeType}: $e');
+      app_logger.logger.e(_tag, 'Erreur lors de l\'arrêt de l\'enregistrement LiveKit', e);
+      onError?.call('Erreur lors de l\'arrêt de l\'enregistrement: $e');
+      
+      // Même en cas d'erreur, on considère que l'enregistrement est arrêté
+      // pour éviter de rester bloqué dans un état incohérent
+      _isRecording = false;
+      // Réinitialiser l'état en cas d'erreur
+      _isRecording = false;
+      
+      // Même en cas d'erreur, on considère que l'enregistrement est arrêté
+      // pour éviter de rester bloqué dans un état incohérent
+      _isRecording = false;
+      // Réinitialiser l'état en cas d'erreur
+      _isRecording = false;
+      
+      // Même en cas d'erreur, on considère que l'enregistrement est arrêté
+      // pour éviter de rester bloqué dans un état incohérent
+      _isRecording = false;
+      throw e;
+    } finally {
+      app_logger.logger.i(_tag, '[DEBUG] ===== FIN ARRÊT ENREGISTREMENT =====');
+    }
+  }
+  
+  /// Envoie un message de contrôle au serveur
+  void _sendControlMessage(String type, [Map<String, dynamic>? data]) {
+    try {
+      final message = {
+        'type': type,
+        if (data != null) ...data,
+      };
+      
+      final jsonMessage = jsonEncode(message);
+      _livekitService.sendData(utf8.encode(jsonMessage));
+      app_logger.logger.i(_tag, 'Message de contrôle envoyé: $type');
+    } catch (e) {
+      app_logger.logger.e(_tag, 'Erreur lors de l\'envoi du message de contrôle', e);
+    }
+  }
+  
+  /// Envoie un message texte au serveur
+  void sendTextMessage(String text) {
+    try {
+      final message = {
+        'type': 'text',
+        'content': text,
+      };
+      
+      final jsonMessage = jsonEncode(message);
+      _livekitService.sendData(utf8.encode(jsonMessage));
+      app_logger.logger.i(_tag, 'Message texte envoyé: $text');
+    } catch (e) {
+      app_logger.logger.e(_tag, 'Erreur lors de l\'envoi du message texte', e);
+    }
+  }
+  
+  /// Envoie des données audio au serveur
+  void sendAudioData(Uint8List audioData) {
+    try {
+      // Informer le serveur que des données audio vont être envoyées
+      _sendControlMessage('audio_data', {'size': audioData.length});
+      
+      // Envoyer les données audio
+      _livekitService.sendData(audioData);
+      app_logger.logger.i(_tag, 'Données audio envoyées: ${audioData.length} octets');
+    } catch (e) {
+      app_logger.logger.e(_tag, 'Erreur lors de l\'envoi des données audio', e);
+    }
+  }
+  
+  /// Vérifie si le WebSocket est connecté
+  Future<bool> ensureConnected() async {
+    final isConnected = _isConnected;
+    app_logger.logger.i(_tag, 'Vérification de la connexion: $_isConnected');
+    return isConnected;
+  }
+  
+  /// Ferme le service audio
+  Future<void> dispose() async {
+    app_logger.logger.i(_tag, 'Fermeture de l\'adaptateur LiveKit');
+    
+    // Arrêter l'enregistrement s'il est en cours
+    if (_isRecording) {
+      try {
+        app_logger.logger.i(_tag, 'Arrêt de l\'enregistrement avant la fermeture');
+        await stopRecording();
+      } catch (e) {
+        app_logger.logger.e(_tag, 'Erreur lors de l\'arrêt de l\'enregistrement', e);
+      }
+    }
+    
+    // Se déconnecter de LiveKit
+    try {
+      // Marquer comme déconnecté avant l'opération pour éviter les tentatives parallèles
+      _isConnected = false;
+      _isConnecting = false;
+      
+      await _livekitService.disconnect();
+      app_logger.logger.i(_tag, 'Déconnexion LiveKit réussie');
+    } catch (e) {
+      app_logger.logger.e(_tag, 'Erreur lors de la déconnexion LiveKit', e);
+    }
+  }
+  
+  /// Vérifie si l'enregistrement est en cours
+  bool get isRecording => _isRecording;
+  
+  /// Vérifie si la connexion est établie
+  bool get isConnected => _isConnected;
+  
+  /// Vérifie si la connexion est en cours
+  bool get isConnecting => _isConnecting;
+}

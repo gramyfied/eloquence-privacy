@@ -1,0 +1,748 @@
+import 'dart:async';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/theme/dark_theme.dart';
+import '../../../core/utils/logger_service.dart';
+import '../../../core/config/app_config.dart';
+import '../../../data/models/scenario_model.dart';
+import '../../../data/models/session_model.dart';
+import '../../providers/scenario_provider.dart';
+import '../../providers/audio_provider.dart';
+import '../../providers/livekit_provider.dart';
+import '../../providers/livekit_audio_provider.dart';
+import '../../providers/audio_recorder_provider.dart';
+import '../../widgets/glow_microphone_button.dart';
+import '../../widgets/scenario_selection_modal.dart';
+import '../../widgets/livekit_control_panel.dart';
+import '../../widgets/audio_recorder_control_panel.dart';
+
+class ScenarioScreen extends ConsumerStatefulWidget {
+  const ScenarioScreen({super.key});
+
+  @override
+  ConsumerState<ScenarioScreen> createState() => _ScenarioScreenState();
+}
+
+class _ScenarioScreenState extends ConsumerState<ScenarioScreen> {
+  static const String _tag = 'ScenarioScreen';
+  String _currentPrompt = '"Merci à tous d\'être présents aujourd\'hui."';
+  bool _showFeedback = false;
+  bool _isDisposed = false;
+  
+  // Utiliser des ProviderSubscription pour pouvoir les annuler proprement
+  ProviderSubscription<AsyncValue<SessionModel?>>? _sessionSubscription;
+
+  // Variable pour suivre si un scénario a déjà été sélectionné
+  bool _hasSelectedScenario = false;
+
+  @override
+  void initState() {
+    super.initState();
+    logger.i(_tag, 'Initialisation de la page de scénario');
+
+    // Configurer l'écouteur de session une seule fois avec une référence à l'abonnement
+    _sessionSubscription = ref.listenManual(sessionProvider, (previous, next) {
+      // Vérifier si le widget est toujours monté
+      if (!mounted || _isDisposed) return;
+      
+      if (next.value != null && previous?.value?.sessionId != next.value?.sessionId) {
+        logger.i(_tag, 'Nouvelle session créée: ${next.value!.sessionId}');
+        logger.i(_tag, 'URL LiveKit de la session: ${next.value!.livekitUrl}');
+        logger.i(_tag, 'Room LiveKit: ${next.value!.roomName}');
+
+        // Connecter à LiveKit avec les informations de la session
+        _connectToWebSocket(next.value!.sessionId, next.value!.livekitUrl);
+
+        // Marquer qu'un scénario a été sélectionné
+        _hasSelectedScenario = true;
+        
+        logger.performance(_tag, 'scenarioSelection', end: true);
+      }
+    });
+
+    // Afficher la modale de sélection de scénario après le build initial
+    // seulement si aucun scénario n'a été sélectionné
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_isDisposed && !_hasSelectedScenario) {
+        logger.i(_tag, 'Affichage de la modale de sélection de scénario');
+        _showScenarioSelectionModal();
+      }
+    });
+  }
+  
+  // La méthode dispose() est définie plus bas dans le fichier
+
+  // Méthode pour connecter à LiveKit ou WebSocket selon le format de session
+  Future<void> _connectToWebSocket(String sessionId, String url) async {
+    // Vérifier si le widget est toujours monté avant de continuer
+    if (_isDisposed || !mounted) {
+      logger.w(_tag, 'Tentative de connexion sur un widget détruit');
+      return;
+    }
+
+    // Récupérer la session actuelle
+    final session = ref.read(sessionProvider).value;
+    if (session == null) {
+      logger.e(_tag, 'Aucune session disponible pour la connexion');
+      return;
+    }
+    
+    // Récupérer le notifier LiveKit
+    final liveKitNotifier = ref.read(liveKitConversationProvider.notifier);
+
+    try {
+      logger.i(_tag, 'Tentative de connexion pour la session: $sessionId');
+      
+      // Déterminer si nous utilisons LiveKit ou WebSocket
+      final bool useLiveKit = session.token.isNotEmpty;
+      
+      if (useLiveKit) {
+        logger.i(_tag, 'Utilisation de LiveKit: URL=${session.livekitUrl}, Room=${session.roomName}');
+        
+        // Connecter à LiveKit avec les informations de la session
+        try {
+          await liveKitNotifier.connectWithSession(session);
+          logger.i(_tag, 'Service audio connecté à LiveKit avec succès');
+        } catch (e) {
+          if (!_isDisposed && mounted) {
+            logger.e(_tag, 'Erreur lors de la connexion du service audio à LiveKit: $e');
+            
+            // Afficher un message d'erreur à l'utilisateur
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Problème de connexion au service audio: ${e.toString().split(':').last}'),
+                backgroundColor: Colors.red.shade700,
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+          return;
+        }
+      } else {
+        // Utiliser l'ancien format WebSocket
+        logger.i(_tag, 'Utilisation de WebSocket: URL=$url');
+        
+        // Connecter au WebSocket
+        try {
+          await liveKitNotifier.connectWebSocket(url);
+          logger.i(_tag, 'Service audio connecté au WebSocket avec succès');
+        } catch (e) {
+          if (!_isDisposed && mounted) {
+            logger.e(_tag, 'Erreur lors de la connexion du service audio au WebSocket: $e');
+            
+            // Afficher un message d'erreur à l'utilisateur
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Problème de connexion au service audio: ${e.toString().split(':').last}'),
+                backgroundColor: Colors.red.shade700,
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      // Mettre à jour le prompt avec le message initial
+      if (!_isDisposed && mounted) {
+        try {
+          if (session.initialMessage != null && session.initialMessage!.containsKey('text')) {
+            final initialMessage = session.initialMessage!['text'];
+            logger.i(_tag, 'Message initial: $initialMessage');
+
+            setState(() {
+              _currentPrompt = initialMessage!;
+            });
+          } else {
+            logger.w(_tag, 'Pas de message initial dans la session ou format incorrect');
+          }
+        } catch (e) {
+          logger.e(_tag, 'Erreur lors de la mise à jour du prompt: $e');
+        }
+      }
+    } catch (e) {
+      if (!_isDisposed && mounted) {
+        logger.e(_tag, 'Erreur lors de la connexion WebSocket: $e');
+        
+        // Afficher un message d'erreur à l'utilisateur
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de connexion: ${e.toString().split(':').last}'),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showScenarioSelectionModal() {
+    // Vérifier si le widget est toujours monté
+    if (_isDisposed || !mounted) {
+      logger.w(_tag, 'Tentative d\'ouverture de modale sur un widget détruit');
+      return;
+    }
+    
+    // Vérifier si un scénario a déjà été sélectionné
+    if (_hasSelectedScenario) {
+      logger.i(_tag, 'Un scénario a déjà été sélectionné, pas besoin de rouvrir la modale');
+      return;
+    }
+    
+    logger.i(_tag, 'Ouverture de la modale de sélection de scénario');
+    logger.performance(_tag, 'showScenarioModal', start: true);
+
+    try {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => ScenarioSelectionModal(
+          onScenarioSelected: _onScenarioSelected,
+        ),
+      ).then((_) {
+        // Vérifier si le widget est toujours monté avant de logger
+        if (!_isDisposed) {
+          logger.performance(_tag, 'showScenarioModal', end: true);
+        }
+      });
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors de l\'affichage de la modale: $e');
+      
+      // Marquer comme si un scénario avait été sélectionné pour éviter de rouvrir la modale
+      _hasSelectedScenario = true;
+    }
+  }
+
+  void _onScenarioSelected(ScenarioModel scenario) {
+    // Vérifier si le widget est toujours monté
+    if (_isDisposed || !mounted) {
+      logger.w(_tag, 'Tentative de sélection de scénario sur un widget détruit');
+      return;
+    }
+    
+    logger.i(_tag, 'Scénario sélectionné: ${scenario.id} - ${scenario.name}');
+    logger.performance(_tag, 'scenarioSelection', start: true);
+
+    // Marquer qu'un scénario a été sélectionné pour éviter de rouvrir la modale
+    _hasSelectedScenario = true;
+
+    try {
+      // Mettre à jour le scénario sélectionné dans le provider
+      ref.read(selectedScenarioProvider.notifier).state = scenario;
+
+      // Démarrer une session avec ce scénario
+      final sessionNotifier = ref.read(sessionProvider.notifier);
+      sessionNotifier.startSession(scenario.id);
+
+      // Mettre à jour le prompt (pour cet exemple, nous utilisons simplement le nom du scénario)
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _currentPrompt = '"${scenario.name}"';
+          _showFeedback = false;
+        });
+      }
+
+      // Fermer immédiatement la modale si possible
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      logger.e(_tag, 'Erreur lors de la sélection du scénario: $e');
+      
+      // Fermer la modale même en cas d'erreur
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
+  Future<void> _toggleRecording() async {
+    // Vérifier si le widget est toujours monté
+    if (_isDisposed || !mounted) {
+      logger.w(_tag, '[DEBUG] Tentative de toggle recording sur un widget détruit');
+      return;
+    }
+
+    logger.performance(_tag, 'userInteraction', start: true);
+    logger.i(_tag, '[DEBUG] ===== DÉBUT TOGGLE RECORDING =====');
+
+    try {
+      // Récupérer le notifier et l'état LiveKit
+      final liveKitNotifier = ref.read(liveKitConversationProvider.notifier);
+      final conversationState = ref.read(liveKitConversationProvider);
+
+      // Vérifier si la connexion WebSocket est établie
+      if (!conversationState.isConnected && !conversationState.isConnecting) {
+        logger.e(_tag, '[DEBUG] Tentative d\'enregistrement sans connexion WebSocket');
+        
+        // Afficher un message d'erreur à l'utilisateur
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Pas de connexion au serveur. Veuillez réessayer.'),
+              backgroundColor: Colors.red.shade700,
+              duration: const Duration(seconds: 3),
+              action: SnackBarAction(
+                label: 'Reconnecter',
+                textColor: Colors.white,
+                onPressed: () {
+                  // Tenter de reconnecter
+                  final session = ref.read(sessionProvider).value;
+                  if (session != null) {
+                    // Utiliser l'URL appropriée selon le format de session
+                    final url = session.token.isNotEmpty ? session.livekitUrl :
+                        'ws://${Uri.parse(AppConfig.apiBaseUrl).host}:${Uri.parse(AppConfig.apiBaseUrl).port}/ws/simple/${session.sessionId}';
+                    _connectToWebSocket(session.sessionId, url);
+                  }
+                },
+              ),
+            ),
+          );
+        }
+        logger.i(_tag, '[DEBUG] ===== FIN TOGGLE RECORDING (ÉCHEC: PAS DE CONNEXION) =====');
+        return;
+      }
+
+      if (conversationState.isRecording) {
+        logger.i(_tag, '[DEBUG] Arrêt de l\'enregistrement');
+        logger.i(_tag, '[DEBUG] État avant arrêt: isRecording=${conversationState.isRecording}, isProcessing=${conversationState.isProcessing}');
+
+        // Nous n'avons plus besoin de gérer l'ancienne approche LiveKit hybride
+        // car nous utilisons maintenant directement notre adaptateur LiveKit
+
+        // Arrêter l'enregistrement avec gestion des erreurs asynchrones
+        try {
+          logger.i(_tag, '[DEBUG] Appel de liveKitNotifier.stopRecording()');
+          await liveKitNotifier.stopRecording();
+          logger.i(_tag, '[DEBUG] stopRecording() terminé avec succès');
+          
+          // Cacher le feedback pendant le traitement
+          if (!_isDisposed && mounted) {
+            setState(() {
+              _showFeedback = false;
+            });
+          }
+        } catch (e) {
+          logger.e(_tag, '[DEBUG] Erreur lors de l\'arrêt de l\'enregistrement: ${e.runtimeType}: $e');
+          
+          if (!_isDisposed && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Erreur: ${e.toString().split(':').last}'),
+                backgroundColor: Colors.orange.shade700,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+      } else {
+        logger.i(_tag, '[DEBUG] Démarrage de l\'enregistrement');
+        logger.i(_tag, '[DEBUG] État avant démarrage: isRecording=${conversationState.isRecording}, isProcessing=${conversationState.isProcessing}');
+
+        // Notre adaptateur LiveKit s'occupe déjà de la gestion de l'audio
+
+        // Démarrer l'enregistrement avec gestion des erreurs asynchrones
+        try {
+          logger.i(_tag, '[DEBUG] Appel de liveKitNotifier.startRecording()');
+          await liveKitNotifier.startRecording();
+          logger.i(_tag, '[DEBUG] startRecording() terminé avec succès');
+        } catch (e) {
+          logger.e(_tag, '[DEBUG] Erreur lors du démarrage de l\'enregistrement: ${e.runtimeType}: $e');
+          
+          if (!_isDisposed && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Erreur d\'enregistrement: ${e.toString().split(':').last}'),
+                backgroundColor: Colors.red.shade700,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      logger.e(_tag, '[DEBUG] Erreur générale dans _toggleRecording: ${e.runtimeType}: $e');
+      
+      if (!_isDisposed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur: ${e.toString()}'),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      logger.i(_tag, '[DEBUG] ===== FIN TOGGLE RECORDING =====');
+      logger.performance(_tag, 'userInteraction', end: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    logger.v(_tag, 'Construction de l\'interface');
+    logger.performance(_tag, 'build', start: true);
+
+    final textTheme = Theme.of(context).textTheme;
+    final selectedScenario = ref.watch(selectedScenarioProvider);
+    final conversationState = ref.watch(conversationProvider);
+
+    // Utiliser l'état de conversation pour déterminer si on enregistre ou traite
+    final isRecording = conversationState.isRecording;
+    final isProcessing = conversationState.isProcessing;
+
+    // Afficher le feedback si disponible et si on n'est pas en train d'enregistrer ou de traiter
+    final showFeedback = _showFeedback &&
+                         conversationState.lastFeedback != null &&
+                         !isRecording &&
+                         !isProcessing;
+
+    final result = Scaffold(
+      backgroundColor: Colors.transparent,
+      // Ajout d'un bouton flottant pour changer d'exercice
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showScenarioSelectionModal,
+        backgroundColor: DarkTheme.primaryPurple.withOpacity(0.8),
+        mini: true, // Bouton plus petit pour être moins intrusif
+        child: const Icon(Icons.swap_horiz, color: Colors.white),
+        tooltip: 'Changer d\'exercice',
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endTop, // Positionné en haut à droite
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          // Utiliser SingleChildScrollView pour permettre le défilement si le contenu est trop grand
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Bouton de retour et titre du scénario
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_ios),
+                      color: DarkTheme.textPrimary,
+                      onPressed: () {
+                        logger.i(_tag, 'Navigation vers l\'écran précédent');
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                    if (selectedScenario != null)
+                      Expanded(
+                        child: Text(
+                          selectedScenario.name,
+                          style: textTheme.titleSmall?.copyWith(
+                            color: DarkTheme.textSecondary,
+                            fontFamily: 'Montserrat',
+                          ),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // Avatar
+                GestureDetector(
+                  onTap: _showScenarioSelectionModal, // Permet de changer de scénario en tapant sur l'avatar
+                  child: Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          DarkTheme.primaryPurple.withOpacity(0.7),
+                          DarkTheme.accentCyan.withOpacity(0.7),
+                        ],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: DarkTheme.primaryPurple.withOpacity(0.5),
+                          blurRadius: 10,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: Image.network(
+                        'https://i.pravatar.cc/300',
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => const Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 50,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Instruction text - même style que le texte principal
+                Text(
+                  isRecording ? 'Je vous écoute...' : 'Message du coach:',
+                  style: textTheme.titleLarge?.copyWith(
+                    color: DarkTheme.textSecondary,
+                    fontFamily: 'Montserrat',
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Message du coach ou prompt
+                Text(
+                  _currentPrompt,
+                  style: textTheme.displayMedium?.copyWith(
+                    color: DarkTheme.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Montserrat',
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+
+                // Afficher le feedback si disponible
+                if (showFeedback)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 24),
+                    child: _buildFeedbackWidget(conversationState.lastFeedback!),
+                  ),
+
+                // Bouton pour afficher/masquer le feedback
+                if (conversationState.lastFeedback != null && !isRecording && !isProcessing)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: TextButton(
+                      onPressed: () {
+                        logger.i(_tag, _showFeedback ? 'Masquage du feedback' : 'Affichage du feedback');
+                        setState(() {
+                          _showFeedback = !_showFeedback;
+                        });
+                      },
+                      child: Text(
+                        _showFeedback ? 'Masquer le feedback' : 'Afficher le feedback',
+                        style: textTheme.labelLarge?.copyWith(
+                          color: DarkTheme.accentCyan,
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Afficher les erreurs s'il y en a
+                if (conversationState.error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Text(
+                      conversationState.error!,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: DarkTheme.errorRed,
+                        fontFamily: 'Montserrat',
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+
+                // Espacement fixe après le texte
+                const SizedBox(height: 60),
+
+                // Microphone button - toujours positionné sous le texte
+                GlowMicrophoneButton(
+                  isRecording: isRecording,
+                  isProcessing: isProcessing,
+                  onPressed: _toggleRecording,
+                  size: 80,
+                ),
+
+                // Status text - déplacé en dessous du bouton
+                if (isRecording || isProcessing)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Text(
+                      isRecording ? 'Écoute en cours...' : 'Traitement en cours...',
+                      style: textTheme.titleMedium?.copyWith(
+                        color: isRecording ? DarkTheme.accentCyan : DarkTheme.primaryBlue,
+                        fontFamily: 'Montserrat',
+                      ),
+                    ),
+                  ),
+                
+                // Nous n'affichons plus le panneau de contrôle d'enregistrement audio PCM
+                // ni le bouton pour basculer entre LiveKit et WebSocket
+                // car nous utilisons maintenant uniquement LiveKit
+
+                // Espace en bas pour éviter la barre de navigation
+                SizedBox(height: MediaQuery.of(context).padding.bottom > 0 ? 100 : 40),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    logger.performance(_tag, 'build', end: true);
+    return result;
+  }
+
+  /// Construit le widget de feedback
+  Widget _buildFeedbackWidget(Map<String, dynamic> feedback) {
+    logger.v(_tag, 'Construction du widget de feedback');
+    logger.performance(_tag, 'buildFeedback', start: true);
+
+    final result = Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: DarkTheme.backgroundMedium,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: DarkTheme.primaryPurple.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Analyse de votre performance',
+            style: TextStyle(
+              color: DarkTheme.textPrimary,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              fontFamily: 'Montserrat',
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Prononciation
+          if (feedback.containsKey('pronunciation_scores'))
+            _buildScoreSection(
+              'Prononciation',
+              (feedback['pronunciation_scores'] as Map<String, dynamic>)['overall'] ?? 0.0,
+              DarkTheme.accentCyan,
+            ),
+
+          // Fluidité
+          if (feedback.containsKey('fluency_metrics'))
+            _buildScoreSection(
+              'Fluidité',
+              (feedback['fluency_metrics'] as Map<String, dynamic>)['speech_rate'] != null
+                  ? (feedback['fluency_metrics'] as Map<String, dynamic>)['speech_rate'] / 5.0
+                  : 0.0,
+              DarkTheme.primaryBlue,
+            ),
+
+          // Prosodie
+          if (feedback.containsKey('prosody_metrics'))
+            _buildScoreSection(
+              'Prosodie',
+              (feedback['prosody_metrics'] as Map<String, dynamic>)['pitch_variation'] != null
+                  ? (feedback['prosody_metrics'] as Map<String, dynamic>)['pitch_variation'] * 5.0
+                  : 0.0,
+              DarkTheme.primaryPurple,
+            ),
+        ],
+      ),
+    );
+
+    logger.performance(_tag, 'buildFeedback', end: true);
+    return result;
+  }
+
+  /// Construit une section de score
+  Widget _buildScoreSection(String title, double score, Color color) {
+    // Limiter le score entre 0 et 1
+    final normalizedScore = score.clamp(0.0, 1.0);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: DarkTheme.textSecondary,
+              fontSize: 14,
+              fontFamily: 'Montserrat',
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: normalizedScore,
+                    backgroundColor: color.withOpacity(0.2),
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                    minHeight: 8,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${(normalizedScore * 100).toInt()}%',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  fontFamily: 'Montserrat',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    logger.i(_tag, 'Destruction de la page de scénario');
+    
+    // Marquer le widget comme détruit avant toute opération
+    _isDisposed = true;
+    
+    try {
+      // Annuler l'abonnement à la session en premier
+      if (_sessionSubscription != null) {
+        _sessionSubscription!.close();
+        logger.i(_tag, 'Abonnement à la session annulé');
+      }
+      
+      // Capturer les références nécessaires de manière sécurisée
+      SessionModel? session;
+      try {
+        final sessionAsync = ref.read(sessionProvider);
+        session = sessionAsync.value;
+      } catch (e) {
+        // Ignorer les erreurs de ref après la destruction
+        logger.i(_tag, 'Impossible d\'accéder au provider de session: widget déjà détruit');
+      }
+      
+      // Terminer la session si elle est active et si on a pu récupérer l'ID
+      if (session?.sessionId != null) {
+        final sessionId = session!.sessionId;
+        logger.i(_tag, 'Fin de la session: $sessionId');
+        
+        try {
+          // Tenter de terminer la session de manière sécurisée
+          final sessionNotifier = ref.read(sessionProvider.notifier);
+          sessionNotifier.endSession();
+        } catch (e) {
+          // Ignorer les erreurs de ref après la destruction
+          logger.i(_tag, 'Impossible de terminer la session: widget déjà détruit');
+        }
+      }
+    } catch (e) {
+      logger.e(_tag, 'Erreur dans dispose(): $e');
+    }
+
+    super.dispose();
+  }
+}
