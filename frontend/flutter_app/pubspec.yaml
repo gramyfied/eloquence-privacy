@@ -1,0 +1,72 @@
+name: eloquence_2_0
+description: Application de coaching vocal pour améliorer l'expression orale
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  flutter_riverpod: ^2.3.6
+  provider: ^6.0.0 # Ajout de la dépendance provider
+  dartz: ^0.10.1
+  equatable: ^2.0.5
+  path_provider: ^2.0.15
+  # shared_preferences: ^2.1.1
+  http: ^1.0.0 # Garder une version récente de http si possible
+  supabase_flutter: ^2.0.0 # Essayer une version plus récente
+  # sign_in_with_apple est une dépendance transitive de supabase_flutter
+  # sign_in_with_apple: ^4.3.0
+  # Packages audio pour la conversation vocale en temps réel
+  audio_waveforms: ^1.0.4
+  just_audio: ^0.10.2
+  # record: ^6.0.0 # Remplacé par flutter_sound
+  flutter_sound: ^9.2.13 # Nouveau package pour l'enregistrement et la lecture audio
+  permission_handler: ^12.0.0 # Mise à jour pour résoudre le problème de Registrar
+  intl: ^0.18.1
+  flutter_animate: ^4.1.1+1
+  flutter_svg: ^2.0.5
+  cached_network_image: ^3.2.3
+  shimmer: ^3.0.0
+  lottie: ^2.4.0
+  go_router: ^10.0.0
+  logger: ^2.0.2
+  web_socket_channel: ^2.4.0 # Pour la communication WebSocket
+  livekit_client: ^2.4.7 # Mise à jour du SDK client LiveKit pour Flutter
+  flutter_webrtc: 0.14.1 # Ajouté pour WebRTC (utilisé dans main.dart)
+  flutter_dotenv: ^5.1.0 # Ajouté
+  device_info_plus: 11.4.0 # Pour le diagnostic système
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  mockito: ^5.4.0
+  build_runner: ^2.3.3
+  flutter_driver:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  test: ^1.22.0
+  bloc_test: ^9.1.1
+  golden_toolkit: ^0.15.0
+  network_image_mock: ^2.1.1
+  flutter_lints: ^2.0.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/animations/
+    - assets/audio/
+    - .env # Ajout du fichier .env aux assets
+  fonts:
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat-Regular.ttf
+        - asset: assets/fonts/Montserrat-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Montserrat-Light.ttf
+          weight: 300
