@@ -10,6 +10,9 @@ import threading
 import logging
 from datetime import datetime, timedelta
 
+# Import du service agent
+from services.livekit_agent_service import agent_service
+
 app = Flask(__name__)
 CORS(app) # Active CORS pour toutes les routes
 
@@ -19,9 +22,9 @@ app.config['CELERY_RESULT_BACKEND'] = os.getenv('REDIS_URL', 'redis://redis:6379
 
 # Configuration LiveKit
 LIVEKIT_API_KEY = os.getenv('LIVEKIT_API_KEY', 'devkey')
-LIVEKIT_API_SECRET = os.getenv('LIVEKIT_API_SECRET', 'devsecret123456789abcdef0123456789abcdef0123456789abcdef')
+LIVEKIT_API_SECRET = os.getenv('LIVEKIT_API_SECRET', 'devsecret123456789abcdef0123456789abcdef')
 LIVEKIT_URL_INTERNAL = os.getenv('LIVEKIT_URL', 'ws://livekit:7880')  # Pour Docker interne
-LIVEKIT_URL_EXTERNAL = 'ws://localhost:7880'  # Pour les clients externes
+LIVEKIT_URL_EXTERNAL = 'ws://192.168.1.44:7880'  # Pour les clients externes (IP réseau)
 
 # Initialisation Celery
 celery = Celery(
@@ -34,6 +37,10 @@ celery.conf.update(app.config)
 # Configuration du logging pour le diagnostic
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("BACKEND_DIAGNOSTIC")
+
+# Registre des sessions actives pour éviter les doublons
+active_sessions = {}
+session_lock = threading.Lock()
 
 # Tâches Celery
 @celery.task
@@ -115,7 +122,7 @@ def home():
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "ok"}), 200
+    return jsonify({"status": "healthy", "service": "eloquence-api"}), 200
 
 @app.route('/api/data')
 def get_data():
@@ -133,16 +140,23 @@ def test_celery():
 
 def generate_livekit_token(room_name: str, participant_identity: str) -> str:
     """Génère un token LiveKit pour un participant"""
-    now = datetime.utcnow()
-    exp = now + timedelta(hours=24)  # Token valide 24h
+    # CORRECTION: Utiliser timestamp local au lieu d'UTC pour éviter les problèmes de fuseau horaire
+    import time
+    now_timestamp = int(time.time())  # Timestamp Unix local
+    exp_timestamp = now_timestamp + (24 * 3600)  # +24 heures
+    
+    # Log pour diagnostic
+    logger.info(f"🔑 GÉNÉRATION TOKEN: now={now_timestamp}, exp={exp_timestamp}")
+    logger.info(f"🔑 Date now: {datetime.fromtimestamp(now_timestamp)}")
+    logger.info(f"🔑 Date exp: {datetime.fromtimestamp(exp_timestamp)}")
     
     payload = {
         'iss': LIVEKIT_API_KEY,
         'sub': participant_identity,
-        'iat': int(now.timestamp()),
-        'exp': int(exp.timestamp()),
-        'room': room_name,
-        'grants': {
+        'iat': now_timestamp,
+        'exp': exp_timestamp,
+        'nbf': now_timestamp,  # Not Before - requis par LiveKit
+        'video': {  # CORRECTION: utiliser 'video' au lieu de 'grants'
             'room': room_name,
             'roomJoin': True,
             'roomList': True,
@@ -157,6 +171,64 @@ def generate_livekit_token(room_name: str, participant_identity: str) -> str:
     }
     
     return jwt.encode(payload, LIVEKIT_API_SECRET, algorithm='HS256')
+
+@app.route('/api/scenarios', methods=['GET'])
+def get_scenarios():
+    """Retourne la liste des scénarios disponibles"""
+    try:
+        language = request.args.get('language', 'fr')
+        
+        # Scénarios de démonstration
+        scenarios = [
+            {
+                "id": "demo-1",
+                "title": "Entretien d'embauche" if language == 'fr' else "Job Interview",
+                "description": "Préparez-vous pour un entretien d'embauche avec un coach IA" if language == 'fr' else "Prepare for a job interview with an AI coach",
+                "category": "professional",
+                "difficulty": "intermediate",
+                "duration_minutes": 15,
+                "language": language,
+                "tags": ["entretien", "professionnel", "coaching"] if language == 'fr' else ["interview", "professional", "coaching"],
+                "created_at": "2025-06-17T00:00:00Z",
+                "updated_at": "2025-06-17T00:00:00Z"
+            },
+            {
+                "id": "demo-2",
+                "title": "Présentation publique" if language == 'fr' else "Public Speaking",
+                "description": "Améliorez vos compétences de présentation en public" if language == 'fr' else "Improve your public speaking skills",
+                "category": "communication",
+                "difficulty": "advanced",
+                "duration_minutes": 20,
+                "language": language,
+                "tags": ["présentation", "public", "communication"] if language == 'fr' else ["presentation", "public", "communication"],
+                "created_at": "2025-06-17T00:00:00Z",
+                "updated_at": "2025-06-17T00:00:00Z"
+            },
+            {
+                "id": "demo-3",
+                "title": "Conversation informelle" if language == 'fr' else "Casual Conversation",
+                "description": "Pratiquez une conversation détendue avec l'IA" if language == 'fr' else "Practice casual conversation with AI",
+                "category": "social",
+                "difficulty": "beginner",
+                "duration_minutes": 10,
+                "language": language,
+                "tags": ["conversation", "social", "débutant"] if language == 'fr' else ["conversation", "social", "beginner"],
+                "created_at": "2025-06-17T00:00:00Z",
+                "updated_at": "2025-06-17T00:00:00Z"
+            }
+        ]
+        
+        logger.info(f"✅ Scénarios récupérés pour langue: {language}")
+        return jsonify({
+            "scenarios": scenarios,
+            "total": len(scenarios),
+            "language": language,
+            "timestamp": datetime.utcnow().isoformat()
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur récupération scénarios: {str(e)}")
+        return jsonify({"error": f"Erreur lors de la récupération des scénarios: {str(e)}"}), 500
 
 @app.route('/api/sessions', methods=['POST'])
 def create_session():
@@ -175,7 +247,27 @@ def create_session():
         if not user_id:
             return jsonify({"error": "user_id requis"}), 400
         
-        # Générer un nom de room unique
+        # Clé unique pour identifier la session
+        session_key = f"{user_id}_{scenario_id}"
+        
+        with session_lock:
+            # Vérifier si une session active existe déjà
+            if session_key in active_sessions:
+                existing_session = active_sessions[session_key]
+                # Vérifier si la session est encore valide (moins de 30 minutes)
+                session_age = time.time() - existing_session.get('created_timestamp', 0)
+                if session_age < 1800:  # 30 minutes
+                    logger.info(f"🔄 Réutilisation session existante: {existing_session['room_name']}")
+                    # Régénérer le token pour le client
+                    new_token = generate_livekit_token(existing_session['room_name'], f"user_{user_id}")
+                    existing_session['livekit_token'] = new_token
+                    return jsonify(existing_session), 200
+                else:
+                    # Session expirée, la supprimer
+                    logger.info(f"🗑️ Session expirée supprimée: {existing_session['room_name']}")
+                    del active_sessions[session_key]
+        
+        # Créer une nouvelle session
         room_name = f"session_{scenario_id}_{int(time.time())}"
         
         # Générer le token LiveKit
@@ -206,50 +298,82 @@ def create_session():
                 "timestamp": int(time.time())
             },
             "created_at": datetime.utcnow().isoformat(),
+            "created_timestamp": time.time(),  # Pour vérifier l'expiration
             "status": "active"
         }
         
-        # Démarrer l'agent LiveKit dans un conteneur Docker séparé
-        try:
-            import subprocess
-            
-            # Construire la commande docker run
-            command = [
-                "docker", "run",
-                "--rm", # Supprime le conteneur après l'arrêt
-                "--network", "projeteloquence_livekit-network", # Spécifier le réseau Docker Compose
-                "-e", f"ROOM_NAME={room_name}",
-                "-e", f"PARTICIPANT_IDENTITY={participant_identity}",
-                "-e", f"LIVEKIT_TOKEN={livekit_token}",
-                "projeteloquence-livekit-agent:latest", # Utiliser le nom de l'image de l'agent
-                "python", "livekit_agent_moderne.py" # Commande à exécuter dans le conteneur
-            ]
-            
-            logger.info(f"🚀 Démarrage de l'agent LiveKit avec la commande: {' '.join(command)}")
-            
-            # Exécuter la commande en arrière-plan
-            # Utiliser shell=True pour que les variables d'environnement soient correctement interprétées
-            subprocess.Popen(" ".join(command), shell=True, cwd=".") # Exécuter dans le répertoire courant
-            
-            logger.info(f"✅ Agent LiveKit démarré pour session {session_data['session_id']}")
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du démarrage de l'agent Docker: {str(e)}")
-            # Continuer même si l'agent ne démarre pas, la session est quand même créée
-            pass # Ou retourner une erreur si le démarrage de l'agent est critique
+        # CORRECTION CRITIQUE: Connecter l'agent AUTOMATIQUEMENT
+        logger.info(f"🤖 LANCEMENT AGENT AUTOMATIQUE pour room: {room_name}")
+        agent_connected = agent_service.start_agent_for_session(session_data)
         
-        # Tester les services ASR/TTS via Celery
-        logger.info("🔧 DIAGNOSTIC: Test des services ASR/TTS via Celery")
-        asr_task = diagnostic_asr_task.delay(b"test_audio_data")
-        tts_task = diagnostic_tts_task.delay("Test TTS depuis backend")
+        if agent_connected:
+            logger.info(f"✅ AGENT CONNECTÉ avec succès pour session {session_data['session_id']}")
+            # Ajouter les informations agent à la réponse
+            session_data['agent_connected'] = True
+            session_data['agent_identity'] = f"ai_agent_{session_data['session_id']}"
+        else:
+            logger.warning(f"⚠️ AGENT NON CONNECTÉ pour session {session_data['session_id']}")
+            session_data['agent_connected'] = False
+            session_data['agent_identity'] = None
         
-        logger.info(f"🔧 DIAGNOSTIC: Tâches Celery lancées - ASR: {asr_task.id}, TTS: {tts_task.id}")
+        # Enregistrer la session dans le registre
+        with session_lock:
+            active_sessions[session_key] = session_data
+            logger.info(f"📝 Session enregistrée: {room_name} (clé: {session_key})")
+        
+        # TEMPORAIRE: Désactiver Celery pour test agent
+        logger.info("🔧 DIAGNOSTIC: Tests Celery désactivés temporairement")
         
         return jsonify(session_data), 201
         
     except Exception as e:
         logger.error(f"❌ DIAGNOSTIC: Erreur création session: {str(e)}")
         return jsonify({"error": f"Erreur lors de la création de session: {str(e)}"}), 500
+
+@app.route('/api/session/start', methods=['POST'])
+def start_session():
+    """Endpoint alternatif pour démarrer une session (compatibilité)"""
+    try:
+        data = request.get_json()
+        
+        # Validation des données requises
+        if not data:
+            return jsonify({"error": "Données JSON requises"}), 400
+            
+        user_id = data.get('user_id')
+        scenario_id = data.get('scenario_id', 'default')
+        language = data.get('language', 'fr')
+        
+        if not user_id:
+            return jsonify({"error": "user_id requis"}), 400
+        
+        # Générer un nom de room unique
+        room_name = f"session_{scenario_id}_{int(time.time())}"
+        
+        # Générer le token LiveKit
+        participant_identity = f"user_{user_id}"
+        livekit_token = generate_livekit_token(room_name, participant_identity)
+        
+        # Réponse simplifiée pour compatibilité
+        session_data = {
+            "session_id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "scenario_id": scenario_id,
+            "language": language,
+            "room_name": room_name,
+            "livekit_url": LIVEKIT_URL_EXTERNAL,
+            "livekit_token": livekit_token,
+            "participant_identity": participant_identity,
+            "status": "active",
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+        logger.info(f"✅ Session démarrée via endpoint alternatif: {session_data['session_id']}")
+        return jsonify(session_data), 201
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur démarrage session: {str(e)}")
+        return jsonify({"error": f"Erreur lors du démarrage de session: {str(e)}"}), 500
 
 @app.route('/api/diagnostic', methods=['GET'])
 def get_diagnostic_status():
@@ -347,6 +471,59 @@ def get_diagnostic_logs():
     except Exception as e:
         logger.error(f"❌ DIAGNOSTIC: Erreur récupération logs: {str(e)}")
         return jsonify({"error": f"Erreur logs diagnostic: {str(e)}"}), 500
+
+@app.route('/api/sessions/active', methods=['GET'])
+def get_active_sessions():
+    """
+    DIAGNOSTIC: Endpoint pour consulter les sessions actives
+    """
+    try:
+        with session_lock:
+            # Nettoyer les sessions expirées
+            current_time = time.time()
+            expired_keys = []
+            for key, session in active_sessions.items():
+                session_age = current_time - session.get('created_timestamp', 0)
+                if session_age > 1800:  # 30 minutes
+                    expired_keys.append(key)
+            
+            for key in expired_keys:
+                logger.info(f"🗑️ Nettoyage session expirée: {active_sessions[key]['room_name']}")
+                del active_sessions[key]
+            
+            sessions_info = {
+                "active_sessions": dict(active_sessions),
+                "total_active": len(active_sessions),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        
+        logger.info(f"📊 Sessions actives consultées: {len(active_sessions)} sessions")
+        return jsonify(sessions_info), 200
+        
+    except Exception as e:
+        logger.error(f"❌ DIAGNOSTIC: Erreur consultation sessions: {str(e)}")
+        return jsonify({"error": f"Erreur consultation sessions: {str(e)}"}), 500
+
+@app.route('/api/agents/status', methods=['GET'])
+def get_agents_status():
+    """
+    DIAGNOSTIC: Endpoint pour consulter l'état des agents
+    """
+    try:
+        agents_count = agent_service.get_active_agents_count()
+        
+        agents_info = {
+            "active_agents_count": agents_count,
+            "timestamp": datetime.utcnow().isoformat(),
+            "service_status": "running"
+        }
+        
+        logger.info(f"🤖 Agents actifs consultés: {agents_count} agents")
+        return jsonify(agents_info), 200
+        
+    except Exception as e:
+        logger.error(f"❌ DIAGNOSTIC: Erreur consultation agents: {str(e)}")
+        return jsonify({"error": f"Erreur consultation agents: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=True)

@@ -1,28 +1,45 @@
 services:
+  # Redis pour Celery (AJOUTÉ - CRITIQUE)
+  redis:
+    image: redis:7-alpine
+    restart: on-failure:5
+    ports:
+      - "6379:6379"
+    networks:
+      - eloquence-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - redis-data:/data
+
   # LiveKit Server
   livekit:
-    image: livekit/livekit-server:latest # Updated to latest for better SDK compatibility
+    image: livekit/livekit-server:v1.6
     command: --config /etc/livekit.yaml
     restart: on-failure:5
     ports:
       - "7880:7880"
-      - "7881:7881" 
+      - "7881:7881"
       - "7882:7882/udp"
+      - "7883-7999:7883-7999/udp"  # AJOUTÉ: Plage UDP pour TURN/STUN
       - "7888:7888"
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml
     environment: {}
     networks:
       - eloquence-network
-    #healthcheck:
-    #  test: ["CMD", "curl", "-f", "http://localhost:7880"]
-    #  interval: 10s
-    #  timeout: 20s
-    #  retries: 5
-    #  start_period: 60s
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7880/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
-  # Whisper STT Service
-  whisper-stt:
+  # Whisper STT Service (CORRIGÉ: nom de service harmonisé)
+  asr-service:
     build:
       context: .
       dockerfile: Dockerfile.asr
@@ -40,8 +57,8 @@ services:
       timeout: 10s
       retries: 3
 
-  # Piper TTS Service
-  piper-tts:
+  # Piper TTS Service (CORRIGÉ: nom de service harmonisé)
+  tts-service:
     build:
       context: .
       dockerfile: Dockerfile.tts
@@ -58,7 +75,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # Agent IA Eloquence
+  # Agent IA Eloquence (CORRIGÉ: URLs des services harmonisées)
   eloquence-agent:
     build:
       context: .
@@ -68,23 +85,25 @@ services:
     restart: on-failure:5
     depends_on:
       - livekit
-      - whisper-stt
-      - piper-tts
+      - asr-service
+      - tts-service
+      - redis
     environment:
       - LIVEKIT_URL=ws://livekit:7880
       - LIVEKIT_API_KEY=devkey
-      - LIVEKIT_API_SECRET=devsecret123456789abcdef0123456789abcdef0123456789abcdef
-      - WHISPER_STT_URL=http://whisper-stt:8001
-      - PIPER_TTS_URL=http://piper-tts:5002
+      - LIVEKIT_API_SECRET=devsecret123456789abcdef0123456789abcdef
+      - WHISPER_STT_URL=http://asr-service:8001  # CORRIGÉ: nom de service harmonisé
+      - PIPER_TTS_URL=http://tts-service:5002    # CORRIGÉ: nom de service harmonisé
       - MISTRAL_API_KEY=fc23b118-a243-4e29-9d28-6c6106c997a4
       - MISTRAL_BASE_URL=https://api.scaleway.ai/18f6cc9d-07fc-49c3-a142-67be9b59ac63/v1/chat/completions
       - MISTRAL_MODEL=mistral-nemo-instruct-2407
       - AGENT_NAME=Coach Entretien IA
       - AGENT_LANGUAGE=fr
+      - ROOM_NAME=session_demo-1_1750192933
     networks:
       - eloquence-network
 
-  # API Backend (optionnel)
+  # API Backend (CORRIGÉ: ajout Redis et URLs harmonisées)
   api-backend:
     build:
       context: ./backend
@@ -95,11 +114,22 @@ services:
     environment:
       - LIVEKIT_URL=ws://livekit:7880
       - LIVEKIT_API_KEY=devkey
-      - LIVEKIT_API_SECRET=devsecret123456789abcdef0123456789abcdef0123456789abcdef
+      - LIVEKIT_API_SECRET=devsecret123456789abcdef0123456789abcdef
+      - REDIS_URL=redis://redis:6379/0  # AJOUTÉ: URL Redis pour Celery
+      - ASR_SERVICE_URL=http://asr-service:8001  # AJOUTÉ: URL ASR harmonisée
+      - TTS_SERVICE_URL=http://tts-service:5002  # AJOUTÉ: URL TTS harmonisée
     networks:
       - eloquence-network
     depends_on:
       - livekit
+      - redis
+      - asr-service
+      - tts-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   eloquence-network:
@@ -107,3 +137,4 @@ networks:
 
 volumes:
   livekit-data:
+  redis-data:  # AJOUTÉ: Volume pour Redis

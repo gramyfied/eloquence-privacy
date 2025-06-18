@@ -1,10 +1,7 @@
-from werkzeug.middleware.dispatcher import Dispatcher
 from app import app
 
-# Créez un adaptateur WSGI explicite si nécessaire,
-# bien que Flask soit déjà une application WSGI.
-# Cela peut aider à résoudre des problèmes d'environnement.
-application = Dispatcher({'/': app})
+# Flask est déjà une application WSGI
+application = app
 
 if __name__ == '__main__':
     # Ce bloc est principalement pour les tests locaux

@@ -13,6 +13,18 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Install LiveKit CLI manually to ensure it's in PATH
+RUN curl -L -o livekit.tar.gz "https://github.com/livekit/livekit/releases/download/v1.9.0/livekit_1.9.0_linux_amd64.tar.gz" && \
+    tar -zxvf livekit.tar.gz && \
+    mv livekit-server /usr/local/bin/lk && \
+    rm livekit.tar.gz
+
+# Ensure livekit CLI is in PATH for subsequent commands (redundant but safe)
+ENV PATH="/usr/local/bin:$PATH"
+
+# Verify livekit CLI installation
+RUN lk version --client
+
 # Copie des fichiers de requirements
 COPY requirements.txt .
 
@@ -25,8 +37,5 @@ COPY . .
 # Exposition du port
 EXPOSE 8000
 
-# Endpoint de santé simple
-RUN echo 'from fastapi import FastAPI\nfrom fastapi.responses import JSONResponse\nimport uvicorn\n\napp = FastAPI(title="Eloquence API", version="1.0.0")\n\n@app.get("/health")\nasync def health_check():\n    return {"status": "healthy", "service": "eloquence-api"}\n\n@app.get("/")\nasync def root():\n    return {"message": "Eloquence API Backend"}\n\nif __name__ == "__main__":\n    uvicorn.run(app, host="0.0.0.0", port=8000)' > simple_api.py
-
-# Commande de démarrage
-CMD ["python", "simple_api.py"]
+# Commande de démarrage avec WSGI
+CMD ["python", "wsgi.py"]

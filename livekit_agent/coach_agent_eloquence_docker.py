@@ -410,13 +410,16 @@ async def main():
     # Démarrer le serveur de santé
     await start_health_server()
     
-    # Attendre que tous les participants se connectent
-    room_name = "coaching-room-1"
+    # Utiliser le nom de room passé par les variables d'environnement
+    room_name = os.getenv("ROOM_NAME", "coaching-room-1")
+    logger.info(f"🏠 Room configurée: {room_name}")
     
-    # Créer le token
+    # Créer le token avec l'identité de l'agent
     token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
-    token.with_identity(f"agent-eloquence-{os.getpid()}")
+    agent_identity = f"agent-eloquence-{int(time.time())}"
+    token.with_identity(agent_identity)
     token.with_name("Coach IA Eloquence")
+    logger.info(f"🤖 Agent identity: {agent_identity}")
     token.with_grants(api.VideoGrants(
         room_join=True,
         room=room_name,

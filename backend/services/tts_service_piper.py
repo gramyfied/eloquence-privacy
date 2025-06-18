@@ -24,15 +24,26 @@ PIPER_TTS_URL = os.getenv('PIPER_TTS_URL', 'http://0.0.0.0:5002/v1/audio/speech'
 DEFAULT_VOICE = os.getenv('TTS_VOICE', 'alloy')
 RESPONSE_FORMAT = os.getenv('TTS_RESPONSE_FORMAT', 'wav')
 
-# Voix disponibles (compatibles OpenAI)
+# Voix disponibles (compatibles OpenAI + Tom français)
 AVAILABLE_VOICES = [
     'alloy',
-    'echo', 
+    'echo',
     'fable',
     'onyx',
     'nova',
-    'shimmer'
+    'shimmer',
+    'tom-fr-high'  # NOUVEAU: Tom français haute qualité
 ]
+
+# Configuration Tom français
+TOM_FRENCH_CONFIG = {
+    "voice_id": "tom-fr-high",
+    "language": "fr-FR",
+    "quality": "high",
+    "sample_rate": 22050,
+    "streaming": True,
+    "description": "Voix masculine française Tom haute qualité pour streaming temps réel"
+}
 
 def generate_piper_audio(text: str, output_path: str, voice: str = None):
     """Génère un fichier audio WAV avec Piper TTS via OpenEDAI-Speech"""

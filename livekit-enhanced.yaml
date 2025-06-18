@@ -1,0 +1,78 @@
+# Configuration LiveKit améliorée avec STUN/TURN
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  # Configuration ICE pour améliorer la connectivité
+  use_ice_lite: false
+  # Configuration des serveurs STUN/TURN
+  stun_servers:
+    - "stun:stun.l.google.com:19302"
+    - "stun:stun1.l.google.com:19302"
+  # Si vous avez un serveur TURN, décommentez et configurez :
+  # turn_servers:
+  #   - host: "turn.example.com"
+  #     port: 3478
+  #     protocol: "udp"
+  #     username: "user"
+  #     credential: "pass"
+
+# Configuration des clés API
+keys:
+  devkey: "devsecret"
+
+# Configuration des logs détaillés
+logging:
+  level: debug
+  pion_level: info  # Réduire le niveau pour moins de verbosité
+  json: false
+  sample:
+    - room_name: "*"
+      level: debug
+
+# Configuration WebRTC
+webrtc:
+  # Timeouts de connexion
+  connection_timeout: 30s
+  # Configuration des codecs audio
+  audio:
+    active_speaker_update_interval: 500ms
+  # Configuration réseau
+  network:
+    # Interfaces réseau à utiliser
+    interfaces:
+      includes:
+        - "eth*"
+        - "en*"
+        - "wlan*"
+        - "Wi-Fi"
+        - "Ethernet"
+    # Configuration NAT
+    nat:
+      # Forcer l'utilisation de l'IP publique si disponible
+      force_relay: false
+
+# Configuration de la room
+room:
+  # Durée maximale d'une room vide avant fermeture
+  empty_timeout: 5m
+  # Nombre maximum de participants
+  max_participants: 100
+  # Configuration de la qualité
+  video:
+    # Qualités vidéo disponibles
+    layers:
+      - width: 640
+        height: 360
+        bitrate: 500000
+      - width: 1280
+        height: 720
+        bitrate: 1500000
+
+# Configuration de sécurité
+security:
+  # Durée de vie des tokens
+  token_ttl: 24h
+  # Permettre les connexions sans token (dev uniquement)
+  allow_empty_token: false
